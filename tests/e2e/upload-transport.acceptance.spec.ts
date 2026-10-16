@@ -1,8 +1,6 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-const API = "http://127.0.0.1:3001",
-  WEB = "http://127.0.0.1:3000";
 test.use({ serviceWorkers: "block" });
 test.beforeEach(() => {
   const url = new URL(
@@ -17,7 +15,10 @@ test.beforeEach(() => {
 for (const mismatched of [false, true]) {
   test(`real prepared upload ${mismatched ? "rejects a mismatched completion without replay" : "uses validated storage and acknowledged completion"}`, async ({
     page,
+    baseURL,
   }) => {
+    const WEB = new URL(baseURL!).origin;
+    const API = `${new URL(baseURL!).protocol}//127.0.0.1:3001`;
     const registration = await page.request.post(`${API}/auth/register`, {
       headers: { origin: WEB },
       data: {
@@ -56,16 +57,23 @@ for (const mismatched of [false, true]) {
       });
     });
     if (mismatched)
-      await page.route(`${API}/media/uploads/sessions/complete`, async (route) => {
-        const response = await route.fetch();
-        expect(response.ok()).toBe(true);
-        const body = await response.json();
-        expect(body.status).toBe("UPLOADED");
-        await route.fulfill({
-          response,
-          json: { ...body, assetId: "22222222-2222-4222-8222-222222222222" },
-        });
-      });
+      await page.route(
+        (url) =>
+          ["http:", "https:"].includes(url.protocol) &&
+          url.hostname === "127.0.0.1" &&
+          url.port === "3001" &&
+          url.pathname === "/media/uploads/sessions/complete",
+        async (route) => {
+          const response = await route.fetch();
+          expect(response.ok()).toBe(true);
+          const body = await response.json();
+          expect(body.status).toBe("UPLOADED");
+          await route.fulfill({
+            response,
+            json: { ...body, assetId: "22222222-2222-4222-8222-222222222222" },
+          });
+        },
+      );
     await page.goto("/upload?lang=en");
     const picker = page.locator('input[type="file"][accept^="video/"]');
     await expect

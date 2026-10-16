@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "status": "success",
+  "completedAt": "2026-10-16T19:07:58Z",
+  "objectKey": "postgresql/daily/2026/10/16/ayin-postgresql-20261016T190755Z-5142e4e61b76.dump.age",
+  "targetDatabase": "ayin_restore_ci_312f18f3e7f444ff82a19e909fffa643",
+  "releaseSha": "5142e4e61b766f3262613267e9a708e9c55b3c51",
+  "durationSeconds": 3,
+  "checks": {
+    "checksum": "ok",
+    "decryption": "ok",
+    "pgRestore": "ok",
+    "postgres": "ok",
+    "prismaMigrations": "ok",
+    "applicationSmoke": "ok"
+  },
+  "cleanupRequested": false,
+  "syntheticData": true,
+  "storageMode": "filesystem",
+  "markerPreserved": true,
+  "negativeChecks": {
+    "corruptCiphertext": "rejected",
+    "wrongIdentity": "rejected",
+    "existingTarget": "preserved"
+  },
+  "evidence": {
+    "runId": 38952467572,
+    "jobId": 117146997393,
+    "artifactId": 12068104184,
+    "artifactSha256": "1af10a1540da91252e374c4a235ee570fcea72b55ddc6fcea4f882e29d92c289",
+    "serverVersion": "17.11",
+    "storageScope": "synthetic isolated filesystem; not production backup",
+    "outerHarnessCleanup": "passed"
+  }
+}

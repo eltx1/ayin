@@ -73,6 +73,7 @@ ayin_load_production_database() {
 
 ayin_load_test_database() {
   [[ "${APP_ENV:-}" == "test" ]] || ayin_backup_fail "test database override is allowed only with APP_ENV=test"
+  node "$(dirname -- "${BASH_SOURCE[0]}")/backup-test-database.mjs" backup
   AYIN_PGHOST="${AYIN_BACKUP_PGHOST:-127.0.0.1}"
   AYIN_PGPORT="${AYIN_BACKUP_PGPORT:-5432}"
   AYIN_PGUSER="${AYIN_BACKUP_PGUSER:-ayin}"

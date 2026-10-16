@@ -42,6 +42,10 @@ describe("workspace presentation entrypoints", () => {
       expect(html).not.toContain("Review saved uploads in Studio");
       expect(html).not.toContain("مراجعة الفيديوهات المحفوظة في الاستوديو");
       expect(html).toContain('role="radiogroup"');
+      // The public heading/navigation remain server-rendered while owner-scoped
+      // file and draft controls cannot appear before identity verification.
+      expect(html).toMatch(/<div[^>]*hidden=""[^>]*data-private-creator-upload="true"/);
+      expect(html).toContain('disabled=""');
       expect(html).not.toContain('role="button"');
     });
 

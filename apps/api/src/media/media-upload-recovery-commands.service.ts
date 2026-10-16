@@ -4,7 +4,7 @@ import {
   assertUploadRecoverySlot,
 } from "./media-upload-rollout.js";
 import { lockUploadCanary } from "./media-upload-canary.js";
-import { UploadRateLimiter } from "./upload-rate-limiter.js";
+import { UploadRateLimiter, UPLOAD_REQUEST_LIMITS } from "./upload-rate-limiter.js";
 import { createHash, randomUUID } from "node:crypto";
 import type { MediaUploadOperation, MediaUploadSession, Prisma } from "@ayin/db";
 import type {
@@ -218,7 +218,7 @@ export class MediaUploadRecoveryCommandsService {
     actor: UploadActor,
     requestId: string,
   ): Promise<UploadRecoveryOutcomeResponse> {
-    this.rateLimiter.consume(`recovery-outcome:${actor.accountId}`);
+    this.rateLimiter.consume(`recovery-outcome:${actor.accountId}`, UPLOAD_REQUEST_LIMITS.outcome);
     return this.transaction(async (tx) => {
       // Lookup is scoped to the initiating account before any resource can be
       // disclosed. Absence is not proof a lost request cannot still commit.

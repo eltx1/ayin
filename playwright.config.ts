@@ -20,6 +20,8 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
+  // The complete suite stays on Chromium. The bounded critical journeys use
+  // playwright.critical.config.ts with real loopback TLS on all three engines.
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {

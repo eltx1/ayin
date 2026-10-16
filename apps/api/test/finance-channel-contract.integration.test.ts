@@ -4,6 +4,8 @@ import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fa
 import { Test } from "@nestjs/testing";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppModule } from "../src/app.module.js";
+import { AdminGovernanceService } from "../src/admin/admin-governance.service.js";
+import { assertAdminFinanceAuthority } from "../src/revenue/admin-finance-authority.js";
 import { enrollTestMfa } from "./mfa-test-helper.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -64,6 +66,192 @@ databaseDescribe("Finance contract/channel atomic aggregate", () => {
       },
     });
   }
+  for (const action of ["contract", "import", "adjustment"] as const)
+    it.each(["role", "account"] as const)(
+      `rejects ${action} when %s revocation wins before its authority lock`,
+      async (revoke) => {
+        const actor = await finance(`authority-${action}-${revoke}`);
+        const accountId = actor.user.account.id;
+        const channelId = actor.user.channel.id;
+        const initialContracts = await prisma.creatorContract.count({ where: { channelId } });
+        let acquired!: () => void, release!: () => void;
+        const ready = new Promise<void>((resolve) => (acquired = resolve));
+        const gate = new Promise<void>((resolve) => (release = resolve));
+        const holder = prisma.$transaction(
+          async (tx) => {
+            // Guards read the committed active account. The baseline eventually
+            // waits on the audit FK; the authority fence waits before any write.
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "Account" WHERE "id" = ${accountId}::uuid FOR UPDATE`,
+            );
+            acquired();
+            await gate;
+            if (revoke === "role")
+              await tx.adminRoleAssignment.deleteMany({ where: { accountId } });
+            else
+              await tx.account.update({ where: { id: accountId }, data: { status: "SUSPENDED" } });
+          },
+          { timeout: 15000 },
+        );
+        await ready;
+        const requested = Promise.allSettled([
+          action === "contract"
+            ? Promise.resolve(create(actor.cookie, channelId, 6000))
+            : Promise.resolve(
+                app.inject({
+                  method: "POST",
+                  url:
+                    action === "import" ? "/admin/revenue/imports" : "/admin/revenue/adjustments",
+                  headers: { cookie: actor.cookie },
+                  payload:
+                    action === "import"
+                      ? {
+                          source: `isolated-authority-${accountId}`,
+                          entries: [
+                            {
+                              idempotencyKey: "isolated-authority-row",
+                              channelId,
+                              periodStart: "2026-09-01T00:00:00Z",
+                              periodEnd: "2026-10-01T00:00:00Z",
+                              grossAmount: "100.000000",
+                              currency: "USD",
+                              state: "FINAL",
+                            },
+                          ],
+                        }
+                      : {
+                          channelId,
+                          amount: "60.000000",
+                          currency: "USD",
+                          reason: "Isolated reviewed financial adjustment",
+                        },
+                }),
+              ),
+        ]);
+        let observationFailure: unknown;
+        try {
+          await vi.waitFor(
+            async () => {
+              const rows = await prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+              SELECT count(*)::bigint AS count FROM pg_stat_activity
+              WHERE datname = current_database() AND wait_event_type = 'Lock'
+                AND (query LIKE '%INSERT INTO%"AdminAuditLog"%'
+                  OR query LIKE '%SELECT "id" FROM "Account"%FOR SHARE%')
+            `);
+              expect(Number(rows[0]?.count ?? 0)).toBe(1);
+            },
+            { timeout: 4000, interval: 25 },
+          );
+        } catch (error) {
+          observationFailure = error;
+        } finally {
+          release();
+          await holder;
+        }
+        const [result] = await requested;
+        if (observationFailure) throw observationFailure;
+        if (result?.status !== "fulfilled") throw new Error("Financial request did not complete.");
+        expect(result.value.statusCode).toBe(403);
+        expect(await prisma.creatorContract.count({ where: { channelId } })).toBe(initialContracts);
+        expect(await prisma.earningsLedgerEntry.count({ where: { channelId } })).toBe(0);
+        expect(
+          await prisma.adminAuditLog.count({
+            where: {
+              actorAccountId: accountId,
+              action: {
+                in: ["CREATOR_CONTRACT_CREATED", "REVENUE_IMPORTED", "REVENUE_ADJUSTMENT_CREATED"],
+              },
+            },
+          }),
+        ).toBe(0);
+      },
+    );
+  it("serializes real staff revocation before the finance account/role fence without a deadlock", async () => {
+    const root = await finance("governance-root");
+    await prisma.adminRoleAssignment.create({
+      data: { accountId: root.user.account.id, role: "SUPERADMIN" },
+    });
+    const actor = await finance("governance-target");
+    const accountId = actor.user.account.id;
+    // Fixture-generated UUID is the only interpolation into this test-only DDL.
+    expect(accountId).toMatch(/^[0-9a-f-]{36}$/);
+    await prisma.$executeRawUnsafe(
+      `CREATE FUNCTION ayin_test_finance_role_gate() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_advisory_xact_lock(9816672234::bigint); RETURN OLD; END; $$`,
+    );
+    await prisma.$executeRawUnsafe(
+      `CREATE TRIGGER ayin_test_finance_role_gate AFTER DELETE ON "AdminRoleAssignment" FOR EACH ROW WHEN (OLD."accountId" = '${accountId}'::uuid) EXECUTE FUNCTION ayin_test_finance_role_gate()`,
+    );
+    let release!: () => void, acquired!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const ready = new Promise<void>((resolve) => (acquired = resolve));
+    const holder = prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(9816672234::bigint)::text`);
+        acquired();
+        await gate;
+      },
+      { timeout: 15000 },
+    );
+    await ready;
+    const revoked = Promise.allSettled([
+      app
+        .get(AdminGovernanceService)
+        .setStaffRoles(
+          root.user.account.id,
+          accountId,
+          [],
+          "Isolated financial lock-order regression",
+        ),
+    ]);
+    let authority: Promise<PromiseSettledResult<void>[]> | undefined;
+    let observationFailure: unknown;
+    try {
+      await vi.waitFor(
+        async () => {
+          const rows = await prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+          SELECT count(*)::bigint AS count FROM pg_stat_activity
+          WHERE datname = current_database() AND wait_event_type = 'Lock'
+            AND query LIKE '%DELETE FROM%"AdminRoleAssignment"%'
+        `);
+          expect(Number(rows[0]?.count ?? 0)).toBe(1);
+        },
+        { timeout: 4000, interval: 25 },
+      );
+      authority = Promise.allSettled([
+        prisma.$transaction(async (tx) => {
+          await assertAdminFinanceAuthority(tx, accountId);
+        }),
+      ]);
+      await vi.waitFor(
+        async () => {
+          const rows = await prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+          SELECT count(*)::bigint AS count FROM pg_stat_activity
+          WHERE datname = current_database() AND wait_event_type = 'Lock'
+            AND (query LIKE '%SELECT "id" FROM "Account"%FOR SHARE%'
+              OR query LIKE '%SELECT "id" FROM "AdminRoleAssignment"%FOR SHARE%')
+        `);
+          expect(Number(rows[0]?.count ?? 0)).toBe(1);
+        },
+        { timeout: 4000, interval: 25 },
+      );
+    } catch (error) {
+      observationFailure = error;
+    } finally {
+      release();
+      await holder;
+    }
+    const [revocation] = await revoked;
+    const [authorization] = (await authority) ?? [];
+    await prisma.$executeRawUnsafe(
+      'DROP TRIGGER IF EXISTS ayin_test_finance_role_gate ON "AdminRoleAssignment"',
+    );
+    await prisma.$executeRawUnsafe("DROP FUNCTION IF EXISTS ayin_test_finance_role_gate()");
+    if (observationFailure) throw observationFailure;
+    expect(revocation?.status).toBe("fulfilled");
+    expect(authorization?.status).toBe("rejected");
+    if (authorization?.status === "rejected") expect(authorization.reason.getStatus?.()).toBe(403);
+    expect(await prisma.adminRoleAssignment.count({ where: { accountId } })).toBe(0);
+  });
   it("waits for the actual channel row and advances the observed aggregate monotonically for concurrent Finance contracts", async () => {
     const actor = await finance("race");
     const channelId = actor.user.channel.id;
