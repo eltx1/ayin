@@ -130,6 +130,11 @@ test("does not treat an in-progress rerun as success", async () => {
   f.state.runs[0].status = "in_progress";
   assert.equal((await checkGates(options(f, { automatic: true }))).ready, false);
 });
+test("requires connected core media acceptance even if the ordinary quality job passes", async () => {
+  const f = fixture();
+  f.state.jobs[10] = f.state.jobs[10].filter((job) => job.name !== "connected-media");
+  await assert.rejects(checkGates(options(f)), /required job/);
+});
 test("explicit run ID cannot select older success", async () => {
   await assert.rejects(
     checkGates(options(fixture(), { validationRunId: "123" })),
