@@ -3,7 +3,8 @@ on:
   pull_request:
     paths:
       - "apps/api/src/media/**"
-      - "apps/api/test/media-upload-cancellation.integration.test.ts"
+      - "apps/api/src/privacy/**"
+      - "apps/api/test/media-upload*.ts"
       - ".github/workflows/upload-cancellation-review.yml"
 permissions:
   contents: read
@@ -38,4 +39,4 @@ jobs:
       - run: corepack pnpm packages:build
       - run: corepack pnpm db:migrate:deploy
       - run: corepack pnpm db:seed
-      - run: node scripts/with-test-database.mjs corepack pnpm --filter @ayin/api exec vitest run --fileParallelism=false --testTimeout=30000 test/media-upload-cancellation.integration.test.ts
+      - run: node scripts/with-test-database.mjs corepack pnpm --filter @ayin/api exec vitest run --fileParallelism=false --testTimeout=30000 test/media-upload-cancellation.integration.test.ts test/media-upload.integration.test.ts test/media-upload-authority.integration.test.ts test/media-upload-privacy.integration.test.ts

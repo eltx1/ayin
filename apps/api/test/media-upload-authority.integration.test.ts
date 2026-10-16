@@ -12,6 +12,8 @@ import {
   type MediaStorageAdapter,
 } from "../src/media/media-storage.adapter.js";
 import { enrollTestMfa } from "./mfa-test-helper.js";
+import { assertLegacyCancellationCustody } from "./media-upload-cancellation-test-helper.js";
+import { UploadSessionTokenService } from "../src/media/upload-session-token.service.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const databaseDescribe = databaseUrl ? describe : describe.skip;
@@ -307,6 +309,12 @@ databaseDescribe("Current administrator upload continuation authority", () => {
       const request = send(f, path);
       await pending;
       try {
+        if (path === "abort")
+          await assertLegacyCancellationCustody(
+            prisma,
+            app.get(UploadSessionTokenService).verify(f.session.sessionToken),
+            f.videoId,
+          );
         await prisma.$transaction(async (tx) => {
           await tx.$executeRaw`SET LOCAL lock_timeout = '1000ms'`;
           await tx.$executeRawUnsafe(
@@ -319,11 +327,21 @@ databaseDescribe("Current administrator upload continuation authority", () => {
         });
       } finally {
         release();
+        await request;
       }
       const response = await request;
       expect(response.statusCode).toBe(401);
       expect(response.body).not.toContain("https://example.invalid");
-      expect(await state(f)).toEqual(before);
+      expect(await state(f)).toEqual({
+        ...before,
+        asset: { ...before.asset, uploadIntegrityRequired: path === "abort" },
+      });
+      if (path === "abort")
+        await assertLegacyCancellationCustody(
+          prisma,
+          app.get(UploadSessionTokenService).verify(f.session.sessionToken),
+          f.videoId,
+        );
       expect(method).toHaveBeenCalledOnce();
     });
 
@@ -536,7 +554,16 @@ databaseDescribe("Current administrator upload continuation authority", () => {
         });
       else vi.mocked(storage.deleteObject).mockImplementationOnce(revoke);
       expect((await send(f, path)).statusCode).toBe(401);
-      expect(await state(f)).toEqual(before);
+      expect(await state(f)).toEqual({
+        ...before,
+        asset: { ...before.asset, uploadIntegrityRequired: path === "abort" },
+      });
+      if (path === "abort")
+        await assertLegacyCancellationCustody(
+          prisma,
+          app.get(UploadSessionTokenService).verify(f.session.sessionToken),
+          f.videoId,
+        );
       expect(
         path === "complete" ? storage.headObject : storage.deleteObject,
       ).toHaveBeenCalledOnce();
