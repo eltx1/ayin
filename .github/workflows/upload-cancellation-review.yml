@@ -1,0 +1,41 @@
+name: Legacy upload cancellation regression
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/media/**"
+      - "apps/api/test/media-upload-cancellation.integration.test.ts"
+      - ".github/workflows/upload-cancellation-review.yml"
+permissions:
+  contents: read
+jobs:
+  cancellation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: ayin_test
+          POSTGRES_PASSWORD: ayin
+          POSTGRES_USER: ayin
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ayin -d ayin_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_test?schema=public
+      TEST_DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_test?schema=public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable
+      - run: corepack pnpm install --frozen-lockfile
+      - run: corepack pnpm packages:build
+      - run: corepack pnpm db:migrate:deploy
+      - run: corepack pnpm db:seed
+      - run: node scripts/with-test-database.mjs corepack pnpm --filter @ayin/api exec vitest run --fileParallelism=false --testTimeout=30000 test/media-upload-cancellation.integration.test.ts

@@ -7,6 +7,10 @@ REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=deploy/postgres/backup-common.sh
 source "$SCRIPT_DIR/backup-common.sh"
 
+if [[ "${APP_ENV:-}" == "test" ]]; then
+  node "$SCRIPT_DIR/backup-test-database.mjs" restore
+fi
+
 for command in age corepack createdb date dropdb jq mktemp node pg_restore psql sha256sum stat; do
   ayin_require_command "$command"
 done
@@ -85,13 +89,17 @@ write_failure_report() {
 
 cleanup() {
   local exit_code=$?
+  if (( DATABASE_CREATED == 1 )) && { [[ "${AYIN_RESTORE_CLEANUP_DATABASE:-0}" == "1" ]] || { [[ "${APP_ENV:-}" == "test" ]] && (( SUCCESS == 0 )); }; }; then
+    if ! PGPASSWORD="$PGPASSWORD_TARGET" dropdb \
+      -h "$PGHOST_TARGET" -p "$PGPORT_TARGET" -U "$PGUSER_TARGET" \
+      --maintenance-db="$PGADMIN_DATABASE" "$RESTORE_DATABASE" >/dev/null; then
+      exit_code=1
+      SUCCESS=0
+      CURRENT_STAGE="cleanup_database"
+    fi
+  fi
   if (( SUCCESS == 0 )); then
     write_failure_report "$exit_code" || true
-  fi
-  if (( DATABASE_CREATED == 1 )) && [[ "${AYIN_RESTORE_CLEANUP_DATABASE:-0}" == "1" ]]; then
-    PGPASSWORD="$PGPASSWORD_TARGET" dropdb \
-      -h "$PGHOST_TARGET" -p "$PGPORT_TARGET" -U "$PGUSER_TARGET" \
-      --if-exists "$RESTORE_DATABASE" >/dev/null 2>&1 || true
   fi
   rm -rf "$WORK_DIR"
   unset PGPASSWORD_TARGET AYIN_BACKUP_R2_SECRET_ACCESS_KEY AYIN_BACKUP_R2_ACCESS_KEY_ID DATABASE_URL
@@ -143,7 +151,7 @@ pg_restore --list "$DUMP_FILE" >/dev/null
 CURRENT_STAGE="target_guard"
 EXISTING_DATABASE="$(PGPASSWORD="$PGPASSWORD_TARGET" psql \
   -h "$PGHOST_TARGET" -p "$PGPORT_TARGET" -U "$PGUSER_TARGET" -d "$PGADMIN_DATABASE" \
-  -v ON_ERROR_STOP=1 -Atqc "SELECT 1 FROM pg_database WHERE datname = '$RESTORE_DATABASE'" || true)"
+  -v ON_ERROR_STOP=1 -Atqc "SELECT 1 FROM pg_database WHERE datname = '$RESTORE_DATABASE'")"
 [[ "$EXISTING_DATABASE" != "1" ]] || ayin_backup_fail "restore target already exists; refusing to overwrite it"
 
 CURRENT_STAGE="create_database"

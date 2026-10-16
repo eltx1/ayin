@@ -1,8 +1,10 @@
 import { assertUploadByteQuota, lockUploadAdmission } from "./media-upload-admission.js";
 import { MediaUploadError } from "./media-upload-error.js";
 import { UploadRateLimiter } from "./upload-rate-limiter.js";
+import { cleanupRetentionDeadline, uploadCleanupJobData } from "./media-upload-cleanup.js";
+import { UPLOAD_FILE_IDENTITY_ALGORITHM } from "@ayin/types";
 import { randomUUID } from "node:crypto";
-import { Prisma } from "@ayin/db";
+import { Prisma, type MediaUploadSession } from "@ayin/db";
 import type { AuthenticatedRequest } from "../auth/auth.guard.js";
 import { unauthorized } from "../auth/auth.errors.js";
 import {
@@ -391,24 +393,81 @@ export class MediaUploadService {
     const session = await this.withSession(
       actor,
       sessionToken,
-      ["PENDING"],
-      async (_tx, session) => session,
+      ["PENDING", "REJECTED"],
+      async (tx, session) => {
+        // Revoke continuation and retain exact cleanup custody BEFORE provider
+        // I/O. Otherwise a concurrent Complete can accept/enqueue the source
+        // while DELETE is in flight, leaving an accepted but missing object.
+        // This terminal V1 snapshot is not recovery admission: legacy grants,
+        // in-flight writes and content identity remain explicitly unknown.
+        const existing = await tx.mediaUploadSession.findUnique({
+          where: { sourceAssetId: session.assetId },
+        });
+        if (!existing) {
+          const now = new Date();
+          this.verifySession(sessionToken);
+          const asset = await tx.mediaAsset.findUniqueOrThrow({
+            where: { id: session.assetId },
+            select: { videoId: true },
+          });
+          const cancelled = await tx.mediaUploadSession.create({
+            data: {
+              sourceProtocolVersion: 1,
+              sourceAssetId: session.assetId,
+              initiatingAccountId: session.accountId,
+              channelId: session.channelId,
+              videoId: asset.videoId,
+              authority: session.adminOverride ? "ADMIN" : "OWNER",
+              mode: session.mode === "single" ? "SINGLE" : "MULTIPART",
+              objectKey: session.objectKey,
+              providerUploadId: session.uploadId,
+              sizeBytes: BigInt(session.sizeBytes),
+              mimeType: session.mimeType,
+              partSizeBytes: BigInt(session.partSizeBytes),
+              contentIdentityAlgorithm: UPLOAD_FILE_IDENTITY_ALGORITHM,
+              contentIdentityDigest: null,
+              state: "ABORTED",
+              createdAt: now,
+              hardExpiresAt: new Date(session.expiresAtMs),
+              // A signed V1 token does not enumerate historical part grants.
+              // Never manufacture a maximum grant cutoff or settlement proof.
+              lastGrantExpiresAt: null,
+              grantsRevokedAt: now,
+              cleanupRequestedAt: now,
+              cleanupRetainUntil: cleanupRetentionDeadline(now),
+            },
+          });
+          await tx.privacyMediaDeletionJob.createMany({
+            data: uploadCleanupJobData(cancelled, actor.accountId, null, now),
+          });
+        }
+        return session;
+      },
+      true,
     );
     if (session.mode === "multipart" && session.uploadId) {
-      await this.storage.abortMultipartUpload({
-        key: session.objectKey,
-        uploadId: session.uploadId,
-      });
+      await this.storage
+        .abortMultipartUpload({ key: session.objectKey, uploadId: session.uploadId })
+        .catch(() => undefined);
     } else {
       await this.storage.deleteObject(session.objectKey).catch(() => undefined);
     }
-    return this.withSession(actor, sessionToken, ["PENDING"], async (tx, current) => {
-      await tx.mediaAsset.update({
-        where: { id: current.assetId },
-        data: { status: "REJECTED", removedAt: new Date() },
-      });
-      return { status: "ABORTED" as const };
-    });
+    // ABORTED acknowledges logical cancellation, never physical deletion. The
+    // existing cleanup worker retains failures/late writes as non-DONE V1 debt.
+    return this.withSession(
+      actor,
+      sessionToken,
+      ["PENDING", "REJECTED"],
+      async (tx, current, status) => {
+        if (status === "PENDING")
+          await tx.mediaAsset.update({
+            where: { id: current.assetId },
+            data: { status: "REJECTED", removedAt: new Date() },
+          });
+        return { status: "ABORTED" as const };
+      },
+      true,
+    );
   }
 
   async cleanupAbandonedUploads(
@@ -517,12 +576,13 @@ export class MediaUploadService {
   private async withSession<T>(
     actor: UploadActor,
     sessionToken: string,
-    allowedStatuses: Array<"PENDING" | "UPLOADED">,
+    allowedStatuses: Array<"PENDING" | "UPLOADED" | "REJECTED">,
     operation: (
       tx: Prisma.TransactionClient,
       session: UploadSessionPayload,
       status: string,
     ) => Promise<T>,
+    cancelledSessionAllowed = false,
   ): Promise<T> {
     const session = this.verifySession(sessionToken);
     if (session.accountId !== actor.accountId) {
@@ -575,19 +635,27 @@ export class MediaUploadService {
           mimeType: true,
           status: true,
           uploadIntegrityRequired: true,
+          uploadSession: true,
         },
       });
+      const cancelled =
+        cancelledSessionAllowed && this.isLegacyCancellation(asset?.uploadSession, session);
       if (
         !asset ||
-        asset.uploadIntegrityRequired ||
+        // The DB irreversibly marks any source with a session sidecar. Only
+        // this exact terminal cancellation may finish/replay Abort; no legacy
+        // continuation or worker enqueue is allowed through that marker.
+        (asset.uploadIntegrityRequired && !cancelled) ||
         asset.channelId !== session.channelId ||
         asset.videoId !== observed?.videoId ||
         asset.kind !== "SOURCE_VIDEO" ||
-        asset.removedAt ||
+        (asset.removedAt && !cancelled) ||
+        (asset.uploadSession && !cancelled) ||
+        (asset.status === "REJECTED" && !cancelled) ||
         asset.r2ObjectKey !== session.objectKey ||
         asset.sizeBytes !== BigInt(session.sizeBytes) ||
         asset.mimeType !== session.mimeType ||
-        !allowedStatuses.includes(asset.status as "PENDING" | "UPLOADED")
+        !allowedStatuses.includes(asset.status as "PENDING" | "UPLOADED" | "REJECTED")
       )
         this.changedSession();
       if (asset.videoId) {
@@ -636,6 +704,31 @@ export class MediaUploadService {
         401,
       );
     }
+  }
+
+  private isLegacyCancellation(
+    cancelled: MediaUploadSession | null | undefined,
+    session: UploadSessionPayload,
+  ): boolean {
+    return Boolean(
+      cancelled &&
+      cancelled.sourceProtocolVersion === 1 &&
+      cancelled.state === "ABORTED" &&
+      cancelled.contentIdentityDigest === null &&
+      cancelled.grantsRevokedAt &&
+      cancelled.cleanupRequestedAt &&
+      cancelled.initiatingAccountId === session.accountId &&
+      cancelled.sourceAssetId === session.assetId &&
+      cancelled.channelId === session.channelId &&
+      cancelled.objectKey === session.objectKey &&
+      cancelled.providerUploadId === session.uploadId &&
+      cancelled.authority === (session.adminOverride ? "ADMIN" : "OWNER") &&
+      cancelled.mode === (session.mode === "single" ? "SINGLE" : "MULTIPART") &&
+      cancelled.sizeBytes === BigInt(session.sizeBytes) &&
+      cancelled.partSizeBytes === BigInt(session.partSizeBytes) &&
+      cancelled.mimeType === session.mimeType &&
+      cancelled.hardExpiresAt.getTime() === session.expiresAtMs,
+    );
   }
 
   private changedSession(): never {

@@ -21,6 +21,7 @@ import {
   type MediaOutputWriteContext,
 } from "./media-output-write-journal.js";
 import { R2SigV4 } from "./r2-sigv4.js";
+import { R2XmlError, readR2XmlText } from "./r2-xml.js";
 
 @Injectable()
 export class MediaProcessingStorageService {
@@ -75,15 +76,22 @@ export class MediaProcessingStorageService {
     }
     return this.withDeadline("text download", this.r2TransferTimeoutMs, async (signal) => {
       const response = await new R2SigV4(this.config).request({ method: "GET", key, signal });
-      const declaredLength = Number(response.headers.get("content-length") ?? "0");
-      if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
-        throw new Error("R2 text object exceeds the verification size limit.");
+      try {
+        // The existing response reader bounds bytes while streaming and cancels
+        // on overflow/abort. It does not parse XML; HLS uses the same UTF-8 and
+        // length checks before its own playlist validation. Checking text()
+        // afterwards would allow an unbounded chunked body into worker memory.
+        return await readR2XmlText(response, maxBytes, signal);
+      } catch (error) {
+        if (error instanceof R2XmlError)
+          throw new Error(
+            error.limitExceeded
+              ? "R2 text object exceeds the verification size limit."
+              : "R2 text object has invalid UTF-8 or length metadata.",
+            { cause: error },
+          );
+        throw error;
       }
-      const text = await response.text();
-      if (Buffer.byteLength(text, "utf8") > maxBytes) {
-        throw new Error("R2 text object exceeds the verification size limit.");
-      }
-      return text;
     });
   }
 
@@ -141,8 +149,11 @@ export class MediaProcessingStorageService {
             signal,
           } as RequestInit & { duplex: "half" });
           if (response.status !== 200) {
-            const detail = await response.text().catch(() => "");
-            throw new Error(`R2 worker upload failed (${response.status}). ${detail}`.trim());
+            // Provider bodies are untrusted and may be arbitrarily large or
+            // echo private request details. The executor persists/logs this
+            // error, so retain the status only and stop the response stream.
+            void response.body?.cancel().catch(() => undefined);
+            throw new Error(`R2 worker upload failed (${response.status}).`);
           }
         } finally {
           source.destroy();

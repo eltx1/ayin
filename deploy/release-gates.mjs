@@ -13,7 +13,7 @@ export const REQUIRED_GATES = [
     key: "quality",
     path: ".github/workflows/database.yml",
     name: "Task quality gates",
-    jobs: ["quality"],
+    jobs: ["quality", "connected-media"],
   },
   {
     key: "security",

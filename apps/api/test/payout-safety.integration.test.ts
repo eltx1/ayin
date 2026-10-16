@@ -1089,6 +1089,167 @@ databaseDescribe("Creator payout safety", () => {
       ),
     ).toBe(true);
   });
+  it.each(["account", "role"] as const)(
+    "rejects an admin dispute resolution after blocked %s authority is revoked",
+    async (change) => {
+      const { creator, finance, channelId } = await compliantFixture(`dispute-authority-${change}`);
+      const created = await app.inject({
+        method: "POST",
+        url: "/creator/studio/revenue/disputes",
+        headers: { cookie: creator.cookie },
+        payload: { category: "EARNINGS", message: "Isolated finance dispute awaiting review." },
+      });
+      expect(created.statusCode).toBe(201);
+      const disputeId = created.json().id;
+      const accountId = finance.user.account.id;
+      let release!: () => void, acquired!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const ready = new Promise<void>((resolve) => (acquired = resolve));
+      const holder = prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw(
+            Prisma.sql`SELECT "id" FROM "Account" WHERE "id" = ${accountId}::uuid FOR UPDATE`,
+          );
+          acquired();
+          await gate;
+          if (change === "role") await tx.adminRoleAssignment.deleteMany({ where: { accountId } });
+          else await tx.account.update({ where: { id: accountId }, data: { status: "SUSPENDED" } });
+        },
+        { timeout: 15000 },
+      );
+      await ready;
+      const request = Promise.resolve(
+        app.inject({
+          method: "PATCH",
+          url: `/admin/revenue/disputes/${disputeId}`,
+          headers: { cookie: finance.cookie },
+          payload: {
+            status: "RESOLVED",
+            resolution: "Isolated disputed amount reviewed with no ledger mutation.",
+            reason: "Isolated regression of revoked dispute review authority",
+          },
+        }),
+      );
+      try {
+        await vi.waitFor(
+          async () => {
+            const rows = await prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+              SELECT count(*)::bigint AS count FROM pg_stat_activity
+              WHERE datname = current_database() AND wait_event_type = 'Lock'
+                AND (query LIKE '%UPDATE "RevenueDispute"%'
+                  OR query LIKE '%SELECT "id" FROM "Account"%FOR SHARE%')
+            `);
+            expect(Number(rows[0]?.count ?? 0)).toBe(1);
+          },
+          { timeout: 4000, interval: 25 },
+        );
+      } finally {
+        release();
+        await holder;
+      }
+      expect((await request).statusCode).toBe(403);
+      expect(
+        await prisma.revenueDispute.findUniqueOrThrow({ where: { id: disputeId } }),
+      ).toMatchObject({
+        channelId,
+        status: "OPEN",
+        resolution: null,
+        resolvedByAccountId: null,
+        resolvedAt: null,
+      });
+      expect(
+        await prisma.adminAuditLog.count({
+          where: {
+            entityId: disputeId,
+            actorAccountId: accountId,
+            action: "revenue.dispute_updated",
+          },
+        }),
+      ).toBe(0);
+      expect(
+        await prisma.notification.count({
+          where: { accountId: creator.user.account.id, title: "Revenue dispute resolved" },
+        }),
+      ).toBe(0);
+    },
+  );
+
+  for (const field of ["IDENTITY", "TAX", "PAYOUT_DESTINATION"] as const)
+    it.each(["finance-account", "finance-role"] as const)(
+      `rejects a ${field} compliance override after blocked %s authority is revoked`,
+      async (change) => {
+        const { finance, profile, channelId } = await compliantFixture(
+          `override-authority-${field}-${change}`,
+        );
+        const accountId = finance.user.account.id;
+        let release!: () => void, acquired!: () => void;
+        const gate = new Promise<void>((resolve) => (release = resolve));
+        const ready = new Promise<void>((resolve) => (acquired = resolve));
+        const holder = prisma.$transaction(
+          async (tx) => {
+            // Guards see the committed account. Baseline waits at the audit FK;
+            // fixed code waits at authority before acquiring domain locks.
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "Account" WHERE "id" = ${accountId}::uuid FOR UPDATE`,
+            );
+            acquired();
+            await gate;
+            if (change === "finance-role")
+              await tx.adminRoleAssignment.deleteMany({ where: { accountId } });
+            else
+              await tx.account.update({ where: { id: accountId }, data: { status: "SUSPENDED" } });
+          },
+          { timeout: 15000 },
+        );
+        await ready;
+        const request = Promise.resolve(
+          app.inject({
+            method: "PATCH",
+            url: `/admin/revenue/channels/${channelId}/compliance`,
+            headers: { cookie: finance.cookie },
+            payload: {
+              field,
+              status: "REJECTED",
+              reason: "Isolated authority regression for compliance override",
+            },
+          }),
+        );
+        try {
+          await vi.waitFor(
+            async () => {
+              const rows = await prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+                SELECT count(*)::bigint AS count FROM pg_stat_activity
+                WHERE datname = current_database() AND wait_event_type = 'Lock'
+                  AND (query LIKE '%INSERT INTO%"AdminAuditLog"%'
+                    OR query LIKE '%SELECT "id" FROM "Account"%FOR SHARE%')
+              `);
+              expect(Number(rows[0]?.count ?? 0)).toBe(1);
+            },
+            { timeout: 4000, interval: 25 },
+          );
+        } finally {
+          release();
+          await holder;
+        }
+        expect((await request).statusCode).toBe(403);
+        const after = await prisma.creatorPayoutProfile.findUniqueOrThrow({
+          where: { id: profile.id },
+        });
+        expect(after.identityStatus).toBe(profile.identityStatus);
+        expect(after.taxStatus).toBe(profile.taxStatus);
+        expect(after.payoutDestinationStatus).toBe(profile.payoutDestinationStatus);
+        expect(
+          await prisma.adminAuditLog.count({
+            where: {
+              entityId: profile.id,
+              actorAccountId: finance.user.account.id,
+              action: "creator.compliance_status_overridden",
+            },
+          }),
+        ).toBe(0);
+      },
+    );
+
   for (const change of ["creator-account", "finance-account", "finance-role"] as const)
     it(`denies actual payout after blocked ${change} authority is revoked`, async () => {
       const { creator, finance, entry, channelId } = await compliantFixture(change);

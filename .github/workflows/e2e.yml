@@ -70,6 +70,17 @@ jobs:
           bash deploy/ensure-ffmpeg-runtime.sh
           echo "FFMPEG_PATH=$AYIN_BIN_DIR/ffmpeg" >> "$GITHUB_ENV"
           echo "FFPROBE_PATH=$AYIN_BIN_DIR/ffprobe" >> "$GITHUB_ENV"
+      - name: Verify local HTTPS transport preserves security headers
+        run: node --test deploy/test-critical-browser-transport.mjs
+      - name: Build Web with HTTPS origins for the critical browser environment
+        env:
+          NEXT_PUBLIC_API_BASE_URL: https://127.0.0.1:3001
+          NEXT_PUBLIC_MEDIA_BASE_URL: https://media.invalid
+        run: pnpm --filter @ayin/web build
+      - name: Run critical journeys on Chromium Firefox and WebKit over HTTPS
+        run: pnpm exec playwright test --config playwright.critical.config.ts
+      - name: Restore the HTTP build for the independent ordinary browser environment
+        run: pnpm --filter @ayin/web build
       - name: Run browser acceptance
         # Separate server processes keep independent fixture registration bursts
         # from exhausting the real test-mode limiter; every ordinary test runs once.
@@ -79,6 +90,16 @@ jobs:
             PLAYWRIGHT_HTML_OUTPUT_DIR="playwright-report/shard-${shard}" pnpm test:e2e --shard="${shard}/8" --output="test-results/shard-${shard}" || status=1
           done
           exit "$status"
+      - name: Retain critical browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: critical-browser-${{ github.sha }}-${{ github.run_id }}
+          path: |
+            test-results/critical
+            playwright-report-critical
+          if-no-files-found: error
+          retention-days: 7
       - name: Run real PWA lifecycle acceptance
         run: pnpm exec playwright test --config playwright.pwa.config.ts
       - name: Run dormant upload recovery against synthetic provider and PostgreSQL

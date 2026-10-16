@@ -20,29 +20,9 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-  // Keep the complete suite on Chromium; only these bounded critical journeys
-  // are repeated on the other engines (not the visual/performance labs).
-  projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    {
-      name: "firefox-critical",
-      testMatch: [
-        "**/cross-browser-critical.acceptance.spec.ts",
-        "**/upload-transport.acceptance.spec.ts",
-        "**/quick-upload-account-scope.acceptance.spec.ts",
-      ],
-      use: { ...devices["Desktop Firefox"] },
-    },
-    {
-      name: "webkit-critical",
-      testMatch: [
-        "**/cross-browser-critical.acceptance.spec.ts",
-        "**/upload-transport.acceptance.spec.ts",
-        "**/quick-upload-account-scope.acceptance.spec.ts",
-      ],
-      use: { ...devices["Desktop Safari"] },
-    },
-  ],
+  // The complete suite stays on Chromium. The bounded critical journeys use
+  // playwright.critical.config.ts with real loopback TLS on all three engines.
+  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
       command: "pnpm --filter @ayin/api start",

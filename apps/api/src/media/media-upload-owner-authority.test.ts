@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import { HttpException } from "@nestjs/common";
+import type { MediaUploadSession } from "@ayin/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { platformSettingCatalog } from "../platform-config/platform-settings.catalog.js";
 import { MediaUploadService, type UploadActor } from "./media-upload.service.js";
@@ -26,16 +27,20 @@ function fixture(
     status: !changeDuringProvider && change === "ACCOUNT_SUSPENDED" ? "SUSPENDED" : "ACTIVE",
     authVersion: !changeDuringProvider && change === "AUTH_VERSION_CHANGED" ? 2 : 1,
   };
+  let cancelled: MediaUploadSession | null = null;
   const asset = {
     channelId,
     videoId: null,
     kind: "SOURCE_VIDEO",
-    removedAt: null,
+    removedAt: null as Date | null,
     r2ObjectKey: `channels/${channelId}/media/${assetId}/source.mp4`,
     sizeBytes: BigInt(sizeBytes),
     mimeType: "video/mp4",
     status: "PENDING",
     uploadIntegrityRequired: false,
+    get uploadSession() {
+      return cancelled;
+    },
   };
   const tx = {
     channelMember: {
@@ -45,10 +50,29 @@ function fixture(
     account: { findUnique: vi.fn(async () => account) },
     mediaAsset: {
       findUnique: vi.fn(async () => asset),
-      update: vi.fn(),
+      findUniqueOrThrow: vi.fn(async () => asset),
+      update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        Object.assign(asset, data);
+        return asset;
+      }),
       aggregate: vi.fn(async () => ({ _sum: { sizeBytes: 0n } })),
       create: vi.fn(),
     },
+    mediaUploadSession: {
+      findUnique: vi.fn(async () => cancelled),
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        // The real DB trigger retains this irreversible marker for every source
+        // sidecar, including terminal cancellation custody with no identity.
+        asset.uploadIntegrityRequired = true;
+        cancelled = {
+          ...data,
+          id: "55555555-5555-4555-8555-555555555555",
+          revision: 1,
+        } as MediaUploadSession;
+        return cancelled;
+      }),
+    },
+    privacyMediaDeletionJob: { createMany: vi.fn() },
     $executeRaw: vi.fn(),
     $queryRaw: vi.fn(async (sql: { strings: string[] } | TemplateStringsArray) => {
       const query = ("strings" in sql ? sql.strings : sql).join("?");
@@ -152,6 +176,27 @@ describe("ordinary owner current upload authority", () => {
     const f = fixture("SESSION_REVOKED", false);
     await expect(f.run("authorizePart")).rejects.toBeInstanceOf(HttpException);
     expect(f.storage.authorizeMultipartPart).not.toHaveBeenCalled();
+  });
+  it("finalizes only its exact terminal cancellation while retaining the database integrity marker", async () => {
+    const f = fixture("NONE");
+    await expect(f.run("abort")).resolves.toEqual({ status: "ABORTED" });
+    await expect(f.run("abort")).resolves.toEqual({ status: "ABORTED" });
+    expect(f.tx.mediaUploadSession.create).toHaveBeenCalledOnce();
+    expect(f.tx.privacyMediaDeletionJob.createMany).toHaveBeenCalledOnce();
+    expect(f.tx.mediaAsset.update).toHaveBeenCalledOnce();
+    expect(await f.tx.mediaAsset.findUnique()).toMatchObject({
+      status: "REJECTED",
+      uploadIntegrityRequired: true,
+    });
+    for (const operation of ["authorizePart", "resumeParts", "complete"] as const)
+      await expect(f.run(operation)).rejects.toMatchObject({
+        code: "UPLOAD_STATE_CHANGED",
+        statusCode: 409,
+      });
+    expect(f.storage.authorizeMultipartPart).not.toHaveBeenCalled();
+    expect(f.storage.listParts).not.toHaveBeenCalled();
+    expect(f.storage.completeMultipartUpload).not.toHaveBeenCalled();
+    expect(f.lifecycle.enqueueUploadedAssetInTransaction).not.toHaveBeenCalled();
   });
   it("does not issue a legacy part grant beyond the upload session deadline", async () => {
     vi.useFakeTimers();
