@@ -507,9 +507,9 @@ export class RevenueService {
             ? { externalReference: data.externalReference }
             : {}),
           ...(data.failureReason !== undefined ? { failureReason: data.failureReason } : {}),
-          ...(data.status === "PROCESSING" ? { processedAt: now } : {}),
+          ...(data.status === "PROCESSING" ? { processedAt: current.processedAt ?? now } : {}),
           ...(data.status === "PAID"
-            ? { processedAt: current.processedAt ?? now, paidAt: now }
+            ? { processedAt: current.processedAt ?? now, paidAt: current.paidAt ?? now }
             : {}),
         },
       });

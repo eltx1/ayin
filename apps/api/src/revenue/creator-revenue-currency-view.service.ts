@@ -119,6 +119,7 @@ export class CreatorRevenueCurrencyViewService {
       openPayout,
     };
     const canRequestPayout =
+      available > 0n &&
       payoutReadiness.profileReady &&
       payoutReadiness.thresholdMet &&
       !payoutReadiness.openPayout &&
@@ -128,7 +129,11 @@ export class CreatorRevenueCurrencyViewService {
     const actionsRequired = [
       ...(!payoutReadiness.profileReady ? ["Complete your payout details."] : []),
       ...(!payoutReadiness.providerReady ? ["Choose an available payout method."] : []),
-      ...(!thresholdMet ? ["Reach the minimum payout amount."] : []),
+      ...(available <= 0n
+        ? ["Earn a positive finalized balance before requesting a payout."]
+        : !thresholdMet
+          ? ["Reach the minimum payout amount."]
+          : []),
       ...(openPayout ? ["Wait for your current payout request to finish."] : []),
       ...overview.compliance.actionsRequired,
     ];

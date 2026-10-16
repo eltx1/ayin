@@ -108,11 +108,16 @@ export class CreatorFinanceService {
     const payoutActionsRequired = [
       ...(!profileReady ? ["Complete your payout details."] : []),
       ...(!providerReady ? ["Choose an available payout method."] : []),
-      ...(!thresholdMet ? ["Reach the minimum payout amount."] : []),
+      ...(availableMicros <= 0n
+        ? ["Earn a positive finalized balance before requesting a payout."]
+        : !thresholdMet
+          ? ["Reach the minimum payout amount."]
+          : []),
       ...(openPayout ? ["Wait for your current payout request to finish."] : []),
       ...compliance.actionsRequired,
     ];
     const payoutEligible =
+      availableMicros > 0n &&
       profileReady &&
       thresholdMet &&
       !openPayout &&

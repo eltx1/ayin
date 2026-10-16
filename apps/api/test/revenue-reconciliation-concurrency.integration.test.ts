@@ -70,6 +70,7 @@ databaseDescribe("Revenue report concurrency against isolated PostgreSQL", () =>
     });
     if (channelId) {
       await prisma.earningsLedgerEntry.deleteMany({ where: { channelId } });
+      await prisma.creatorContract.deleteMany({ where: { channelId } });
       await prisma.channel.delete({ where: { id: channelId } });
     }
     if (accountId) {
@@ -107,10 +108,11 @@ databaseDescribe("Revenue report concurrency against isolated PostgreSQL", () =>
       { timeout: 15000 },
     );
     await ready;
-    const imports = Promise.all([
+    const imports = Promise.allSettled([
       service.importReport(accountId, report(source, "concurrent-a", grossAmount)),
       service.importReport(accountId, report(source, "concurrent-b", grossAmount)),
     ]);
+    let waitFailure: unknown;
     try {
       await vi.waitFor(
         async () => {
@@ -124,11 +126,18 @@ databaseDescribe("Revenue report concurrency against isolated PostgreSQL", () =>
         },
         { timeout: 4000, interval: 25 },
       );
+    } catch (error) {
+      waitFailure = error;
     } finally {
       release();
       await holder;
     }
-    return imports;
+    const results = await imports;
+    if (waitFailure) throw waitFailure;
+    return results.map((result) => {
+      if (result.status === "rejected") throw result.reason;
+      return result.value;
+    });
   }
 
   it.each([false, true])(
