@@ -6,6 +6,11 @@ on:
       - "deploy/postgres/**"
       - "deploy/env/backup.env.example"
       - ".github/workflows/backup-restore.yml"
+      - "packages/db/**"
+      - "scripts/test-database-guard.mjs"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".nvmrc"
   push:
     branches:
       - main
@@ -13,17 +18,22 @@ on:
       - "deploy/postgres/**"
       - "deploy/env/backup.env.example"
       - ".github/workflows/backup-restore.yml"
+      - "packages/db/**"
+      - "scripts/test-database-guard.mjs"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".nvmrc"
 
 permissions:
   contents: read
 
 jobs:
   restore-drill:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:16
+        image: postgres:17
         env:
           POSTGRES_DB: ayin_test
           POSTGRES_USER: ayin
@@ -38,13 +48,16 @@ jobs:
     env:
       APP_ENV: test
       DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_test?schema=public
+      TEST_DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_test?schema=public
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .nvmrc
 
@@ -59,10 +72,30 @@ jobs:
       - name: Install backup tooling
         run: |
           set -euo pipefail
+          # Ubuntu 24.04 ships PostgreSQL 16; use PGDG's signed repository for
+          # client 17 so pg_dump matches the existing isolated PostgreSQL 17 service.
+          # https://www.postgresql.org/download/linux/ubuntu/
+          . /etc/os-release
+          [[ "$ID" == ubuntu && "$VERSION_CODENAME" == noble ]]
+          sudo install -d -m 755 /usr/share/postgresql-common/pgdg
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --connect-timeout 15 --max-time 60 \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            --output "$RUNNER_TEMP/ayin-pgdg.asc"
+          sudo install -m 644 "$RUNNER_TEMP/ayin-pgdg.asc" /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          printf '%s\n' \
+            'Types: deb' \
+            'URIs: https://apt.postgresql.org/pub/repos/apt' \
+            'Suites: noble-pgdg' \
+            'Architectures: amd64' \
+            'Components: main' \
+            'Signed-By: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc' \
+            | sudo tee /etc/apt/sources.list.d/ayin-pgdg.sources >/dev/null
           sudo apt-get update
-          sudo apt-get install -y age postgresql-client
-          pg_dump --version
-          pg_restore --version
+          sudo apt-get install -y age postgresql-client-17
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+          /usr/lib/postgresql/17/bin/pg_dump --version
+          /usr/lib/postgresql/17/bin/pg_restore --version
 
       - name: Build database package
         run: pnpm packages:build
@@ -76,6 +109,18 @@ jobs:
           bash -n deploy/postgres/test-backup-restore.sh
           bash -n deploy/postgres/install-backup-timer.sh
           node --check deploy/postgres/restore-smoke.mjs
+          node --test deploy/postgres/backup-test-database.test.mjs
 
       - name: Run encrypted backup and restore drill
+        env:
+          AYIN_RELEASE_SHA: ${{ github.sha }}
+          AYIN_BACKUP_TEST_REPORT_PATH: ${{ runner.temp }}/ayin-backup-restore-report.json
         run: bash deploy/postgres/test-backup-restore.sh
+
+      - name: Retain synthetic restore proof only
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ayin-backup-restore-${{ github.sha }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/ayin-backup-restore-report.json
+          if-no-files-found: error
+          retention-days: 30
