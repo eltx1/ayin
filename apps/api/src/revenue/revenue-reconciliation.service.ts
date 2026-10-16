@@ -3,6 +3,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from "@nes
 
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
 import { DatabaseService } from "../database/database.service.js";
+import { assertAdminFinanceAuthority } from "./admin-finance-authority.js";
 import { selectEffectiveContract } from "./contract-selection.js";
 import { applyRevenueShareMicros, formatMoneyMicros, parseMoneyMicros } from "./money.js";
 import {
@@ -106,6 +107,9 @@ export class RevenueReconciliationService {
         await tx.$queryRaw(
           Prisma.sql`/* ayin-reconciliation-source-lock */ SELECT pg_advisory_xact_lock(hashtextextended(${`ayin:revenue-reconciliation:${report.source}`}, 0))::text`,
         );
+        // The controller check predates any wait for this source. Recheck and
+        // retain the active account/finance role until this ledger write commits.
+        await assertAdminFinanceAuthority(tx, actorAccountId);
         const concurrent = await tx.revenueSourceReport.findUnique({
           where: {
             source_sourceReportId: {
