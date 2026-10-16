@@ -74,7 +74,7 @@ jobs:
           bash -n deploy/env/rotate-r2-credentials.sh
           bash -n deploy/ensure-ffmpeg-runtime.sh
           bash -n deploy/acquire-ssh-host-key.sh
-          node --test deploy/test-ssh-host-key.mjs deploy/release-gates.test.mjs
+          node --test deploy/test-ssh-host-key.mjs deploy/release-gates.test.mjs deploy/test-web-runtime-launch.mjs
           # Offline transport/provider fixtures only; never dispatch the live proof here.
           node --test deploy/media/r2-owned-fixture-provider.test.mjs deploy/media/r2-owned-fixture-browser.test.mjs deploy/media/r2-owned-continuation-browser.test.mjs
           node --test deploy/test-web-build-artifact.mjs deploy/test-release-web-artifact.mjs
