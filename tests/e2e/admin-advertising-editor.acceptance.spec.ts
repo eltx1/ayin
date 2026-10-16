@@ -437,10 +437,18 @@ for (const kind of ["creative", "placement"] as const) {
     const data = await seed(page),
       copy = advertisingEditorEn;
     await page.goto("/admin/video-ads?lang=en");
+    // The SSR refresh button starts enabled before the initial workspace read.
+    // Wait for its verified snapshot so a busy-read departure guard cannot
+    // cancel navigation before this test has edited anything.
+    await expect(page.getByText(/^Stored overrides:/)).toBeVisible();
     await expect(
       page.getByRole("button", { name: adminAdvertisingEn.refresh, exact: true }),
     ).toBeEnabled();
     await page.getByRole("link", { name: adminAdvertisingEn.pageArea, exact: true }).click();
+    await expect(page).toHaveURL(/\/admin\/advertising(?:\?|$)/);
+    await expect(
+      page.getByRole("link", { name: adminAdvertisingEn.pageArea, exact: true }),
+    ).toHaveAttribute("aria-current", "page");
     await expect(
       page.getByRole("button", { name: adminAdvertisingEn.refresh, exact: true }),
     ).toBeEnabled();
