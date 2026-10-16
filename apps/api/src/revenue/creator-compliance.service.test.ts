@@ -89,7 +89,7 @@ describe("CreatorComplianceService", () => {
   });
 });
 
-// Exercise the real service across a deterministic asynchronous channel-lock
+// Exercise the real service across a deterministic delayed transaction
 // boundary. PostgreSQL lock/revocation behavior is covered separately in the
 // isolated payout-safety integration suite; these doubles are not DB evidence.
 describe("CreatorComplianceService override authority", () => {
@@ -107,8 +107,6 @@ describe("CreatorComplianceService override authority", () => {
     const tx = {
       $queryRaw: vi.fn().mockImplementation(async (query: Prisma.Sql) => {
         if (query.sql.includes("ayin-finance-channel-lock")) {
-          acquired();
-          await gate;
           return [{ id: profile.channelId, status: "ACTIVE" }];
         }
         if (query.sql.includes('FROM "Account"'))
@@ -125,7 +123,11 @@ describe("CreatorComplianceService override authority", () => {
     };
     const db = {
       client: {
-        $transaction: vi.fn().mockImplementation(async (work) => work(tx)),
+        $transaction: vi.fn().mockImplementation(async (work) => {
+          acquired();
+          await gate;
+          return work(tx);
+        }),
         creatorPayoutProfile: {
           findUnique: vi.fn().mockImplementation(async () => ({ ...row })),
         },
