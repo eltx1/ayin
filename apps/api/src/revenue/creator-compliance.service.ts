@@ -2,6 +2,7 @@ import { Prisma } from "@ayin/db";
 import { ConflictException, Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
+import { assertAdminFinanceAuthority } from "./admin-finance-authority.js";
 import { decryptPayoutDestination, encryptPayoutDestination } from "./creator-finance.crypto.js";
 import { lockFinanceChannel } from "./creator-finance-authority.js";
 import {
@@ -310,6 +311,9 @@ export class CreatorComplianceService {
   async adminOverride(actorAccountId: string, channelId: string, raw: unknown) {
     const input = adminComplianceOverrideSchema.parse(raw);
     const updated = await this.database.client.$transaction(async (tx) => {
+      // Acquire account/role authority before domain locks, matching financial
+      // contract writes and account lifecycle operations; retain it to commit.
+      await assertAdminFinanceAuthority(tx, actorAccountId);
       await lockFinanceChannel(tx, channelId);
       await tx.$queryRaw(
         Prisma.sql`/* ayin-admin-compliance-profile-lock */ SELECT "id" FROM "CreatorPayoutProfile" WHERE "channelId" = ${channelId}::uuid FOR UPDATE`,
