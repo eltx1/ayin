@@ -1,8 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-if (!databaseUrl)
-  throw new Error("TEST_DATABASE_URL or DATABASE_URL is required for Playwright E2E.");
+import { requireTestDatabase } from "./scripts/test-database-guard.mjs";
+
+const databaseUrl = requireTestDatabase();
 
 export default defineConfig({
   testDir: "tests/e2e",
@@ -25,7 +25,7 @@ export default defineConfig({
     {
       command: "pnpm --filter @ayin/api start",
       url: "http://127.0.0.1:3001/health",
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 120_000,
       env: {
         ...process.env,
@@ -46,7 +46,7 @@ export default defineConfig({
     {
       command: "pnpm --filter @ayin/web start",
       url: "http://127.0.0.1:3000",
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 120_000,
       env: {
         ...process.env,

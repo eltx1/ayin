@@ -81,3 +81,11 @@ Phase 2H.1 accepted as PR #135 (`e94c1f58`) after final head `2e7765bd` passed q
 Phase 2H.2 accepted as PR #137 (`030a487f`): final head `8f75425a` passed quality `36368239538`, security `36368239536` and browser `36368239572` (585 integration-gate tests, 365 API units, 158 Web tests, 46 browser tests). Personal library, mixed editor and popularity pagination now select available entries before page limits; watched anchors also respect policy. Nine new PostgreSQL cases include 515 activities per Kids section, measured at 44.2ms in CI. Existing per-series context hydration remains a performance gap. Execution is restored. Phase 2I.1 adds sanitized Creator TV output visibility and primary-plan identity checks; acceptance is pending. Phase 2 overall and Phases 3–5 remain open.
 
 Phase 2I.1 accepted as PR #138 (`3b459ac1`): head `bccc1801` passed quality `36369192383`, security `36369192391` and 48 browser tests in `36369192404`; 587 integration-gate tests, 365 API units and 160 Web tests passed. Shared creator output status is sanitized and owner-scoped, distinguishes schedule/output and rejects primary-plan mismatches before provider operations. No activation or physical-device claim. Phase 2J now addresses hidden product-controls loading failures, duplicate regional reads and lost unrelated drafts; full acceptance pending. Phase 2 overall and Phases 3–5 remain incomplete.
+
+## Engineering audit — 2026-10-16
+
+Baseline main/live SHA: `73f08d7e1d19e6ab8256718eb4d390c4fcbe653d`. Existing PR260/262 preserved. No production changes authorized or executed.
+
+- Test safety: explicit loopback TEST_DATABASE_URL, test database/role allowlist, matching DATABASE_URL and APP_ENV=test. Removed application-URL fallback from browser fixtures and disabled adopting unrelated running servers. Missing/unsafe configuration fails before the destructive command. 13 guard regressions passed locally; full candidate CI pending.
+- Local frozen install Node24.19.0/pnpm11.24.0 and package/Prisma generation passed. Local PostgreSQL service unavailable; database acceptance uses isolated PostgreSQL17 CI, not production.
+- Comprehensive code fixes and acceptance are in progress; this entry is not release approval.
