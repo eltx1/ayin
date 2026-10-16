@@ -46,7 +46,8 @@ type Visibility = "PUBLIC" | "UNLISTED" | "PRIVATE";
 export function QuickUpload() {
   const { identity, identityRevision, audienceStatus, isAudienceCurrent, retryNavigation } =
     useViewerProduct();
-  const { locale, href } = useI18n();
+  const { locale, href, direction } = useI18n();
+  const copy = (value: string) => uploadText(value, locale);
   const [owner, setOwner] = useState<AyinIdentity | null>(null);
   const boundary = useRef<HTMLDivElement | null>(null);
   const resolved = audienceStatus === "ready" && isAudienceCurrent();
@@ -67,7 +68,17 @@ export function QuickUpload() {
     if (boundary.current) boundary.current.hidden = !visible;
   }, [visible, identityRevision]);
   return (
-    <>
+    <section className={styles.shell} aria-label={copy("Creator upload")} dir={direction}>
+      <PageHeader
+        eyebrow={copy("Creator upload")}
+        title={copy("Upload a video")}
+        actions={
+          <ActionLink href={href("/studio/content")}>{copy("Manage saved videos")}</ActionLink>
+        }
+        description={copy(
+          "Choose a format and file, review the details, then save or publish your video.",
+        )}
+      />
       {!visible && (
         <p role={audienceStatus === "error" ? "alert" : "status"}>
           {resolved && !identity ? (
@@ -88,16 +99,19 @@ export function QuickUpload() {
           )}
         </p>
       )}
-      <div ref={boundary} hidden={!visible} data-private-viewer-identity>
-        {owner && (
-          <QuickUploadForm
-            key={`${owner.account.id}:${owner.channel.id}`}
-            identity={owner}
-            scopeReady={visible}
-          />
-        )}
+      <div
+        ref={boundary}
+        hidden={!visible}
+        data-private-viewer-identity
+        data-private-creator-upload
+      >
+        <QuickUploadForm
+          key={owner ? `${owner.account.id}:${owner.channel.id}` : "anonymous"}
+          identity={owner}
+          scopeReady={visible}
+        />
       </div>
-    </>
+    </section>
   );
 }
 
@@ -105,11 +119,11 @@ function QuickUploadForm({
   identity,
   scopeReady,
 }: {
-  identity: AyinIdentity;
+  identity: AyinIdentity | null;
   scopeReady: boolean;
 }) {
   const router = useRouter();
-  const { href, locale, direction } = useI18n();
+  const { href, locale } = useI18n();
   const { onBeforeIdentitySuspend, isIdentityCurrent } = useViewerProduct();
   const copy = useCallback((value: string) => uploadText(value, locale), [locale]);
   const [file, setFile] = useState<File | null>(null);
@@ -229,6 +243,7 @@ function QuickUploadForm({
     async (selected: File | null) => {
       if (
         !selected ||
+        !identity ||
         !scopeReady ||
         !isIdentityCurrent() ||
         mutation.current ||
@@ -660,18 +675,7 @@ function QuickUploadForm({
           : copy("Not started");
 
   return (
-    <section className={styles.shell} aria-label={copy("Creator upload")} dir={direction}>
-      <PageHeader
-        eyebrow={copy("Creator upload")}
-        title={copy("Upload a video")}
-        actions={
-          <ActionLink href={href("/studio/content")}>{copy("Manage saved videos")}</ActionLink>
-        }
-        description={copy(
-          "Choose a format and file, review the details, then save or publish your video.",
-        )}
-      />
-
+    <>
       <div className={styles.workspace}>
         <section className={styles.stepCard} aria-labelledby="format-heading">
           <div className={styles.stepHeading}>
@@ -1080,7 +1084,7 @@ function QuickUploadForm({
           {message}
         </p>
       ) : null}
-    </section>
+    </>
   );
 }
 

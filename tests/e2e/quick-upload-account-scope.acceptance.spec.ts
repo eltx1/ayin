@@ -88,6 +88,12 @@ test("standard upload conceals and aborts on suspension, then resets for another
   });
   await page.goto("/upload?lang=en");
   const picker = page.locator('input[type="file"][accept^="video/"]');
+  await expect
+    .poll(() =>
+      picker.evaluateAll((nodes) => nodes.length === 1 && !(nodes[0] as HTMLInputElement).disabled),
+    )
+    .toBe(true);
+  await expect(picker).toHaveCount(1);
   await expect(picker).toBeEnabled();
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));
   await picker.setInputFiles({
@@ -102,7 +108,8 @@ test("standard upload conceals and aborts on suspension, then resets for another
     "private camera source",
   );
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));
-  await expect(page.getByRole("region", { name: "Creator upload", exact: true })).toBeHidden();
+  await expect(page.locator("[data-private-creator-upload]")).toBeHidden();
+  await expect(page.getByRole("heading", { name: "Upload a video", exact: true })).toBeVisible();
   await expect.poll(() => failedPut).toBe(true);
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(page.getByRole("textbox", { name: "Title", exact: true })).toHaveValue(
@@ -128,7 +135,9 @@ test("standard upload conceals and aborts on suspension, then resets for another
   await expect(
     page.getByRole("link", { name: "Sign in to upload a video", exact: true }),
   ).toBeVisible();
-  await expect(picker).toHaveCount(0);
+  await expect(picker).toHaveCount(1);
+  await expect(picker).toBeHidden();
+  expect(await picker.evaluate((element: HTMLInputElement) => element.files?.length)).toBe(0);
   expect(completions).toBe(0);
   await put?.abort().catch(() => undefined);
 });
