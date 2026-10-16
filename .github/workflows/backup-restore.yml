@@ -29,7 +29,7 @@ permissions:
 
 jobs:
   restore-drill:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
       postgres:
@@ -72,6 +72,25 @@ jobs:
       - name: Install backup tooling
         run: |
           set -euo pipefail
+          # Ubuntu 24.04 ships PostgreSQL 16; use PGDG's signed repository for
+          # client 17 so pg_dump matches the existing isolated PostgreSQL 17 service.
+          # https://www.postgresql.org/download/linux/ubuntu/
+          . /etc/os-release
+          [[ "$ID" == ubuntu && "$VERSION_CODENAME" == noble ]]
+          sudo install -d -m 755 /usr/share/postgresql-common/pgdg
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --connect-timeout 15 --max-time 60 \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            --output "$RUNNER_TEMP/ayin-pgdg.asc"
+          sudo install -m 644 "$RUNNER_TEMP/ayin-pgdg.asc" /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          printf '%s\n' \
+            'Types: deb' \
+            'URIs: https://apt.postgresql.org/pub/repos/apt' \
+            'Suites: noble-pgdg' \
+            'Architectures: amd64' \
+            'Components: main' \
+            'Signed-By: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc' \
+            | sudo tee /etc/apt/sources.list.d/ayin-pgdg.sources >/dev/null
           sudo apt-get update
           sudo apt-get install -y age postgresql-client-17
           echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
