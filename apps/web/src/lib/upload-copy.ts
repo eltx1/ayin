@@ -1,6 +1,18 @@
 import type { Locale } from "./i18n/config";
 const arabic: Record<string, string> = {
   "Upload a video": "رفع فيديو",
+  "Upload policy": "شروط الرفع",
+  "Maximum file size": "الحد الأقصى لحجم الملف",
+  "Session duration": "مدة جلسة الرفع",
+  bytes: "بايت",
+  seconds: "ثانية",
+  "This standard upload cannot resume after reloading. Keep this page open; uploading in the background or after closing the browser is not guaranteed.":
+    "هذا الرفع العادي لا يُستأنف بعد إعادة تحميل الصفحة. أبقِ الصفحة مفتوحة؛ استمرار الرفع في الخلفية أو بعد إغلاق المتصفح غير مضمون.",
+  "Upload limits could not be verified. Retry before choosing a file.":
+    "تعذر التحقق من حدود الرفع. أعد المحاولة قبل اختيار الملف.",
+  "Retry upload policy": "إعادة تحميل شروط الرفع",
+  "Checking upload limits…": "جارٍ التحقق من حدود الرفع…",
+  "This file exceeds the current upload size limit.": "يتجاوز هذا الملف الحد الحالي المسموح للرفع.",
   "Choose a format and file, review the details, then save or publish your video.":
     "اختر نوع الفيديو والملف، ثم راجع التفاصيل واحفظها أو انشر الفيديو.",
   "Creator upload": "رفع الفيديو",

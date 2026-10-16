@@ -1,16 +1,17 @@
 "use client";
 import { uploadText } from "@/lib/upload-copy";
 
-import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ActionButton, ActionLink, PageHeader } from "@/components/ui/design-system";
 import { useI18n } from "@/components/i18n/i18n-provider";
-import { scheduleTimestamp, uploadId, uploadRecord } from "@/lib/quick-upload-contract";
+import { scheduleTimestamp } from "@/lib/quick-upload-contract";
 import { UploadProtocolError } from "@/lib/upload-session";
 
 import { trackAnalyticsEvent } from "@/lib/analytics";
-import { apiBaseUrl } from "@/lib/api";
+import type { AyinIdentity } from "@/lib/api";
+import { useViewerProduct } from "@/components/viewer/viewer-product-context";
 import { uploadPreparedVideoDirectly } from "@/lib/direct-video-upload";
 import {
   captureLocalThumbnailChoices,
@@ -26,6 +27,7 @@ import {
   uploadQuickThumbnail,
   type VideoForm,
 } from "@/lib/quick-upload";
+import { readQuickUploadPolicy, type QuickUploadPolicy } from "@/lib/quick-upload-policy";
 import { titleFromFilename } from "@/lib/title-from-filename";
 import {
   inspectVideoFile,
@@ -43,12 +45,94 @@ import styles from "./quick-upload.module.css";
 type Visibility = "PUBLIC" | "UNLISTED" | "PRIVATE";
 
 export function QuickUpload() {
+  const { identity, identityRevision, audienceStatus, isAudienceCurrent, retryNavigation } =
+    useViewerProduct();
+  const { locale, href, direction } = useI18n();
+  const copy = (value: string) => uploadText(value, locale);
+  const [owner, setOwner] = useState<AyinIdentity | null>(null);
+  const boundary = useRef<HTMLDivElement | null>(null);
+  const resolved = audienceStatus === "ready" && isAudienceCurrent();
+  // Keep a suspended owner's draft hidden while identity is revalidated. A
+  // confirmed different account/channel (or logout) retires that whole form.
+  if (
+    resolved &&
+    (owner?.account.id !== identity?.account.id || owner?.channel.id !== identity?.channel.id)
+  )
+    setOwner(identity);
+  const visible = Boolean(
+    resolved &&
+    identity &&
+    owner?.account.id === identity.account.id &&
+    owner?.channel.id === identity.channel.id,
+  );
+  useLayoutEffect(() => {
+    if (boundary.current) boundary.current.hidden = !visible;
+  }, [visible, identityRevision]);
+  return (
+    <section className={styles.shell} aria-label={copy("Creator upload")} dir={direction}>
+      <PageHeader
+        eyebrow={copy("Creator upload")}
+        title={copy("Upload a video")}
+        actions={
+          <ActionLink href={href("/studio/content")}>{copy("Manage saved videos")}</ActionLink>
+        }
+        description={copy(
+          "Choose a format and file, review the details, then save or publish your video.",
+        )}
+      />
+      {!visible && (
+        <p role={audienceStatus === "error" ? "alert" : "status"}>
+          {resolved && !identity ? (
+            <ActionLink href={href("/login")}>
+              {locale === "ar" ? "سجّل الدخول لرفع فيديو" : "Sign in to upload a video"}
+            </ActionLink>
+          ) : audienceStatus === "error" ? (
+            <>
+              {uploadText("Your creator workspace could not be loaded.", locale)}{" "}
+              <ActionButton onClick={retryNavigation}>
+                {uploadText("Retry loading workspace", locale)}
+              </ActionButton>
+            </>
+          ) : locale === "ar" ? (
+            "جارٍ التحقق من حساب المنشئ…"
+          ) : (
+            "Verifying your creator account…"
+          )}
+        </p>
+      )}
+      <div
+        ref={boundary}
+        hidden={!visible}
+        data-private-viewer-identity
+        data-private-creator-upload
+      >
+        <QuickUploadForm
+          key={owner ? `${owner.account.id}:${owner.channel.id}` : "anonymous"}
+          identity={owner}
+          scopeReady={visible}
+        />
+      </div>
+    </section>
+  );
+}
+
+function QuickUploadForm({
+  identity,
+  scopeReady,
+}: {
+  identity: AyinIdentity | null;
+  scopeReady: boolean;
+}) {
   const router = useRouter();
-  const { href, locale, direction } = useI18n();
+  const { href, locale } = useI18n();
+  const { onBeforeIdentitySuspend, isIdentityCurrent, identityRevision } = useViewerProduct();
   const copy = useCallback((value: string) => uploadText(value, locale), [locale]);
-  const [identity, setIdentity] = useState<{
-    account: { id: string };
-    channel: { id: string };
+  const [policyAttempt, setPolicyAttempt] = useState(0);
+  const policyKey = `${identityRevision}:${policyAttempt}`;
+  const [policyResult, setPolicyResult] = useState<{
+    key: string;
+    value: QuickUploadPolicy | null;
+    failed: boolean;
   } | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [inspection, setInspection] = useState<VideoInspectionResult | null>(null);
@@ -76,13 +160,33 @@ export function QuickUpload() {
   const choicesRef = useRef<LocalThumbnailChoice[]>([]);
   const thumbnailCapture = useRef<AbortController | null>(null);
   const mutation = useRef(false);
+  const pendingSelection = useRef<File | null>(null);
   const operation = useRef<AbortController | null>(null);
   const [uncertain, setUncertain] = useState(false);
-  const [identityFailed, setIdentityFailed] = useState(false);
-  const [identityAttempt, setIdentityAttempt] = useState(0);
   const [processingAttempt, setProcessingAttempt] = useState(0);
   const [processingFailed, setProcessingFailed] = useState(false);
   const [savedSignature, setSavedSignature] = useState("");
+  const policy =
+    scopeReady && (policyResult?.key === policyKey || videoId)
+      ? (policyResult?.value ?? null)
+      : null;
+  const policyFailed = scopeReady && policyResult?.key === policyKey && policyResult.failed;
+  const policyAccountId = identity?.account.id;
+  useEffect(() => {
+    if (!scopeReady || !policyAccountId || videoId) return;
+    const controller = new AbortController();
+    void readQuickUploadPolicy(policyAccountId, controller.signal)
+      .then((value) => {
+        if (!controller.signal.aborted && isIdentityCurrent())
+          setPolicyResult({ key: policyKey, value, failed: false });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted && isIdentityCurrent())
+          setPolicyResult({ key: policyKey, value: null, failed: true });
+      });
+    return () => controller.abort();
+  }, [scopeReady, policyAccountId, videoId, policyKey, isIdentityCurrent]);
+
   const signature = JSON.stringify([
     title,
     description,
@@ -132,37 +236,24 @@ export function QuickUpload() {
     };
   }, [dirty, copy]);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    const deadline = setTimeout(() => controller.abort(), 15000);
-    void fetch(`${apiBaseUrl}/auth/me`, {
-      credentials: "include",
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          setIdentityFailed(true);
-          return;
+  useEffect(
+    () =>
+      onBeforeIdentitySuspend(() => {
+        // Aborting the browser transfer cannot revoke an already-issued provider
+        // URL. Server authority remains mandatory; never replay uncertain writes.
+        operation.current?.abort();
+        thumbnailCapture.current?.abort();
+        if (mutation.current) {
+          setUncertain(true);
+          setMessage(
+            copy(
+              "Upload could not be confirmed. Review your saved uploads in Studio before starting again.",
+            ),
+          );
         }
-        const row = uploadRecord(await response.json());
-        const account = uploadRecord(row.account),
-          channel = uploadRecord(row.channel);
-        const accountId = uploadId(account.id),
-          channelId = uploadId(channel.id);
-        if (!controller.signal.aborted)
-          setIdentity({ account: { id: accountId }, channel: { id: channelId } });
-      })
-      .catch(() => {
-        if (!controller.signal.aborted || controller.signal.reason?.name === "AbortError")
-          setIdentityFailed(true);
-      })
-      .finally(() => clearTimeout(deadline));
-    return () => {
-      clearTimeout(deadline);
-      controller.abort(new DOMException("Unmounted", "Unmounted"));
-    };
-  }, [identityAttempt]);
+      }),
+    [onBeforeIdentitySuspend, copy],
+  );
 
   useEffect(() => {
     choicesRef.current = thumbnailChoices;
@@ -177,120 +268,176 @@ export function QuickUpload() {
     [],
   );
 
-  async function chooseFile(selected: File | null) {
-    if (!selected || !identity || mutation.current || videoId || uncertain || published) return;
-    if (!selected.size || !isSupportedVideoFile(selected)) {
-      setMessage(copy("Drop one supported video file to start an upload."));
-      return;
-    }
-    mutation.current = true;
-    const controller = new AbortController();
-    operation.current = controller;
-    thumbnailCapture.current?.abort();
-    const capture = new AbortController();
-    thumbnailCapture.current = capture;
-    releaseLocalThumbnailChoices(thumbnailChoices);
-    setThumbnailChoices([]);
-    setSelectedThumbnailId(null);
-    setFile(selected);
-    setInspection(null);
-    setVideoId(null);
-    setProgress(0);
-    setUploadComplete(false);
-    setProcessingReady(false);
-    setProcessingLabel(null);
-    setPublished(false);
-    setMetadataDraft({ ...EMPTY_METADATA_DRAFT });
-    setMessage(null);
-    setBusy(true);
-    setMutationKind("upload");
-    const nextTitle = titleFromFilename(selected.name);
-    setTitle(nextTitle);
-    try {
-      const result = await inspectVideoFile(selected);
-      controller.signal.throwIfAborted();
-      setInspection(result);
-      if (result.status === "incompatible") {
-        setMessage(result.message);
+  const chooseFile = useCallback(
+    async (selected: File | null) => {
+      if (
+        !selected ||
+        !identity ||
+        !policy ||
+        !scopeReady ||
+        !isIdentityCurrent() ||
+        mutation.current ||
+        videoId ||
+        uncertain ||
+        published
+      )
+        return;
+      if (!selected.size || !isSupportedVideoFile(selected)) {
+        setMessage(copy("Drop one supported video file to start an upload."));
         return;
       }
-      trackAnalyticsEvent("UPLOAD_START", { channelId: identity.channel.id });
-      const draft = await createQuickDraft({
-        channelId: identity.channel.id,
-        title: nextTitle,
-        file: selected,
-        durationMs: result.durationSeconds ? Math.round(result.durationSeconds * 1000) : null,
-        videoForm,
-        signal: controller.signal,
-      });
-      controller.signal.throwIfAborted();
-      setVideoId(draft.video.id);
-      setVisibility(draft.video.visibility);
-      setCommentsEnabled(draft.video.commentsEnabled);
-      setMessage(copy("Your video is uploading…"));
-
-      void captureLocalThumbnailChoices(selected, capture.signal).then((choices) => {
-        if (capture.signal.aborted) {
-          releaseLocalThumbnailChoices(choices);
+      if (selected.size > policy.maxFileSizeBytes) {
+        setMessage(copy("This file exceeds the current upload size limit."));
+        return;
+      }
+      mutation.current = true;
+      const controller = new AbortController();
+      operation.current = controller;
+      thumbnailCapture.current?.abort();
+      const capture = new AbortController();
+      thumbnailCapture.current = capture;
+      releaseLocalThumbnailChoices(thumbnailChoices);
+      setThumbnailChoices([]);
+      setSelectedThumbnailId(null);
+      setFile(selected);
+      setInspection(null);
+      setVideoId(null);
+      setProgress(0);
+      setUploadComplete(false);
+      setProcessingReady(false);
+      setProcessingLabel(null);
+      setPublished(false);
+      setMetadataDraft({ ...EMPTY_METADATA_DRAFT });
+      setMessage(null);
+      setBusy(true);
+      setMutationKind("upload");
+      const nextTitle = titleFromFilename(selected.name);
+      setTitle(nextTitle);
+      try {
+        const result = await inspectVideoFile(selected);
+        controller.signal.throwIfAborted();
+        setInspection(result);
+        if (result.status === "incompatible") {
+          setMessage(result.message);
           return;
         }
-        setThumbnailChoices((current) => {
-          releaseLocalThumbnailChoices(current);
-          return choices;
+        trackAnalyticsEvent("UPLOAD_START", { channelId: identity.channel.id });
+        const draft = await createQuickDraft({
+          channelId: identity.channel.id,
+          title: nextTitle,
+          file: selected,
+          durationMs: result.durationSeconds ? Math.round(result.durationSeconds * 1000) : null,
+          videoForm,
+          signal: controller.signal,
         });
-      });
+        controller.signal.throwIfAborted();
+        setVideoId(draft.video.id);
+        setVisibility(draft.video.visibility);
+        setCommentsEnabled(draft.video.commentsEnabled);
+        setMessage(copy("Your video is uploading…"));
 
-      await uploadPreparedVideoDirectly({
-        session: draft.uploadSession,
-        file: selected,
-        onProgress: setProgress,
-        onStatus: (status) =>
-          setMessage(
-            copy(
-              status.phase === "finalizing"
-                ? "Finalizing upload…"
-                : status.phase === "retrying"
-                  ? "Connection paused. Retrying the upload safely…"
-                  : "Uploading video…",
+        void captureLocalThumbnailChoices(selected, capture.signal).then((choices) => {
+          if (capture.signal.aborted) {
+            releaseLocalThumbnailChoices(choices);
+            return;
+          }
+          setThumbnailChoices((current) => {
+            releaseLocalThumbnailChoices(current);
+            return choices;
+          });
+        });
+
+        await uploadPreparedVideoDirectly({
+          session: draft.uploadSession,
+          file: selected,
+          onProgress: setProgress,
+          onStatus: (status) =>
+            setMessage(
+              copy(
+                status.phase === "finalizing"
+                  ? "Finalizing upload…"
+                  : status.phase === "retrying"
+                    ? "Connection paused. Retrying the upload safely…"
+                    : "Uploading video…",
+              ),
             ),
-          ),
-        signal: controller.signal,
-      });
-      const confirmation = await confirmQuickUpload(draft.video.id, controller.signal);
-      setProcessingReady(confirmation.status === "DRAFT");
-      setProcessingLabel(confirmation.status === "DRAFT" ? copy("Ready") : copy("Queued"));
-      trackAnalyticsEvent("UPLOAD_COMPLETE", {
-        channelId: identity.channel.id,
-        videoId: draft.video.id,
-      });
-      setUploadComplete(true);
-      setMessage(
-        confirmation.status === "DRAFT"
-          ? copy("Upload and processing complete. Your video is ready to publish.")
-          : copy(
-              "Upload complete. AYIN is preparing a reliable playback version in the background.",
-            ),
-      );
-    } catch (error) {
-      if (controller.signal.aborted) return;
-      setUncertain(true);
-      setMessage(
-        error instanceof UploadProtocolError
-          ? copy(error.message)
-          : copy(
-              "Upload could not be confirmed. Review your saved uploads in Studio before starting again.",
-            ),
-      );
-    } finally {
-      mutation.current = false;
-      setBusy(false);
-      setMutationKind(null);
-    }
-  }
+          signal: controller.signal,
+        });
+        const confirmation = await confirmQuickUpload(draft.video.id, controller.signal);
+        controller.signal.throwIfAborted();
+        setProcessingReady(confirmation.status === "DRAFT");
+        setProcessingLabel(confirmation.status === "DRAFT" ? copy("Ready") : copy("Queued"));
+        trackAnalyticsEvent("UPLOAD_COMPLETE", {
+          channelId: identity.channel.id,
+          videoId: draft.video.id,
+        });
+        setUploadComplete(true);
+        setMessage(
+          confirmation.status === "DRAFT"
+            ? copy("Upload and processing complete. Your video is ready to publish.")
+            : copy(
+                "Upload complete. AYIN is preparing a reliable playback version in the background.",
+              ),
+        );
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setUncertain(true);
+        setMessage(
+          error instanceof UploadProtocolError
+            ? copy(error.message)
+            : copy(
+                "Upload could not be confirmed. Review your saved uploads in Studio before starting again.",
+              ),
+        );
+      } finally {
+        mutation.current = false;
+        setBusy(false);
+        setMutationKind(null);
+      }
+    },
+    [
+      copy,
+      identity,
+      scopeReady,
+      isIdentityCurrent,
+      videoId,
+      uncertain,
+      published,
+      thumbnailChoices,
+      videoForm,
+      policy,
+    ],
+  );
+
+  useEffect(() => {
+    if (!scopeReady || !policy || !isIdentityCurrent() || !pendingSelection.current) return;
+    let active = true;
+    // A native file dialog can emit change before focus revalidation finishes.
+    // This queues only the local selection, never an already-issued API write.
+    queueMicrotask(() => {
+      if (!active) return;
+      const selected = pendingSelection.current;
+      pendingSelection.current = null;
+      void chooseFile(selected);
+    });
+    return () => {
+      active = false;
+    };
+  }, [scopeReady, policy, isIdentityCurrent, chooseFile]);
 
   function handleDragOver(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
-    if (!identity || mutation.current || videoId || uncertain || published) return;
+    if (
+      !identity ||
+      !policy ||
+      !scopeReady ||
+      !isIdentityCurrent() ||
+      mutation.current ||
+      videoId ||
+      uncertain ||
+      published
+    )
+      return;
     event.dataTransfer.dropEffect = "copy";
     setDragActive(true);
   }
@@ -303,7 +450,17 @@ export function QuickUpload() {
   function handleDrop(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
     setDragActive(false);
-    if (!identity || mutation.current || videoId || uncertain || published) return;
+    if (
+      !identity ||
+      !policy ||
+      !scopeReady ||
+      !isIdentityCurrent() ||
+      mutation.current ||
+      videoId ||
+      uncertain ||
+      published
+    )
+      return;
     const selected = Array.from(event.dataTransfer.files).find(isSupportedVideoFile);
     if (!selected) {
       setMessage(copy("Drop one supported video file to start an upload."));
@@ -313,7 +470,8 @@ export function QuickUpload() {
   }
 
   useEffect(() => {
-    if (!videoId || !uploadComplete || processingReady || published || uncertain) return;
+    if (!scopeReady || !videoId || !uploadComplete || processingReady || published || uncertain)
+      return;
     const controller = new AbortController();
     let timeout: ReturnType<typeof setTimeout> | null = null;
     let active = true;
@@ -365,10 +523,27 @@ export function QuickUpload() {
       controller.abort();
       if (timeout) clearTimeout(timeout);
     };
-  }, [processingReady, published, uploadComplete, videoId, processingAttempt, uncertain, copy]);
+  }, [
+    scopeReady,
+    processingReady,
+    published,
+    uploadComplete,
+    videoId,
+    processingAttempt,
+    uncertain,
+    copy,
+  ]);
 
   async function saveDetails() {
-    if (!videoId || mutation.current || uncertain || published) return;
+    if (
+      !scopeReady ||
+      !isIdentityCurrent() ||
+      !videoId ||
+      mutation.current ||
+      uncertain ||
+      published
+    )
+      return;
     let payload;
     try {
       payload = detailsPayload();
@@ -412,7 +587,15 @@ export function QuickUpload() {
   }
 
   async function saveThumbnail(selected: Blob, choiceId: string) {
-    if (!videoId || mutation.current || uncertain || published) return;
+    if (
+      !scopeReady ||
+      !isIdentityCurrent() ||
+      !videoId ||
+      mutation.current ||
+      uncertain ||
+      published
+    )
+      return;
     if (
       !["image/png", "image/jpeg"].includes(selected.type) ||
       selected.size < 1 ||
@@ -449,6 +632,8 @@ export function QuickUpload() {
 
   async function publish() {
     if (
+      !scopeReady ||
+      !isIdentityCurrent() ||
       !videoId ||
       !uploadComplete ||
       !processingReady ||
@@ -545,18 +730,7 @@ export function QuickUpload() {
           : copy("Not started");
 
   return (
-    <section className={styles.shell} aria-label={copy("Creator upload")} dir={direction}>
-      <PageHeader
-        eyebrow={copy("Creator upload")}
-        title={copy("Upload a video")}
-        actions={
-          <ActionLink href={href("/studio/content")}>{copy("Manage saved videos")}</ActionLink>
-        }
-        description={copy(
-          "Choose a format and file, review the details, then save or publish your video.",
-        )}
-      />
-
+    <>
       <div className={styles.workspace}>
         <section className={styles.stepCard} aria-labelledby="format-heading">
           <div className={styles.stepHeading}>
@@ -644,20 +818,6 @@ export function QuickUpload() {
           </div>
         </section>
 
-        {identityFailed ? (
-          <p role="alert">
-            {copy("Your creator workspace could not be loaded.")}
-            <button
-              type="button"
-              onClick={() => {
-                setIdentityFailed(false);
-                setIdentityAttempt((value) => value + 1);
-              }}
-            >
-              {copy("Retry loading workspace")}
-            </button>
-          </p>
-        ) : null}
         <section className={styles.stepCard} aria-labelledby="file-heading">
           <div className={styles.stepHeading}>
             <div>
@@ -668,8 +828,35 @@ export function QuickUpload() {
             {file ? <span className={styles.selectionPill}>{copy("File selected")}</span> : null}
           </div>
 
+          <div aria-label={copy("Upload policy")}>
+            {policy ? (
+              <>
+                <p>
+                  {copy("Maximum file size")}:{" "}
+                  {new Intl.NumberFormat(locale).format(policy.maxFileSizeBytes)} {copy("bytes")}.{" "}
+                  {copy("Session duration")}:{" "}
+                  {new Intl.NumberFormat(locale).format(policy.sessionLifetimeSeconds)}{" "}
+                  {copy("seconds")}.
+                </p>
+                <p>
+                  {copy(
+                    "This standard upload cannot resume after reloading. Keep this page open; uploading in the background or after closing the browser is not guaranteed.",
+                  )}
+                </p>
+              </>
+            ) : policyFailed ? (
+              <p role="alert">
+                {copy("Upload limits could not be verified. Retry before choosing a file.")}{" "}
+                <ActionButton onClick={() => setPolicyAttempt((value) => value + 1)}>
+                  {copy("Retry upload policy")}
+                </ActionButton>
+              </p>
+            ) : (
+              <p role="status">{copy("Checking upload limits…")}</p>
+            )}
+          </div>
           <label
-            className={`${styles.picker} ${dragActive ? styles.pickerActive : ""} ${!identity ? styles.pickerDisabled : ""}`}
+            className={`${styles.picker} ${dragActive ? styles.pickerActive : ""} ${!identity || !policy ? styles.pickerDisabled : ""}`}
             onDragEnter={handleDragOver}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -679,8 +866,13 @@ export function QuickUpload() {
               className={styles.fileInput}
               type="file"
               accept="video/*,.mp4,.mov,.mkv,.webm,.avi,.mpeg,.mpg,.mts,.m2ts,.ts,.3gp,.3g2,.m4v,.wmv,.flv,.ogv,.mxf"
-              disabled={!identity || busy || published || uncertain || Boolean(videoId)}
-              onChange={(event) => void chooseFile(event.target.files?.[0] ?? null)}
+              disabled={!identity || !policy || busy || published || uncertain || Boolean(videoId)}
+              onChange={(event) => {
+                const selected = event.target.files?.[0] ?? null;
+                if (!scopeReady || !policy || !isIdentityCurrent())
+                  pendingSelection.current = selected;
+                else void chooseFile(selected);
+              }}
             />
 
             <span className={styles.uploadGlyph} aria-hidden="true">
@@ -975,7 +1167,7 @@ export function QuickUpload() {
           {message}
         </p>
       ) : null}
-    </section>
+    </>
   );
 }
 
