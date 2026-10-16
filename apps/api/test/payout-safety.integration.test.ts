@@ -63,6 +63,52 @@ databaseDescribe("Creator payout safety", () => {
     };
   }
 
+  it.each(["0.000000", "-1.000000"])(
+    "does not advertise a %s balance as payout eligible under the default zero threshold",
+    async (amount) => {
+      const creator = await register("No Payable Balance", `no-payable-${amount}@example.com`);
+      if (amount !== "0.000000") {
+        await prisma.earningsLedgerEntry.create({
+          data: {
+            channelId: creator.user.channel.id,
+            type: "ADJUSTMENT",
+            state: "ADJUSTMENT",
+            amount,
+            currency: "USD",
+          },
+        });
+      }
+      const profile = await app.inject({
+        method: "PUT",
+        url: "/creator/studio/revenue/payment-profile",
+        headers: { cookie: creator.cookie },
+        payload: {
+          legalName: "No Payable Balance",
+          preferredCurrency: "USD",
+          provider: "MANUAL",
+          destination: "isolated test bank destination",
+          countryCode: "US",
+        },
+      });
+      expect(profile.statusCode).toBe(200);
+      const overview = await app.inject({
+        method: "GET",
+        url: "/creator/studio/revenue",
+        headers: { cookie: creator.cookie },
+      });
+      expect(overview.statusCode).toBe(200);
+      expect(overview.json()).toMatchObject({
+        availableForPayout: amount,
+        canRequestPayout: false,
+        payoutEligibility: {
+          eligible: false,
+          actionsRequired: ["Earn a positive finalized balance before requesting a payout."],
+        },
+      });
+      expect(await prisma.payout.count({ where: { channelId: creator.user.channel.id } })).toBe(0);
+    },
+  );
+
   it("calculates payout readiness only from the creator's preferred currency", async () => {
     const creator = await register("Currency Creator", "currency-creator@example.com");
     await prisma.platformSetting.create({

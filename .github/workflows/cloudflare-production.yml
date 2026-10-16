@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: ayin-public-edge-verification
@@ -34,7 +35,28 @@ jobs:
       DEPLOYMENT_WORKFLOW_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
     steps:
+      - name: Checkout trusted edge verification tooling
+        if: github.event_name == 'workflow_run'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+
+      - name: Set up pinned verification runtime
+        if: github.event_name == 'workflow_run'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Require an executed successful production deployment
+        if: github.event_name == 'workflow_run'
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node deploy/release-gates.mjs edge-check
+
       - name: Validate isolated edge verification targets
+        if: github.event_name != 'workflow_run' || steps.source.outputs.ready == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -47,6 +69,7 @@ jobs:
       # CORS, lifecycle, DNS, TLS or bot settings over operator changes.
 
       - name: Verify public production endpoints
+        if: github.event_name != 'workflow_run' || steps.source.outputs.ready == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -59,6 +82,7 @@ jobs:
           echo "AYIN public web, API, and media HTTPS endpoints are reachable."
 
       - name: Record public edge verification proof
+        if: github.event_name != 'workflow_run' || steps.source.outputs.ready == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -78,7 +102,8 @@ jobs:
           EOF
 
       - name: Upload public edge verification proof
-        uses: actions/upload-artifact@v7
+        if: github.event_name != 'workflow_run' || steps.source.outputs.ready == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ayin-public-edge-verification-proof
           path: ${{ runner.temp }}/ayin-public-edge-verification-proof/public-edge-verification-proof.env

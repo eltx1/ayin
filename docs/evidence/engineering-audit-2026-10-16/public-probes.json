@@ -1,0 +1,242 @@
+{
+  "synthetic": {
+    "schemaVersion": 1,
+    "startedAt": "2026-10-16T16:32:46.015Z",
+    "completedAt": "2026-10-16T16:32:54.473Z",
+    "status": "passed",
+    "maintenance": {
+      "active": false,
+      "until": null
+    },
+    "summary": {
+      "passed": 8,
+      "recovered": 0,
+      "failed": 0,
+      "skipped": 5
+    },
+    "releaseShas": ["73f08d7e1d19e6ab8256718eb4d390c4fcbe653d"],
+    "checks": [
+      {
+        "id": "homepage",
+        "label": "Production homepage",
+        "severity": "critical",
+        "status": "passed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "status": 200,
+            "latencyMs": 3176,
+            "releaseSha": "73f08d7e1d19e6ab8256718eb4d390c4fcbe653d",
+            "outcome": "passed"
+          }
+        ]
+      },
+      {
+        "id": "web-health",
+        "label": "Web health",
+        "severity": "critical",
+        "status": "passed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "status": 200,
+            "latencyMs": 3179,
+            "releaseSha": "73f08d7e1d19e6ab8256718eb4d390c4fcbe653d",
+            "outcome": "passed"
+          }
+        ]
+      },
+      {
+        "id": "api-health",
+        "label": "API liveness",
+        "severity": "critical",
+        "status": "passed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "status": 200,
+            "latencyMs": 8357,
+            "releaseSha": "73f08d7e1d19e6ab8256718eb4d390c4fcbe653d",
+            "outcome": "passed"
+          }
+        ]
+      },
+      {
+        "id": "api-readiness",
+        "label": "API readiness",
+        "severity": "critical",
+        "status": "passed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "status": 200,
+            "latencyMs": 8417,
+            "releaseSha": "73f08d7e1d19e6ab8256718eb4d390c4fcbe653d",
+            "outcome": "passed"
+          }
+        ]
+      },
+      {
+        "id": "public-discovery",
+        "label": "Public discovery catalog",
+        "severity": "major",
+        "status": "passed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "status": 200,
+            "latencyMs": 8380,
+            "releaseSha": "73f08d7e1d19e6ab8256718eb4d390c4fcbe653d",
+            "outcome": "passed"
+          }
+        ]
+      },
+      {
+        "id": "search-baseline",
+        "label": "Public search baseline",
+        "severity": "major",
+        "status": "passed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "status": 200,
+            "latencyMs": 8439,
+            "releaseSha": "73f08d7e1d19e6ab8256718eb4d390c4fcbe653d",
+            "outcome": "passed"
+          }
+        ]
+      },
+      {
+        "id": "robots",
+        "label": "robots.txt",
+        "severity": "minor",
+        "status": "passed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "status": 200,
+            "latencyMs": 3199,
+            "releaseSha": "73f08d7e1d19e6ab8256718eb4d390c4fcbe653d",
+            "outcome": "passed"
+          }
+        ]
+      },
+      {
+        "id": "sitemap",
+        "label": "sitemap.xml",
+        "severity": "major",
+        "status": "passed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "status": 200,
+            "latencyMs": 3523,
+            "releaseSha": "73f08d7e1d19e6ab8256718eb4d390c4fcbe653d",
+            "outcome": "passed"
+          }
+        ]
+      },
+      {
+        "id": "watch-page",
+        "label": "Known-safe watch page",
+        "severity": "critical",
+        "status": "skipped",
+        "reason": "No dedicated safe watch slug is configured.",
+        "attempts": []
+      },
+      {
+        "id": "playback-api",
+        "label": "Known-safe playback API",
+        "severity": "critical",
+        "status": "skipped",
+        "reason": "No dedicated safe watch slug is configured.",
+        "attempts": []
+      },
+      {
+        "id": "media-head",
+        "label": "Known-safe media HEAD",
+        "severity": "major",
+        "status": "skipped",
+        "reason": "No dedicated safe media URL is configured.",
+        "attempts": []
+      },
+      {
+        "id": "media-range",
+        "label": "Known-safe media byte range",
+        "severity": "critical",
+        "status": "skipped",
+        "reason": "No dedicated safe media URL is configured.",
+        "attempts": []
+      },
+      {
+        "id": "thumbnail",
+        "label": "Known-safe thumbnail delivery",
+        "severity": "major",
+        "status": "skipped",
+        "reason": "No dedicated safe thumbnail URL is configured.",
+        "attempts": []
+      }
+    ],
+    "alert": {
+      "provider": "none",
+      "attempted": false,
+      "delivered": false
+    }
+  },
+  "independentMediaProbe": {
+    "observedAt": "2026-10-16T17:24:27.425302+00:00",
+    "scope": "anonymous-public-media-read-only",
+    "applicationWritesSent": false,
+    "mediaAssetCount": 1,
+    "maximumMediaBodyBytes": 2,
+    "checks": [
+      {
+        "check": "public-clip-listing",
+        "status": 200,
+        "releaseSha": "73f08d7e1d19e6ab8256718eb4d390c4fcbe653d"
+      },
+      {
+        "check": "public-video-sitemap-listing",
+        "status": 200,
+        "releaseSha": "73f08d7e1d19e6ab8256718eb4d390c4fcbe653d"
+      },
+      {
+        "check": "public-playback-contract",
+        "status": 200,
+        "releaseSha": "73f08d7e1d19e6ab8256718eb4d390c4fcbe653d"
+      },
+      {
+        "check": "public-media-head",
+        "status": 200,
+        "headers": {
+          "content-type": "video/mp4",
+          "content-length": "407149",
+          "accept-ranges": "bytes",
+          "access-control-allow-origin": "https://ayin.stream",
+          "server": "cloudflare",
+          "cache-control": "max-age=14400"
+        },
+        "bodyBytesRead": 0
+      },
+      {
+        "check": "public-media-range",
+        "status": 206,
+        "requestRange": "bytes=0-1",
+        "headers": {
+          "content-type": "video/mp4",
+          "content-length": "2",
+          "access-control-allow-origin": "https://ayin.stream",
+          "server": "cloudflare",
+          "content-range": "bytes 0-1/407149",
+          "cache-control": "max-age=14400"
+        },
+        "bodyBytesRead": 2
+      }
+    ],
+    "publicItemsReturned": 0,
+    "status": "PASS",
+    "continuationAt": "2026-10-16T17:25:37.261406+00:00",
+    "publicSitemapItemsReturned": 1
+  },
+  "scopeNote": "Anonymous GET Discovery in the synthetic run may persist derived trending snapshots internally. No business write, upload or payment request was sent. The separate media probe used bounded public SELECT endpoints and read two media bytes."
+}

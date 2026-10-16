@@ -2,6 +2,7 @@ import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from "@ne
 
 import { DatabaseService } from "../database/database.service.js";
 import { MediaProcessingLifecycleService } from "../media/media-processing-lifecycle.service.js";
+import { ObservabilityService } from "../observability/observability.service.js";
 import { LIVE_INGEST_PROVIDER, type LiveIngestProvider } from "./live-provider.js";
 import { LiveRecordingHandoffService } from "./live-recording-handoff.service.js";
 
@@ -21,17 +22,30 @@ export class LiveRecordingWorkerService implements OnModuleInit, OnModuleDestroy
     private readonly handoff: LiveRecordingHandoffService,
     @Inject(MediaProcessingLifecycleService)
     private readonly processingLifecycle: MediaProcessingLifecycleService,
+    @Inject(ObservabilityService) private readonly observability: ObservabilityService,
   ) {}
 
   onModuleInit(): void {
-    this.timer = setInterval(() => void this.runOnce(), POLL_INTERVAL_MS);
+    this.timer = setInterval(() => this.poll(), POLL_INTERVAL_MS);
     this.timer.unref();
-    void this.runOnce();
+    this.poll();
   }
 
   onModuleDestroy(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+  }
+
+  private poll(): void {
+    // Timer/bootstrap callbacks have no caller to observe rejected promises.
+    // Keep transient dependency failures inside the polling loop and report
+    // only the existing sanitized observability contract before the next poll.
+    void this.runOnce().catch((error: unknown) => {
+      this.observability.captureError(error, {
+        source: "live.recording.worker",
+        path: "/live-recording-worker",
+      });
+    });
   }
 
   async runOnce(): Promise<void> {

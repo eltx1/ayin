@@ -1,9 +1,10 @@
 import { createPrismaClient } from "@ayin/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { requireTestDatabase } from "../../../scripts/test-database-guard.mjs";
 
 import { PostgresSearchService } from "../src/search/search-postgres.service.js";
 
-const client = createPrismaClient();
+const client = createPrismaClient(requireTestDatabase());
 const database = { client } as never;
 const search = new PostgresSearchService(database);
 const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

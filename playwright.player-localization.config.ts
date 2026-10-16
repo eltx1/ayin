@@ -1,12 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const databaseUrl = process.env.TEST_DATABASE_URL;
-if (
-  !databaseUrl ||
-  new URL(databaseUrl).pathname !== "/ayin_e2e" ||
-  !["localhost", "127.0.0.1"].includes(new URL(databaseUrl).hostname)
-)
-  throw new Error("Player acceptance requires isolated local ayin_e2e.");
+import { requireTestDatabase } from "./scripts/test-database-guard.mjs";
+
+const databaseUrl = requireTestDatabase();
 
 // Build the web app with these same public URLs before starting this suite.
 // Same-origin synthetic media makes text-track decoding part of the test without

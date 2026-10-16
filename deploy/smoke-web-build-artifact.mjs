@@ -8,6 +8,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { webRuntimeLaunch } from "./web-runtime-launch.mjs";
 
 const [releaseSha, archiveArgument] = process.argv.slice(2);
 assert.match(releaseSha ?? "", /^[0-9a-f]{40}$/i, "Expected the full validated source SHA");
@@ -73,23 +74,12 @@ try {
   await new Promise((resolveClose, reject) =>
     reservation.close((error) => (error ? reject(error) : resolveClose())),
   );
-  server = spawn(
-    process.execPath,
-    [
-      join(candidate, "apps/web/node_modules/next/dist/bin/next"),
-      "start",
-      join(candidate, "apps/web"),
-      "--hostname",
-      "127.0.0.1",
-      "--port",
-      String(port),
-    ],
-    {
-      cwd: candidate,
-      env: { PATH: process.env.PATH, ...environment, AYIN_RELEASE_SHA: releaseSha },
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
+  const launch = webRuntimeLaunch(candidate, port, {
+    PATH: process.env.PATH,
+    ...environment,
+    AYIN_RELEASE_SHA: releaseSha,
+  });
+  server = spawn(launch.command, launch.args, launch.options);
   serverExited = once(server, "exit");
   const collect = (chunk) => {
     logs = `${logs}${chunk}`.slice(-16384);

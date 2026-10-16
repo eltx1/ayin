@@ -1,46 +1,12 @@
 name: Task quality gates
 
 on:
+  # Every main SHA must have all release evidence, including shared/config-only changes.
   push:
-    paths:
-      - "apps/api/**"
-      - "apps/web/**"
-      - "packages/db/**"
-      - "packages/capacity-testing/**"
-      - "packages/synthetic-monitoring/**"
-      - "deploy/**"
-      - "docs/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - ".github/workflows/database.yml"
-      - ".github/workflows/security.yml"
-      - ".github/codeql/**"
-      - ".github/workflows/deploy.yml"
-      - ".github/workflows/cloudflare-production.yml"
-      - ".github/workflows/r2-production.yml"
-      - ".github/workflows/capacity-baseline.yml"
-      - ".github/workflows/synthetic-monitoring.yml"
-  pull_request:
-    paths:
-      - "apps/api/**"
-      - "apps/web/**"
-      - "packages/db/**"
-      - "packages/capacity-testing/**"
-      - "packages/synthetic-monitoring/**"
-      - "deploy/**"
-      - "docs/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - ".github/workflows/database.yml"
-      - ".github/workflows/security.yml"
-      - ".github/codeql/**"
-      - ".github/workflows/deploy.yml"
-      - ".github/workflows/cloudflare-production.yml"
-      - ".github/workflows/r2-production.yml"
-      - ".github/workflows/capacity-baseline.yml"
-      - ".github/workflows/synthetic-monitoring.yml"
+    branches: [main]
+  # Include stacked PRs; production evidence still comes only from main pushes.
+  pull_request: {}
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -73,10 +39,12 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .nvmrc
 
@@ -106,7 +74,7 @@ jobs:
           bash -n deploy/env/rotate-r2-credentials.sh
           bash -n deploy/ensure-ffmpeg-runtime.sh
           bash -n deploy/acquire-ssh-host-key.sh
-          node --test deploy/test-ssh-host-key.mjs
+          node --test deploy/test-ssh-host-key.mjs deploy/release-gates.test.mjs deploy/test-web-runtime-launch.mjs
           # Offline transport/provider fixtures only; never dispatch the live proof here.
           node --test deploy/media/r2-owned-fixture-provider.test.mjs deploy/media/r2-owned-fixture-browser.test.mjs deploy/media/r2-owned-continuation-browser.test.mjs
           node --test deploy/test-web-build-artifact.mjs deploy/test-release-web-artifact.mjs
@@ -188,12 +156,15 @@ jobs:
           install -d -m 700 "$artifact_dir"
           node deploy/web-build-artifact.mjs create "$GITHUB_WORKSPACE" "$GITHUB_SHA" "$artifact_dir/ayin-web-build.tar.gz"
           node deploy/smoke-web-build-artifact.mjs "$GITHUB_SHA" "$artifact_dir/ayin-web-build.tar.gz"
+          node deploy/release-gates.mjs manifest-create "$artifact_dir"
 
       - name: Retain the verified production Web build
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: ayin-web-build-${{ github.sha }}
-          path: ${{ runner.temp }}/ayin-web-build/ayin-web-build.tar.gz
+          name: ayin-web-build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ayin-web-build/ayin-web-build.tar.gz
+            ${{ runner.temp }}/ayin-web-build/release-provenance.json
           retention-days: 30
           compression-level: 0
           if-no-files-found: error

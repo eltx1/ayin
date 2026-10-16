@@ -120,8 +120,8 @@ export async function requestAccountScope<T>(
   options: AccountScopeOptions = {},
   body?: Record<string, unknown>,
 ): Promise<AccountScopeResult<T>> {
-  // Add only the existing Clips social routes/methods to this transport. The
-  // server still authenticates the cookie and owns all authorization decisions.
+  // Explicit route additions stay narrow: existing Clips social operations and
+  // a read-only upload policy. The server still owns authentication/authorization.
   const social = path.match(
     /^\/social\/(videos|channels)\/([0-9a-f-]{36})(?:\/(reaction|subscription))?(?:\?profileId=([0-9a-f-]{36}))?$/i,
   );
@@ -134,8 +134,10 @@ export async function requestAccountScope<T>(
         social[3] === (social[1] === "videos" ? "reaction" : "subscription") &&
         (method !== "PUT" || !social[4]))),
   );
+  const uploadPolicyRead = method === "GET" && path === "/media/uploads/policy";
   if (
     (!socialPath &&
+      !uploadPolicyRead &&
       (method === "PUT" || !/^\/(auth|privacy|creator)\/[a-zA-Z0-9/_?=&%.-]+$/.test(path))) ||
     (method === "GET" && body !== undefined) ||
     (options.expectedAccountId !== undefined && !uuid.test(options.expectedAccountId)) ||

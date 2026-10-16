@@ -406,6 +406,7 @@ describe("bounded, complete R2 upload observations", () => {
       config,
       {} as never,
       {} as never,
+      {} as never,
     );
     await expect(
       service.cleanupAbandonedUploads(new Date("2026-10-03T00:00:00.000Z")),
