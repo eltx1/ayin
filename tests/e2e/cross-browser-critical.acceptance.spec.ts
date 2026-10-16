@@ -83,12 +83,73 @@ test("enforced CSP blocks an untrusted script and allows the configured limited-
   await expect(page.locator("html")).toHaveAttribute("data-trusted-sdk", "ran");
 });
 
-test("native MP4 decode, play, seek and release survive the critical browser matrix", async ({
+test("supported native media decodes, plays, seeks and releases across the critical browser matrix", async ({
   page,
-}) => {
+}, info) => {
+  // Prefer production MP4, but CI browser builds may exclude proprietary codecs.
+  // Keep the complete playback journey on those engines without certifying AVC.
+  const formats = [
+    {
+      container: "mp4",
+      mime: 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"',
+      contentType: "video/mp4",
+      codec: "H.264 baseline/AAC",
+      encoder: [
+        "-c:v",
+        "libx264",
+        "-profile:v",
+        "baseline",
+        "-level:v",
+        "3.0",
+        "-c:a",
+        "aac",
+        "-movflags",
+        "+faststart",
+      ],
+    },
+    {
+      container: "webm",
+      mime: 'video/webm; codecs="vp8, opus"',
+      contentType: "video/webm",
+      codec: "VP8/Opus",
+      encoder: ["-c:v", "libvpx", "-b:v", "300k", "-deadline", "realtime", "-c:a", "libopus"],
+    },
+    {
+      container: "webm",
+      mime: 'video/webm; codecs="vp9, opus"',
+      contentType: "video/webm",
+      codec: "VP9/Opus",
+      encoder: ["-c:v", "libvpx-vp9", "-b:v", "300k", "-deadline", "realtime", "-c:a", "libopus"],
+    },
+  ];
+  const support = await page.evaluate((candidates) => {
+    const video = document.createElement("video");
+    return candidates.map(({ mime }) => ({ mime, supported: video.canPlayType(mime) }));
+  }, formats);
+  const format = formats.find((_, index) => support[index].supported);
+  const codecEvidence = {
+    project: info.project.name,
+    support,
+    selected: format
+      ? { container: format.container, mime: format.mime, codec: format.codec }
+      : null,
+    scope: "Synthetic media in an isolated desktop browser; no device or R2 acceptance.",
+    mp4JourneySelected: format?.container === "mp4",
+  };
+  await info.attach("native-media-codec-evidence", {
+    contentType: "application/json",
+    body: JSON.stringify(codecEvidence, null, 2),
+  });
+  // Keep the selected coverage visible on successful runs as well as failure artifacts.
+  console.info("Critical native media codec:", JSON.stringify(codecEvidence));
+  expect(
+    format,
+    "The browser must support at least one fixture codec; the playback journey cannot be skipped",
+  ).toBeDefined();
+  if (!format) throw new Error("No supported native media fixture codec");
   const scratch = mkdtempSync(path.join(os.tmpdir(), "ayin-browser-media-"));
   try {
-    const file = path.join(scratch, "fixture.mp4");
+    const file = path.join(scratch, `fixture.${format.container}`);
     execFileSync(process.env.FFMPEG_PATH ?? "ffmpeg", [
       "-hide_banner",
       "-loglevel",
@@ -100,17 +161,12 @@ test("native MP4 decode, play, seek and release survive the critical browser mat
       "-f",
       "lavfi",
       "-i",
-      "sine=frequency=440:sample_rate=44100",
+      "sine=frequency=440:sample_rate=48000",
       "-t",
       "4",
-      "-c:v",
-      "libx264",
       "-pix_fmt",
       "yuv420p",
-      "-c:a",
-      "aac",
-      "-movflags",
-      "+faststart",
+      ...format.encoder,
       file,
     ]);
     const fixture = JSON.parse(
@@ -119,13 +175,32 @@ test("native MP4 decode, play, seek and release survive the critical browser mat
       }),
     ) as { id: string; slug: string; sourceKey: string };
     const bytes = readFileSync(file);
-    await page.route(`http://media.invalid/${fixture.sourceKey}`, (route) =>
-      route.fulfill({
-        contentType: "video/mp4",
-        body: bytes,
-        headers: { "access-control-allow-origin": "*" },
-      }),
-    );
+    await page.route(`http://media.invalid/${fixture.sourceKey}`, (route) => {
+      // Match byte-range storage semantics: without this, WebM is treated as a
+      // nonseekable stream even when the complete short fixture was transferred.
+      const requestedRange = route.request().headers().range;
+      const range = requestedRange?.match(/^bytes=(\d+)-(\d*)$/);
+      const start = range ? Number(range[1]) : 0;
+      const end = range?.[2] ? Math.min(Number(range[2]), bytes.length - 1) : bytes.length - 1;
+      if ((requestedRange && !range) || start > end || start >= bytes.length) {
+        return route.fulfill({
+          status: 416,
+          headers: { "content-range": `bytes */${bytes.length}` },
+        });
+      }
+      const body = bytes.subarray(start, end + 1);
+      return route.fulfill({
+        status: range ? 206 : 200,
+        contentType: format.contentType,
+        body,
+        headers: {
+          "access-control-allow-origin": "*",
+          "accept-ranges": "bytes",
+          "content-length": String(body.length),
+          ...(range ? { "content-range": `bytes ${start}-${end}/${bytes.length}` } : {}),
+        },
+      });
+    });
     await page.route("**/ads/video/decision/**", (route) =>
       route.fulfill({ json: { enabled: false } }),
     );
@@ -149,6 +224,11 @@ test("native MP4 decode, play, seek and release survive the critical browser mat
     await expect
       .poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime))
       .toBeCloseTo(2, 1);
+    await expect
+      .poll(() =>
+        video.evaluate((element: HTMLVideoElement) => !element.seeking && element.readyState >= 2),
+      )
+      .toBe(true);
     const retained = await video.elementHandle();
     await page.locator('a[href="/"]').first().click();
     await expect(page).toHaveURL(/\/$/);
