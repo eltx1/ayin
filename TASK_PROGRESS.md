@@ -117,3 +117,14 @@ Baseline main/live SHA: `73f08d7e1d19e6ab8256718eb4d390c4fcbe653d`. Existing PR2
 - Worker manifest/PUT response and legacy download bounds fixed; actualservice red/green evidence. Critical browser HTTPS build origins corrected without security/assertion weakening; latestCI pending.
 - Connected media3pipeline cases plus2store helpers added in291; actualPG+FFmpeg+boundedindependentHTTP, notR2. Workflowcontext fix5aaa93e; acceptancepending.
 - Next: execute combined candidate gates, diagnose remaining failures, update exactSHA evidence in audit, then request normal code review only. ExternalR2/device/provider/productionbackup limits remain explicit. No background completion promise.
+
+- Follow-through actual acceptance: cancellation8/8PASS on94deaf3/run38953502250; combined realAPI/PG/FFmpeg connected5/5PASS one6badd2/run38953935571, verifiedartifact12070156307 SHA25664ab71461935e54400dff561f7c53127c2bb358f85d034683627f75eb0dc242b. CombinedsecurityalljobsSUCCESS; fullquality/browserstillrunning.
+- Narrowedgefollowup local1980a11 / PR292 head623ba9b: routineTLSmodepreserved, media500/502/transporterrorsnolongerfalsePASS; actualshell9/9PASS. Doesnotchangeproductionorapplicationcode.
+- P1 rawsourcepublicbucket configuration assurance remains external: same source/canonicalbucket+customdomain, no repo sourcepathdeny/r2.devverification. ActualedgepolicyUNKNOWN; no leakeduserfileclaim. Require newlyownedfixtureaccess/cache/withdrawalchecks andread-onlyCloudflareconfigurationreview beforebeta.
+
+### Privacy cancellation acceptance follow-up
+
+Combined e6badd2 quality38953935571 failed8/2405passed/3skipped; connected-media5passed separately. Root cause: privacy selected sessions before source-lock wait, missed newly committed terminalV1 custody, and created duplicate generic OBJECT because exclusion coveredV2 only. Localdc48850 / PR284head84c2afb rereads under exact locked source union, adopts registered custody, excludes duplicate source addresses, and preserves all historical rows. Existing tests keep401/409/business snapshot fences and assert exact pending custody plus same job IDs; finally drains released provider request before next fixture truncation. Localprivacy15/15/types/lint/format pass. Focused4PGsuites run38956429001 pending; no final combined acceptance yet.
+
+- Focused privacy/authority/upload/cancellation PG acceptance now87/87PASS, noSKIP/deadlock, run38956429001/job117160345499, head84c2afb/mergefb3ae748. Syntheticstorage, realisolatedPG. UIstack#287updateddd726d4 tosameacceptedparentfix.
+- Final continuation candidate521a4b352634cdce1fa655706c80b2d3d121a3e5 exactlymatcheslocaldc48850 treeb307b7b3b4f1be185efe3937f36c0e3fdcdb43b0. Includesprivacyandedgefixes. ReportPR289addsdocumentationonlyandwillruncombinedquality/security/browser/connectedacceptance. No mainmerge/deployment. Finalresultsstillpending.

@@ -1,4 +1,6 @@
 import "reflect-metadata";
+import { assertLegacyCancellationCustody } from "./media-upload-cancellation-test-helper.js";
+import { UploadSessionTokenService } from "../src/media/upload-session-token.service.js";
 import { randomUUID } from "node:crypto";
 import { createPrismaClient, Prisma } from "@ayin/db";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
@@ -214,7 +216,7 @@ databaseDescribe("Upload continuation and actual privacy lifecycle lock order", 
       },
     });
   }
-  async function assertRemoved(f: Fixture, requestId: string) {
+  async function assertRemoved(f: Fixture, requestId: string, cancelled = false) {
     expect(
       (await prisma.accountDeletionRequest.findUniqueOrThrow({ where: { id: requestId } })).state,
     ).toBe("ANONYMIZED");
@@ -242,11 +244,24 @@ databaseDescribe("Upload continuation and actual privacy lifecycle lock order", 
         where: { videoId: f.videoId, status: { not: "CANCELLED" } },
       }),
     ).toBe(0);
-    expect(
-      await prisma.privacyMediaDeletionJob.count({
-        where: { requestId, target: f.session.objectKey },
-      }),
-    ).toBe(1);
+    if (cancelled) {
+      await assertLegacyCancellationCustody(
+        prisma,
+        app.get(UploadSessionTokenService).verify(f.session.sessionToken),
+        f.videoId,
+        requestId,
+      );
+      expect(
+        (await prisma.accountDeletionRequest.findUniqueOrThrow({ where: { id: requestId } }))
+          .mediaCleanupCompletedAt,
+      ).toBeNull();
+    } else {
+      const jobs = await prisma.privacyMediaDeletionJob.findMany({
+        where: { target: f.session.objectKey },
+      });
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0]).toMatchObject({ requestId, scope: "PRIVACY", kind: "OBJECT" });
+    }
   }
   for (const path of paths) {
     it(`denies ${path} after actual owner anonymization wins an observed source lock wait`, async () => {
@@ -346,14 +361,17 @@ databaseDescribe("Upload continuation and actual privacy lifecycle lock order", 
       try {
         await delayed.entered;
         expect(await privacy).toBe(1);
-        await assertRemoved(f, deletion.id);
+        await assertRemoved(f, deletion.id, path === "abort");
       } finally {
         delayed.release();
+        // A failed assertion must not leave post-provider DB work racing the
+        // next fixture's TRUNCATE (which requires AccessExclusive locks).
+        await response;
       }
       const result = await response;
       expect(result.statusCode).toBe(409);
       expect(result.json().error.code).toBe("UPLOAD_STATE_CHANGED");
-      await assertRemoved(f, deletion.id);
+      await assertRemoved(f, deletion.id, path === "abort");
     });
 
     it(`denies ${path} when actual owner anonymization commits during provider I/O`, async () => {
@@ -363,14 +381,33 @@ databaseDescribe("Upload continuation and actual privacy lifecycle lock order", 
       await delayed.entered;
       let deletion;
       try {
+        const previous =
+          path === "abort"
+            ? await assertLegacyCancellationCustody(
+                prisma,
+                app.get(UploadSessionTokenService).verify(f.session.sessionToken),
+                f.videoId,
+              )
+            : null;
         deletion = await deletionRequest(f);
         expect(await app.get(PrivacyLifecycleService).advanceDue(new Date(), 1)).toBe(1);
-        await assertRemoved(f, deletion.id);
+        await assertRemoved(f, deletion.id, path === "abort");
+        if (previous)
+          expect(
+            (
+              await prisma.privacyMediaDeletionJob.findMany({
+                where: { target: f.session.objectKey },
+              })
+            )
+              .map((job) => job.id)
+              .sort(),
+          ).toEqual(previous.jobs.map((job) => job.id).sort());
       } finally {
         delayed.release();
+        await response;
       }
       expect((await response).statusCode).toBe(409);
-      await assertRemoved(f, deletion!.id);
+      await assertRemoved(f, deletion!.id, path === "abort");
     });
   }
 
@@ -386,9 +423,10 @@ databaseDescribe("Upload continuation and actual privacy lifecycle lock order", 
         expect(await app.get(PrivacyLifecycleService).advanceDue(new Date(), 1)).toBe(1);
       } finally {
         delayed.release();
+        await response;
       }
       expect((await response).statusCode).toBe(409);
-      await assertRemoved(f, deletion!.id);
+      await assertRemoved(f, deletion!.id, path === "abort");
     });
   }
 

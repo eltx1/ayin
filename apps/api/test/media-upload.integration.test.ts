@@ -7,6 +7,8 @@ import { Test, type TestingModule } from "@nestjs/testing";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppModule } from "../src/app.module.js";
+import { UploadSessionTokenService } from "../src/media/upload-session-token.service.js";
+import { assertLegacyCancellationCustody } from "./media-upload-cancellation-test-helper.js";
 import {
   MEDIA_STORAGE_ADAPTER,
   type MediaStorageAdapter,
@@ -482,9 +484,16 @@ databaseDescribe("direct creator media upload", () => {
         });
         expect(result.statusCode).toBe(401);
         expect(result.body).not.toContain("https://example.invalid");
-        expect(await prisma.mediaAsset.findUnique({ where: { id: session.assetId } })).toEqual(
-          before,
-        );
+        expect(await prisma.mediaAsset.findUnique({ where: { id: session.assetId } })).toEqual({
+          ...before,
+          uploadIntegrityRequired: path === "abort",
+        });
+        if (path === "abort")
+          await assertLegacyCancellationCustody(
+            prisma,
+            app.get(UploadSessionTokenService).verify(session.sessionToken),
+            videoId,
+          );
         expect(await prisma.mediaProcessingJob.count({ where: { videoId } })).toBe(0);
       },
     );

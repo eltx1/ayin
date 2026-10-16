@@ -121,10 +121,8 @@ discover_zone
 upsert_a_record "ayin.stream"
 upsert_a_record "api.ayin.stream"
 
-# CloudPanel's current AYIN origin certificate is not yet trusted for Full (strict), which causes
-# Cloudflare 526 responses. Full mode still encrypts Cloudflare-to-origin traffic and keeps AYIN
-# public while a dedicated trusted origin certificate is installed. Restore "strict" afterwards.
-set_zone_setting "ssl" "full"
+# Preserve the zone's existing TLS mode. Certificate verification and TLS policy
+# changes require a separate reviewed operation; routine DNS/edge sync must not downgrade it.
 set_zone_setting "always_use_https" "on"
 
 # AYIN exposes a browser-consumed API and public R2 media. Cloudflare reputation/BIC/Bot Fight
