@@ -158,4 +158,69 @@ databaseDescribe("Revenue report concurrency against isolated PostgreSQL", () =>
       expect(entries).toHaveLength(existing ? 2 : 1);
     },
   );
+
+  it.each(["role", "account"] as const)(
+    "rechecks %s authority after waiting on a source import",
+    async (revoke) => {
+      const source = `${sourcePrefix}-${revoke}`;
+      let acquired!: () => void;
+      let release!: () => void;
+      const ready = new Promise<void>((resolve) => (acquired = resolve));
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const holder = prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw(Prisma.sql`
+            SELECT pg_advisory_xact_lock(hashtextextended(${`ayin:revenue-reconciliation:${source}`}, 0))::text
+          `);
+          acquired();
+          await gate;
+        },
+        { timeout: 15000 },
+      );
+      await ready;
+      const imported = Promise.allSettled([
+        service.importReport(accountId, report(source, "authority-after-wait", "100.000000")),
+      ]);
+      let waitFailure: unknown;
+      try {
+        await vi.waitFor(
+          async () => {
+            const rows = await prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+              SELECT count(*)::bigint AS "count" FROM pg_stat_activity
+              WHERE datname = current_database() AND wait_event_type = 'Lock'
+                AND query LIKE '%ayin-reconciliation-source-lock%'
+            `);
+            expect(Number(rows[0]?.count ?? 0)).toBe(1);
+          },
+          { timeout: 4000, interval: 25 },
+        );
+        if (revoke === "role") {
+          await prisma.adminRoleAssignment.deleteMany({ where: { accountId } });
+        } else {
+          await prisma.account.update({ where: { id: accountId }, data: { status: "SUSPENDED" } });
+        }
+      } catch (error) {
+        waitFailure = error;
+      } finally {
+        release();
+        await holder;
+      }
+      const [result] = await imported;
+      try {
+        if (waitFailure) throw waitFailure;
+        expect(result?.status).toBe("rejected");
+        if (result?.status === "rejected") expect(result.reason.getStatus()).toBe(403);
+        expect(
+          await prisma.earningsLedgerEntry.count({ where: { channelId, adSource: source } }),
+        ).toBe(0);
+        expect(await prisma.revenueSourceReport.count({ where: { source } })).toBe(0);
+      } finally {
+        await prisma.account.update({ where: { id: accountId }, data: { status: "ACTIVE" } });
+        await prisma.adminRoleAssignment.createMany({
+          data: [{ accountId, role: "FINANCE_MANAGER" }],
+          skipDuplicates: true,
+        });
+      }
+    },
+  );
 });
