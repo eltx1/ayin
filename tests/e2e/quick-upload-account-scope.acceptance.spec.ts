@@ -30,6 +30,9 @@ test("standard upload conceals and aborts on suspension, then resets for another
     },
   });
   let owner: ReturnType<typeof identity> | null = identity("1");
+  let policyMode: "failed" | "invalid" | "valid" = "failed";
+  let policyReads = 0;
+  let drafts = 0;
   let put: Route | undefined;
   let failedPut = false;
   let completions = 0;
@@ -40,6 +43,17 @@ test("standard upload conceals and aborts on suspension, then resets for another
     const url = new URL(route.request().url());
     if (url.pathname === "/auth/me")
       return route.fulfill({ status: owner ? 200 : 401, json: owner ?? {} });
+    if (url.pathname === "/media/uploads/policy") {
+      policyReads++;
+      return route.fulfill({
+        status: policyMode === "failed" ? 503 : 200,
+        json: {
+          maxFileSizeBytes: policyMode === "invalid" ? 0 : 1024,
+          sessionLifetimeSeconds: 900,
+          reloadResumeSupported: false,
+        },
+      });
+    }
     if (url.pathname === "/platform/navigation") return route.fulfill({ json: {} });
     if (url.pathname === "/product-controls")
       return route.fulfill({
@@ -50,7 +64,8 @@ test("standard upload conceals and aborts on suspension, then resets for another
           resolvedHero: null,
         },
       });
-    if (url.pathname === "/creator/videos/drafts")
+    if (url.pathname === "/creator/videos/drafts") {
+      drafts++;
       return route.fulfill({
         json: {
           video: {
@@ -71,6 +86,7 @@ test("standard upload conceals and aborts on suspension, then resets for another
           },
         },
       });
+    }
     if (url.pathname.includes("complete")) completions++;
     return route.fulfill({ status: 404, json: { error: { code: "SYNTHETIC_UNAVAILABLE" } } });
   });
@@ -88,6 +104,18 @@ test("standard upload conceals and aborts on suspension, then resets for another
   });
   await page.goto("/upload?lang=en");
   const picker = page.locator('input[type="file"][accept^="video/"]');
+  const policyError = page.getByText(
+    "Upload limits could not be verified. Retry before choosing a file.",
+  );
+  await expect(policyError).toBeVisible();
+  await expect(picker).toBeDisabled();
+  policyMode = "invalid";
+  await page.getByRole("button", { name: "Retry upload policy", exact: true }).click();
+  await expect.poll(() => policyReads).toBe(2);
+  await expect(policyError).toBeVisible();
+  await expect(picker).toBeDisabled();
+  policyMode = "valid";
+  await page.getByRole("button", { name: "Retry upload policy", exact: true }).click();
   await expect
     .poll(() =>
       picker.evaluateAll((nodes) => nodes.length === 1 && !(nodes[0] as HTMLInputElement).disabled),
@@ -95,6 +123,17 @@ test("standard upload conceals and aborts on suspension, then resets for another
     .toBe(true);
   await expect(picker).toHaveCount(1);
   await expect(picker).toBeEnabled();
+  await expect(
+    page.getByText("Maximum file size: 1,024 bytes. Session duration: 900 seconds."),
+  ).toBeVisible();
+  await expect(page.getByText(/This standard upload cannot resume after reloading/)).toBeVisible();
+  await picker.setInputFiles({
+    name: "too-large.mp4",
+    mimeType: "video/mp4",
+    buffer: Buffer.alloc(1025),
+  });
+  await expect(page.getByText("This file exceeds the current upload size limit.")).toBeVisible();
+  expect(drafts).toBe(0);
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));
   await picker.setInputFiles({
     name: "private-camera-source.mp4",
@@ -138,6 +177,7 @@ test("standard upload conceals and aborts on suspension, then resets for another
   await expect(picker).toHaveCount(1);
   await expect(picker).toBeHidden();
   expect(await picker.evaluate((element: HTMLInputElement) => element.files?.length)).toBe(0);
+  expect(drafts).toBe(1);
   expect(completions).toBe(0);
   await put?.abort().catch(() => undefined);
 });

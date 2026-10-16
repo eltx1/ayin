@@ -21,7 +21,7 @@ import { z } from "zod";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { MediaUploadError } from "./media-upload.service.js";
 import { MediaUploadRecoveryService } from "./media-upload-recovery.service.js";
-import { UploadRateLimiter } from "./upload-rate-limiter.js";
+import { UploadRateLimiter, UPLOAD_REQUEST_LIMITS } from "./upload-rate-limiter.js";
 
 @Controller("media/uploads/sessions")
 @UseGuards(AuthGuard)
@@ -56,7 +56,10 @@ export class MediaUploadRecoveryController {
     )
       throw new HttpException("Invalid saved upload outcome request.", 400);
     try {
-      this.rateLimiter.consume(`recovery-outcome:${request.ayinAuth.accountId}`);
+      this.rateLimiter.consume(
+        `recovery-outcome:${request.ayinAuth.accountId}`,
+        UPLOAD_REQUEST_LIMITS.outcome,
+      );
       return await this.commands.operationOutcome(
         request.ayinAuth,
         sessionId.toLowerCase(),
@@ -100,7 +103,10 @@ export class MediaUploadRecoveryController {
         400,
       );
     try {
-      this.rateLimiter.consume(`recovery-command:${request.ayinAuth.accountId}`);
+      this.rateLimiter.consume(
+        `recovery-command:${request.ayinAuth.accountId}`,
+        UPLOAD_REQUEST_LIMITS.control,
+      );
       return await this.commands.reconcileCompletion(
         request.ayinAuth,
         sessionId.toLowerCase(),
@@ -135,8 +141,13 @@ export class MediaUploadRecoveryController {
     @Param("sessionId") sessionId: string,
     @Body() body: unknown,
   ) {
-    return this.command(request, sessionId, body, authorizeRecoveredUploadSchema, (id, input) =>
-      this.commands.authorize(request.ayinAuth, id, input),
+    return this.command(
+      request,
+      sessionId,
+      body,
+      authorizeRecoveredUploadSchema,
+      (id, input) => this.commands.authorize(request.ayinAuth, id, input),
+      "authorization",
     );
   }
   @Post(":sessionId/complete")
@@ -157,8 +168,13 @@ export class MediaUploadRecoveryController {
     @Param("sessionId") sessionId: string,
     @Body() body: unknown,
   ) {
-    return this.command(request, sessionId, body, uploadRecoveryCommandSchema, (id, input) =>
-      this.commands.cancel(request.ayinAuth, id, input),
+    return this.command(
+      request,
+      sessionId,
+      body,
+      uploadRecoveryCommandSchema,
+      (id, input) => this.commands.cancel(request.ayinAuth, id, input),
+      "cancellation",
     );
   }
   private async command<T>(
@@ -167,6 +183,7 @@ export class MediaUploadRecoveryController {
     body: unknown,
     schema: z.ZodType<T>,
     run: (id: string, input: T) => Promise<unknown>,
+    rateScope: "control" | "authorization" | "cancellation" = "control",
   ) {
     const parsed = schema.safeParse(body);
     if (
@@ -179,7 +196,11 @@ export class MediaUploadRecoveryController {
         400,
       );
     try {
-      this.rateLimiter.consume(`recovery-command:${request.ayinAuth.accountId}`);
+      const key = rateScope === "control" ? "recovery-command" : `recovery-${rateScope}`;
+      this.rateLimiter.consume(
+        `${key}:${request.ayinAuth.accountId}`,
+        UPLOAD_REQUEST_LIMITS[rateScope],
+      );
       return await run(sessionId.toLowerCase(), parsed.data);
     } catch (failure) {
       if (failure instanceof MediaUploadError)
@@ -204,7 +225,10 @@ export class MediaUploadRecoveryController {
     )
       throw new HttpException("Invalid saved upload inspection request.", 400);
     try {
-      this.rateLimiter.consume(`inspect:${request.ayinAuth.accountId}`);
+      this.rateLimiter.consume(
+        `inspect:${request.ayinAuth.accountId}`,
+        UPLOAD_REQUEST_LIMITS.inspection,
+      );
       return await this.recovery.inspect(request.ayinAuth, sessionId);
     } catch (error) {
       if (error instanceof MediaUploadError)

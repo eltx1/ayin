@@ -27,6 +27,7 @@ import {
   uploadQuickThumbnail,
   type VideoForm,
 } from "@/lib/quick-upload";
+import { readQuickUploadPolicy, type QuickUploadPolicy } from "@/lib/quick-upload-policy";
 import { titleFromFilename } from "@/lib/title-from-filename";
 import {
   inspectVideoFile,
@@ -124,8 +125,15 @@ function QuickUploadForm({
 }) {
   const router = useRouter();
   const { href, locale } = useI18n();
-  const { onBeforeIdentitySuspend, isIdentityCurrent } = useViewerProduct();
+  const { onBeforeIdentitySuspend, isIdentityCurrent, identityRevision } = useViewerProduct();
   const copy = useCallback((value: string) => uploadText(value, locale), [locale]);
+  const [policyAttempt, setPolicyAttempt] = useState(0);
+  const policyKey = `${identityRevision}:${policyAttempt}`;
+  const [policyResult, setPolicyResult] = useState<{
+    key: string;
+    value: QuickUploadPolicy | null;
+    failed: boolean;
+  } | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [inspection, setInspection] = useState<VideoInspectionResult | null>(null);
   const [videoId, setVideoId] = useState<string | null>(null);
@@ -158,6 +166,27 @@ function QuickUploadForm({
   const [processingAttempt, setProcessingAttempt] = useState(0);
   const [processingFailed, setProcessingFailed] = useState(false);
   const [savedSignature, setSavedSignature] = useState("");
+  const policy =
+    scopeReady && (policyResult?.key === policyKey || videoId)
+      ? (policyResult?.value ?? null)
+      : null;
+  const policyFailed = scopeReady && policyResult?.key === policyKey && policyResult.failed;
+  const policyAccountId = identity?.account.id;
+  useEffect(() => {
+    if (!scopeReady || !policyAccountId || videoId) return;
+    const controller = new AbortController();
+    void readQuickUploadPolicy(policyAccountId, controller.signal)
+      .then((value) => {
+        if (!controller.signal.aborted && isIdentityCurrent())
+          setPolicyResult({ key: policyKey, value, failed: false });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted && isIdentityCurrent())
+          setPolicyResult({ key: policyKey, value: null, failed: true });
+      });
+    return () => controller.abort();
+  }, [scopeReady, policyAccountId, videoId, policyKey, isIdentityCurrent]);
+
   const signature = JSON.stringify([
     title,
     description,
@@ -244,6 +273,7 @@ function QuickUploadForm({
       if (
         !selected ||
         !identity ||
+        !policy ||
         !scopeReady ||
         !isIdentityCurrent() ||
         mutation.current ||
@@ -254,6 +284,10 @@ function QuickUploadForm({
         return;
       if (!selected.size || !isSupportedVideoFile(selected)) {
         setMessage(copy("Drop one supported video file to start an upload."));
+        return;
+      }
+      if (selected.size > policy.maxFileSizeBytes) {
+        setMessage(copy("This file exceeds the current upload size limit."));
         return;
       }
       mutation.current = true;
@@ -371,11 +405,12 @@ function QuickUploadForm({
       published,
       thumbnailChoices,
       videoForm,
+      policy,
     ],
   );
 
   useEffect(() => {
-    if (!scopeReady || !isIdentityCurrent() || !pendingSelection.current) return;
+    if (!scopeReady || !policy || !isIdentityCurrent() || !pendingSelection.current) return;
     let active = true;
     // A native file dialog can emit change before focus revalidation finishes.
     // This queues only the local selection, never an already-issued API write.
@@ -388,11 +423,21 @@ function QuickUploadForm({
     return () => {
       active = false;
     };
-  }, [scopeReady, isIdentityCurrent, chooseFile]);
+  }, [scopeReady, policy, isIdentityCurrent, chooseFile]);
 
   function handleDragOver(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
-    if (!identity || mutation.current || videoId || uncertain || published) return;
+    if (
+      !identity ||
+      !policy ||
+      !scopeReady ||
+      !isIdentityCurrent() ||
+      mutation.current ||
+      videoId ||
+      uncertain ||
+      published
+    )
+      return;
     event.dataTransfer.dropEffect = "copy";
     setDragActive(true);
   }
@@ -405,7 +450,17 @@ function QuickUploadForm({
   function handleDrop(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
     setDragActive(false);
-    if (!identity || mutation.current || videoId || uncertain || published) return;
+    if (
+      !identity ||
+      !policy ||
+      !scopeReady ||
+      !isIdentityCurrent() ||
+      mutation.current ||
+      videoId ||
+      uncertain ||
+      published
+    )
+      return;
     const selected = Array.from(event.dataTransfer.files).find(isSupportedVideoFile);
     if (!selected) {
       setMessage(copy("Drop one supported video file to start an upload."));
@@ -773,8 +828,35 @@ function QuickUploadForm({
             {file ? <span className={styles.selectionPill}>{copy("File selected")}</span> : null}
           </div>
 
+          <div aria-label={copy("Upload policy")}>
+            {policy ? (
+              <>
+                <p>
+                  {copy("Maximum file size")}:{" "}
+                  {new Intl.NumberFormat(locale).format(policy.maxFileSizeBytes)} {copy("bytes")}.{" "}
+                  {copy("Session duration")}:{" "}
+                  {new Intl.NumberFormat(locale).format(policy.sessionLifetimeSeconds)}{" "}
+                  {copy("seconds")}.
+                </p>
+                <p>
+                  {copy(
+                    "This standard upload cannot resume after reloading. Keep this page open; uploading in the background or after closing the browser is not guaranteed.",
+                  )}
+                </p>
+              </>
+            ) : policyFailed ? (
+              <p role="alert">
+                {copy("Upload limits could not be verified. Retry before choosing a file.")}{" "}
+                <ActionButton onClick={() => setPolicyAttempt((value) => value + 1)}>
+                  {copy("Retry upload policy")}
+                </ActionButton>
+              </p>
+            ) : (
+              <p role="status">{copy("Checking upload limits…")}</p>
+            )}
+          </div>
           <label
-            className={`${styles.picker} ${dragActive ? styles.pickerActive : ""} ${!identity ? styles.pickerDisabled : ""}`}
+            className={`${styles.picker} ${dragActive ? styles.pickerActive : ""} ${!identity || !policy ? styles.pickerDisabled : ""}`}
             onDragEnter={handleDragOver}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -784,10 +866,11 @@ function QuickUploadForm({
               className={styles.fileInput}
               type="file"
               accept="video/*,.mp4,.mov,.mkv,.webm,.avi,.mpeg,.mpg,.mts,.m2ts,.ts,.3gp,.3g2,.m4v,.wmv,.flv,.ogv,.mxf"
-              disabled={!identity || busy || published || uncertain || Boolean(videoId)}
+              disabled={!identity || !policy || busy || published || uncertain || Boolean(videoId)}
               onChange={(event) => {
                 const selected = event.target.files?.[0] ?? null;
-                if (!scopeReady || !isIdentityCurrent()) pendingSelection.current = selected;
+                if (!scopeReady || !policy || !isIdentityCurrent())
+                  pendingSelection.current = selected;
                 else void chooseFile(selected);
               }}
             />
