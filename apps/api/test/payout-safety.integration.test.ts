@@ -1089,6 +1089,61 @@ databaseDescribe("Creator payout safety", () => {
       ),
     ).toBe(true);
   });
+  for (const field of ["IDENTITY", "TAX", "PAYOUT_DESTINATION"] as const)
+    it.each(["finance-account", "finance-role"] as const)(
+      `rejects a ${field} compliance override after blocked %s authority is revoked`,
+      async (change) => {
+        const { finance, profile, channelId } = await compliantFixture(
+          `override-authority-${field}-${change}`,
+        );
+        const lock = await holdFinanceChannel(channelId, async (tx) => {
+          if (change === "finance-role")
+            await tx.adminRoleAssignment.deleteMany({
+              where: { accountId: finance.user.account.id },
+            });
+          else
+            await tx.account.update({
+              where: { id: finance.user.account.id },
+              data: { status: "SUSPENDED" },
+            });
+        });
+        const request = Promise.resolve(
+          app.inject({
+            method: "PATCH",
+            url: `/admin/revenue/channels/${channelId}/compliance`,
+            headers: { cookie: finance.cookie },
+            payload: {
+              field,
+              status: "REJECTED",
+              reason: "Isolated authority regression for compliance override",
+            },
+          }),
+        );
+        try {
+          await financialWaiters(1);
+        } finally {
+          lock.release();
+          await lock.holder;
+        }
+        expect((await request).statusCode).toBe(403);
+        const after = await prisma.creatorPayoutProfile.findUniqueOrThrow({
+          where: { id: profile.id },
+        });
+        expect(after.identityStatus).toBe(profile.identityStatus);
+        expect(after.taxStatus).toBe(profile.taxStatus);
+        expect(after.payoutDestinationStatus).toBe(profile.payoutDestinationStatus);
+        expect(
+          await prisma.adminAuditLog.count({
+            where: {
+              entityId: profile.id,
+              actorAccountId: finance.user.account.id,
+              action: "creator.compliance_status_overridden",
+            },
+          }),
+        ).toBe(0);
+      },
+    );
+
   for (const change of ["creator-account", "finance-account", "finance-role"] as const)
     it(`denies actual payout after blocked ${change} authority is revoked`, async () => {
       const { creator, finance, entry, channelId } = await compliantFixture(change);

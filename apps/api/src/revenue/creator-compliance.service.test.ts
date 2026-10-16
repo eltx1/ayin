@@ -1,3 +1,4 @@
+import type { Prisma } from "@ayin/db";
 import { describe, expect, it, vi } from "vitest";
 
 import type { DatabaseService } from "../database/database.service.js";
@@ -86,4 +87,111 @@ describe("CreatorComplianceService", () => {
     expect(result.payoutComplianceEligible).toBe(true);
     expect(result.actionsRequired).toEqual([]);
   });
+});
+
+// Exercise the real service across a deterministic asynchronous channel-lock
+// boundary. PostgreSQL lock/revocation behavior is covered separately in the
+// isolated payout-safety integration suite; these doubles are not DB evidence.
+describe("CreatorComplianceService override authority", () => {
+  const actorAccountId = "807f3fd3-bdb4-48d4-9f77-d99cce4aff1f";
+  const fields = ["IDENTITY", "TAX", "PAYOUT_DESTINATION"] as const;
+  function overrideFixture() {
+    let acquired!: () => void;
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => (acquired = resolve));
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const authority = { active: true, role: true };
+    const row = { ...profile };
+    const update = vi.fn().mockImplementation(async ({ data }) => Object.assign(row, data));
+    const audit = vi.fn().mockResolvedValue({});
+    const tx = {
+      $queryRaw: vi.fn().mockImplementation(async (query: Prisma.Sql) => {
+        if (query.sql.includes("ayin-finance-channel-lock")) {
+          acquired();
+          await gate;
+          return [{ id: profile.channelId, status: "ACTIVE" }];
+        }
+        if (query.sql.includes('FROM "Account"'))
+          return authority.active ? [{ id: actorAccountId }] : [];
+        if (query.sql.includes('FROM "AdminRoleAssignment"'))
+          return authority.role ? [{ id: "finance-role" }] : [];
+        return [{ id: profile.id }];
+      }),
+      creatorPayoutProfile: {
+        findUniqueOrThrow: vi.fn().mockImplementation(async () => ({ ...row })),
+        update,
+      },
+      adminAuditLog: { create: audit },
+    };
+    const db = {
+      client: {
+        $transaction: vi.fn().mockImplementation(async (work) => work(tx)),
+        creatorPayoutProfile: {
+          findUnique: vi.fn().mockImplementation(async () => ({ ...row })),
+        },
+      },
+    } as unknown as DatabaseService;
+    const service = new CreatorComplianceService(
+      db,
+      adapter({
+        identityRequired: true,
+        taxRequired: true,
+        payoutDestinationVerificationRequired: true,
+        source: "PROVIDER",
+        version: "isolated-test-v1",
+      }),
+    );
+    return { service, waiting, release, authority, row, update, audit };
+  }
+
+  for (const field of fields) {
+    it.each(["account", "role"] as const)(
+      `rejects ${field} after %s authority is revoked while waiting`,
+      async (change) => {
+        const fixture = overrideFixture();
+        const outcome = fixture.service.adminOverride(actorAccountId, profile.channelId, {
+          field,
+          status: "REJECTED",
+          reason: "Isolated regression after a delayed financial write",
+        });
+        const settled = Promise.allSettled([outcome]);
+        await fixture.waiting;
+        if (change === "account") fixture.authority.active = false;
+        else fixture.authority.role = false;
+        fixture.release();
+        const [result] = await settled;
+        expect(result?.status).toBe("rejected");
+        if (result?.status === "rejected") expect(result.reason.getStatus()).toBe(403);
+        expect(fixture.update).not.toHaveBeenCalled();
+        expect(fixture.audit).not.toHaveBeenCalled();
+        expect(fixture.row).toEqual(profile);
+      },
+    );
+
+    it(`retains an authorized ${field} change and records its actual predecessor`, async () => {
+      const fixture = overrideFixture();
+      const pending = fixture.service.adminOverride(actorAccountId, profile.channelId, {
+        field,
+        status: "VERIFIED",
+        reason: "Isolated independently reviewed authorized override",
+      });
+      await fixture.waiting;
+      fixture.release();
+      expect(await pending).toMatchObject({ field, status: "VERIFIED" });
+      const key =
+        field === "IDENTITY"
+          ? "identityStatus"
+          : field === "TAX"
+            ? "taxStatus"
+            : "payoutDestinationStatus";
+      expect(fixture.row[key]).toBe("VERIFIED");
+      expect(fixture.audit).toHaveBeenCalledExactlyOnceWith({
+        data: expect.objectContaining({
+          actorAccountId,
+          action: "creator.compliance_status_overridden",
+          metadata: expect.objectContaining({ field, from: profile[key], to: "VERIFIED" }),
+        }),
+      });
+    });
+  }
 });
