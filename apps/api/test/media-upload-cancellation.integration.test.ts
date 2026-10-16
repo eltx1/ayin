@@ -11,6 +11,10 @@ import {
   type MediaStorageAdapter,
 } from "../src/media/media-storage.adapter.js";
 import { assertUploadByteQuota } from "../src/media/media-upload-admission.js";
+import { MediaProcessingQueueService } from "../src/media/media-processing-queue.service.js";
+import { R2HttpError } from "../src/media/r2-sigv4.js";
+import { PrivacyLifecycleService } from "../src/privacy/privacy-lifecycle.service.js";
+import { processPrivacyMediaDeletionBatch } from "../src/privacy/privacy-media-cleanup.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const databaseDescribe = databaseUrl ? describe : describe.skip;
@@ -32,7 +36,7 @@ const storage: MediaStorageAdapter = {
   abortMultipartUpload: vi.fn(async () => undefined),
   headObject: vi.fn(async (key) => {
     const sizeBytes = stored.get(key);
-    if (sizeBytes === undefined) throw new Error("Controlled absent object");
+    if (sizeBytes === undefined) throw new R2HttpError(404, "HEAD");
     return { sizeBytes, contentType: "video/mp4", etag: '"controlled-object"' };
   }),
   deleteObject: vi.fn(async (key) => {
@@ -72,6 +76,7 @@ databaseDescribe("legacy upload cancellation and retained cleanup custody", () =
     vi.clearAllMocks();
     stored.clear();
     await prisma.$executeRawUnsafe('TRUNCATE TABLE "Account", "Channel" CASCADE');
+    await prisma.accountDeletionRequest.deleteMany();
   });
   afterAll(async () => {
     await app.close();
@@ -155,10 +160,18 @@ databaseDescribe("legacy upload cancellation and retained cleanup custody", () =
     expect(jobs.every((job) => job.cleanupContractVersion === 1 && job.status !== "DONE")).toBe(
       true,
     );
+    // Exactly one source declaration is charged. Repeated Abort must not count
+    // the live row and its retained obligation twice or create duplicate debt.
+    await expect(
+      prisma.$transaction((tx) => assertUploadByteQuota(tx, f.user.channel.id, 0, f.sizeBytes)),
+    ).resolves.toBeUndefined();
     await expect(
       prisma.$transaction((tx) => assertUploadByteQuota(tx, f.user.channel.id, 1, f.sizeBytes)),
     ).rejects.toMatchObject({ code: "CHANNEL_UPLOAD_QUOTA_REACHED" });
     expect(await prisma.mediaProcessingJob.count({ where: { videoId: f.video.id } })).toBe(0);
+    expect(
+      await app.get(MediaProcessingQueueService).claimNext("cancelled-source-worker"),
+    ).toBeNull();
   }
 
   it("fences completion before a dispatched single-object cancellation deletes its source", async () => {
@@ -229,5 +242,135 @@ databaseDescribe("legacy upload cancellation and retained cleanup custody", () =
       }),
     ).toEqual(before);
     await assertRetained(f, ["OBJECT"]);
+  });
+
+  it("blocks every continuation while multipart cancellation is still in provider I/O", async () => {
+    const f = await fixture(70 * 1024 * 1024);
+    const entered = gate();
+    const finish = gate();
+    vi.mocked(storage.abortMultipartUpload).mockImplementationOnce(async () => {
+      entered.release();
+      await finish.promise;
+    });
+    const aborted = send(f, "abort");
+    await entered.promise;
+    try {
+      for (const path of ["authorize-part", "resume", "complete"]) {
+        const response = await app.inject({
+          method: "POST",
+          url: `/media/uploads/sessions/${path}`,
+          headers: { cookie: f.cookie },
+          payload: {
+            sessionToken: f.session.sessionToken,
+            ...(path === "authorize-part" ? { partNumber: 1 } : {}),
+            ...(path === "complete" ? { parts: [] } : {}),
+          },
+        });
+        expect(response.statusCode).toBe(409);
+      }
+      expect(storage.authorizeMultipartPart).not.toHaveBeenCalled();
+      expect(storage.listParts).not.toHaveBeenCalled();
+      expect(storage.completeMultipartUpload).not.toHaveBeenCalled();
+    } finally {
+      finish.release();
+      await aborted;
+    }
+    await assertRetained(f, ["OBJECT", "ALLOCATION", "MULTIPART"]);
+  });
+
+  it("denies revoked owner authority after provider I/O while preserving already-created custody", async () => {
+    const f = await fixture();
+    const entered = gate();
+    const finish = gate();
+    vi.mocked(storage.deleteObject).mockImplementationOnce(async () => {
+      entered.release();
+      await finish.promise;
+    });
+    const aborted = send(f, "abort");
+    await entered.promise;
+    try {
+      await prisma.account.update({
+        where: { id: f.user.account.id },
+        data: { authVersion: { increment: 1 } },
+      });
+    } finally {
+      finish.release();
+    }
+    expect((await aborted).statusCode).toBe(401);
+    expect(
+      (await prisma.mediaAsset.findUniqueOrThrow({ where: { id: f.session.assetId } })).status,
+    ).toBe("PENDING");
+    await assertRetained(f, ["OBJECT"]);
+  });
+
+  it("adopts cancellation custody during account privacy deletion instead of losing the exact address", async () => {
+    const f = await fixture();
+    expect((await send(f, "abort")).statusCode).toBe(201);
+    const session = await prisma.mediaUploadSession.findUniqueOrThrow({
+      where: { sourceAssetId: f.session.assetId },
+    });
+    await prisma.account.update({
+      where: { id: f.user.account.id },
+      data: { status: "CLOSED", closedAt: new Date() },
+    });
+    const request = await prisma.accountDeletionRequest.create({
+      data: {
+        accountId: f.user.account.id,
+        state: "DEACTIVATED",
+        deactivatedAt: new Date(Date.now() - 25 * 60 * 60_000),
+      },
+    });
+    expect(await app.get(PrivacyLifecycleService).advanceDue(new Date(), 1)).toBe(1);
+    const after = await prisma.accountDeletionRequest.findUniqueOrThrow({
+      where: { id: request.id },
+    });
+    expect(after.state).toBe("ANONYMIZED");
+    expect(after.mediaCleanupCompletedAt).toBeNull();
+    const custody = await prisma.privacyMediaDeletionJob.findMany({
+      where: { uploadSessionId: session.id },
+    });
+    expect(custody.length).toBeGreaterThan(0);
+    expect(
+      custody.every(
+        (job) =>
+          job.requestId === request.id &&
+          job.target === f.session.objectKey &&
+          job.status !== "DONE",
+      ),
+    ).toBe(true);
+    expect((await send(f, "complete")).statusCode).toBe(401);
+  });
+
+  it("does not turn DELETE plus HEAD 404 into V1 settlement or release its quota debt", async () => {
+    const f = await fixture();
+    expect((await send(f, "abort")).statusCode).toBe(201);
+    expect(stored.has(f.session.objectKey)).toBe(false);
+    expect(await processPrivacyMediaDeletionBatch(prisma, storage, new Date(), 1)).toBe(1);
+    const job = await prisma.privacyMediaDeletionJob.findFirstOrThrow({
+      where: { sourceAssetId: f.session.assetId, kind: "OBJECT" },
+    });
+    expect(job.status).not.toBe("DONE");
+    expect(job.settlementVerifiedAt).toBeNull();
+    expect(job.settlementProofReference).toBeNull();
+    await assertRetained(f, ["OBJECT"]);
+  });
+
+  it("rejects upload cancellation after source acceptance without deleting an active worker input", async () => {
+    const f = await fixture();
+    expect((await send(f, "complete")).statusCode).toBe(201);
+    const claimed = await app.get(MediaProcessingQueueService).claimNext("accepted-source-worker");
+    expect(claimed?.videoId).toBe(f.video.id);
+    vi.mocked(storage.deleteObject).mockClear();
+    vi.mocked(storage.abortMultipartUpload).mockClear();
+    expect((await send(f, "abort")).statusCode).toBe(409);
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+    expect(storage.abortMultipartUpload).not.toHaveBeenCalled();
+    expect(stored.has(f.session.objectKey)).toBe(true);
+    expect(
+      await prisma.mediaUploadSession.findUnique({ where: { sourceAssetId: f.session.assetId } }),
+    ).toBeNull();
+    expect(
+      (await prisma.mediaAsset.findUniqueOrThrow({ where: { id: f.session.assetId } })).status,
+    ).toBe("UPLOADED");
   });
 });

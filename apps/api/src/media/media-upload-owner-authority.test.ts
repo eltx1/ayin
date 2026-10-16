@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import { HttpException } from "@nestjs/common";
+import type { MediaUploadSession } from "@ayin/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { platformSettingCatalog } from "../platform-config/platform-settings.catalog.js";
 import { MediaUploadService, type UploadActor } from "./media-upload.service.js";
@@ -26,6 +27,7 @@ function fixture(
     status: !changeDuringProvider && change === "ACCOUNT_SUSPENDED" ? "SUSPENDED" : "ACTIVE",
     authVersion: !changeDuringProvider && change === "AUTH_VERSION_CHANGED" ? 2 : 1,
   };
+  let cancelled: MediaUploadSession | null = null;
   const asset = {
     channelId,
     videoId: null,
@@ -36,6 +38,9 @@ function fixture(
     mimeType: "video/mp4",
     status: "PENDING",
     uploadIntegrityRequired: false,
+    get uploadSession() {
+      return cancelled;
+    },
   };
   const tx = {
     channelMember: {
@@ -45,10 +50,23 @@ function fixture(
     account: { findUnique: vi.fn(async () => account) },
     mediaAsset: {
       findUnique: vi.fn(async () => asset),
+      findUniqueOrThrow: vi.fn(async () => asset),
       update: vi.fn(),
       aggregate: vi.fn(async () => ({ _sum: { sizeBytes: 0n } })),
       create: vi.fn(),
     },
+    mediaUploadSession: {
+      findUnique: vi.fn(async () => cancelled),
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        cancelled = {
+          ...data,
+          id: "55555555-5555-4555-8555-555555555555",
+          revision: 1,
+        } as MediaUploadSession;
+        return cancelled;
+      }),
+    },
+    privacyMediaDeletionJob: { createMany: vi.fn() },
     $executeRaw: vi.fn(),
     $queryRaw: vi.fn(async (sql: { strings: string[] } | TemplateStringsArray) => {
       const query = ("strings" in sql ? sql.strings : sql).join("?");

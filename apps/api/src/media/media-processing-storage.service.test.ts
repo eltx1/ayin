@@ -71,6 +71,75 @@ describe("MediaProcessingStorageService", () => {
     expect((await metadataService().headObject("manifest")).sizeBytes).toBe(128);
   });
 
+  it.each([undefined, "1"])(
+    "stops a manifest stream at its byte bound even with Content-Length %s",
+    async (declared) => {
+      const cancel = vi.fn();
+      const chunks = [new Uint8Array(1024), new Uint8Array(1), new Uint8Array(4096)];
+      let pulls = 0;
+      const stream = new ReadableStream<Uint8Array>(
+        {
+          pull(controller) {
+            const chunk = chunks[pulls++];
+            if (chunk) controller.enqueue(chunk);
+            else controller.close();
+          },
+          cancel,
+        },
+        { highWaterMark: 0 },
+      );
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(stream, {
+            headers: declared === undefined ? {} : { "content-length": declared },
+          }),
+        ),
+      );
+      await expect(metadataService().downloadText("master.m3u8", 1024)).rejects.toThrow(
+        "size limit",
+      );
+      expect(pulls).toBe(2);
+      expect(cancel).toHaveBeenCalledOnce();
+      expect(stream.locked).toBe(false);
+    },
+  );
+
+  it("cancels an oversized manifest before reading its body", async () => {
+    const cancel = vi.fn();
+    const pull = vi.fn();
+    const stream = new ReadableStream<Uint8Array>({ pull, cancel }, { highWaterMark: 0 });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(stream, { headers: { "content-length": "1025" } })),
+    );
+    await expect(metadataService().downloadText("master.m3u8", 1024)).rejects.toThrow("size limit");
+    expect(pull).not.toHaveBeenCalled();
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it("decodes a valid UTF-8 manifest split across chunks at the exact byte limit", async () => {
+    const expected = "#EXTM3U\n" + "x".repeat(1014) + "é";
+    const bytes = new TextEncoder().encode(expected);
+    expect(bytes.byteLength).toBe(1024);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(bytes.subarray(0, 1023));
+              controller.enqueue(bytes.subarray(1023));
+              controller.close();
+            },
+          }),
+          { headers: { "content-length": "1024" } },
+        ),
+      ),
+    );
+    await expect(metadataService().downloadText("master.m3u8", 1024)).resolves.toBe(expected);
+  });
+
   it("sends Content-Length when streaming a canonical file to an R2 presigned PUT", async () => {
     const directory = await mkdtemp(join(tmpdir(), "ayin-media-upload-test-"));
     temporaryDirectories.push(directory);
@@ -134,6 +203,29 @@ describe("MediaProcessingStorageService", () => {
       /empty or unreadable/,
     );
     expect(authorizeSinglePut).not.toHaveBeenCalled();
+  });
+
+  it("cancels failed PUT response bodies without retaining provider payloads in worker errors", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "ayin-upload-error-body-"));
+    temporaryDirectories.push(directory);
+    const filePath = join(directory, "canonical.mp4");
+    await writeFile(filePath, "controlled-video-bytes");
+    const cancel = vi.fn();
+    const pull = vi.fn((controller: ReadableStreamDefaultController<Uint8Array>) => {
+      controller.enqueue(new TextEncoder().encode("synthetic-private-provider-payload"));
+      controller.close();
+    });
+    const body = new ReadableStream<Uint8Array>({ pull, cancel }, { highWaterMark: 0 });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status: 503 })));
+    const authorize = vi.fn(async () => ({
+      url: "https://controlled.invalid/output",
+      expiresAt: new Date(Date.now() + 60_000),
+    }));
+    await expect(
+      metadataService(undefined, authorize).uploadFile("output", filePath),
+    ).rejects.toThrow(/^R2 worker upload failed \(503\)\.$/);
+    expect(pull).not.toHaveBeenCalled();
+    expect(cancel).toHaveBeenCalledOnce();
   });
 
   it.each(["canonical.mp4", "hls/master.m3u8", "hls/360p/segment-000001.ts", "thumbnail.jpg"])(
