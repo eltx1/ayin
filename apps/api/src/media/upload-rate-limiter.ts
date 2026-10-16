@@ -1,30 +1,32 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, type OnModuleDestroy } from "@nestjs/common";
+import { BoundedRateCounter } from "../security/bounded-rate-counter.js";
+import { MediaUploadError } from "./media-upload-error.js";
 
-import { MediaUploadError } from "./media-upload.service.js";
-
-interface Counter {
-  count: number;
-  resetAt: number;
-}
+// Signing and recovery polling scale with file parts, not with new upload sessions.
+// Separate cancellation capacity remains available even after a signing burst.
+export const UPLOAD_REQUEST_LIMITS = {
+  authorization: 600,
+  control: 60,
+  cancellation: 60,
+  outcome: 120,
+  inspection: 60,
+} as const;
 
 @Injectable()
-export class UploadRateLimiter {
-  private readonly counters = new Map<string, Counter>();
+export class UploadRateLimiter implements OnModuleDestroy {
+  private readonly counters = new BoundedRateCounter({ windowMs: 60_000 });
 
   consume(key: string, limit = process.env.APP_ENV === "test" ? 1_000 : 12): void {
-    const now = Date.now();
-    const current = this.counters.get(key);
-    if (!current || current.resetAt <= now) {
-      this.counters.set(key, { count: 1, resetAt: now + 60_000 });
-      return;
-    }
-    if (current.count >= limit) {
+    if (!this.counters.consume(key, limit)) {
       throw new MediaUploadError(
         "UPLOAD_RATE_LIMITED",
         "Too many upload requests. Try again shortly.",
         429,
       );
     }
-    current.count += 1;
+  }
+
+  onModuleDestroy(): void {
+    this.counters.destroy();
   }
 }

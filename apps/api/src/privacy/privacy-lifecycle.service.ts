@@ -654,7 +654,7 @@ export class PrivacyLifecycleService {
       }),
     ]);
 
-    const uploadSessions = await tx.mediaUploadSession.findMany({
+    let uploadSessions = await tx.mediaUploadSession.findMany({
       where: {
         OR: [
           { channelId: { in: channelIds } },
@@ -680,6 +680,18 @@ export class PrivacyLifecycleService {
         WHERE "id" IN (${Prisma.join(cleanupAssetIds.map((id) => Prisma.sql`${id}::uuid`))})
         ORDER BY "id" FOR NO KEY UPDATE /* ayin-privacy-media-asset-lock */`,
       );
+    // Legacy Abort can create its terminal custody while already owning one
+    // of those source locks. Re-read after the wait, retaining orphan snapshots
+    // and discovering new sessions only for sources in our exact locked set.
+    uploadSessions = await tx.mediaUploadSession.findMany({
+      where: {
+        OR: [
+          { id: { in: uploadSessions.map((session) => session.id) } },
+          { sourceAssetId: { in: cleanupAssetIds } },
+        ],
+      },
+      orderBy: { id: "asc" },
+    });
     for (const session of uploadSessions)
       await registerUploadCleanupInTransaction(tx, {
         sessionId: session.id,
@@ -740,13 +752,13 @@ export class PrivacyLifecycleService {
       objectTargets.add(`${attempt.hlsR2Prefix}master.m3u8`);
       prefixTargets.add(attempt.prefix);
     }
-    // V2 addresses are owned by their obligation-aware jobs. Do not create an
-    // older DELETE-only lane for those same source/attempt addresses.
+    // Every selected upload session was registered/adopted above. Its exact
+    // source already has an obligation-aware OBJECT job, including terminal
+    // V1 cancellations. Do not add a second DELETE-only lane for that address.
+    // V2 output attempts likewise retain their finite write-set obligations.
     for (const target of objectTargets) {
       if (
-        uploadSessions.some(
-          (session) => session.sourceProtocolVersion === 2 && session.objectKey === target,
-        ) ||
+        uploadSessions.some((session) => session.objectKey === target) ||
         outputAttempts.some(
           (attempt) => attempt.protocolVersion === 2 && target.startsWith(attempt.prefix),
         )

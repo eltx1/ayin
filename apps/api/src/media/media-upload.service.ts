@@ -1,7 +1,10 @@
 import { assertUploadByteQuota, lockUploadAdmission } from "./media-upload-admission.js";
 import { MediaUploadError } from "./media-upload-error.js";
+import { UploadRateLimiter } from "./upload-rate-limiter.js";
+import { cleanupRetentionDeadline, uploadCleanupJobData } from "./media-upload-cleanup.js";
+import { UPLOAD_FILE_IDENTITY_ALGORITHM } from "@ayin/types";
 import { randomUUID } from "node:crypto";
-import { Prisma } from "@ayin/db";
+import { Prisma, type MediaUploadSession } from "@ayin/db";
 import type { AuthenticatedRequest } from "../auth/auth.guard.js";
 import { unauthorized } from "../auth/auth.errors.js";
 import {
@@ -116,7 +119,18 @@ export class MediaUploadService {
     @Inject(UploadSessionTokenService) private readonly tokens: UploadSessionTokenService,
     @Inject(MediaProcessingLifecycleService)
     private readonly processingLifecycle: MediaProcessingLifecycleService,
+    @Inject(UploadRateLimiter) private readonly rateLimiter: UploadRateLimiter,
   ) {}
+
+  async getUploadPolicy() {
+    // This is the ordinary upload contract, not a recovery capability or a
+    // reservation. Admission still checks current settings and channel quota.
+    return {
+      maxFileSizeBytes: (await this.settings.get("uploadMaxSizeBytes")) as number,
+      sessionLifetimeSeconds: this.config.uploadUrlTtlSeconds,
+      reloadResumeSupported: false as const,
+    };
+  }
 
   async createSession(
     actor: UploadActor,
@@ -143,6 +157,9 @@ export class MediaUploadService {
       throw new MediaUploadError("INVALID_FILE_SIZE", "This video file size could not be read.");
     }
 
+    // All callers, including Quick Upload and administrator seeding, share this
+    // account budget. A controller-only limit leaves those creation paths open.
+    this.rateLimiter.consume(`create:${accountId}`);
     await this.withCreationAuthority(actor, channelId, creationOptions, async () => undefined);
     const [maxSizeRaw, quotaRaw] = await Promise.all([
       this.settings.get("uploadMaxSizeBytes"),
@@ -179,6 +196,10 @@ export class MediaUploadService {
     const assetId = randomUUID();
     const objectKey = `channels/${channelId}/media/${assetId}/source.${sourceExtension(mimeType)}`;
     const mode = input.sizeBytes >= this.config.multipartThresholdBytes ? "multipart" : "single";
+    // Both the browser contract and R2 allow at most 10,000 parts. Keep the
+    // configured target for ordinary uploads, but grow it just enough for a
+    // permitted large source; the token binds this exact per-session geometry.
+    const partSizeBytes = Math.max(this.config.partSizeBytes, Math.ceil(input.sizeBytes / 10_000));
     const expiresAtMs = Date.now() + this.config.uploadUrlTtlSeconds * 1000;
     let uploadId: string | null = null;
 
@@ -208,7 +229,7 @@ export class MediaUploadService {
       mode,
       mimeType,
       sizeBytes: input.sizeBytes,
-      partSizeBytes: this.config.partSizeBytes,
+      partSizeBytes,
       expiresAtMs,
     };
     const sessionToken = this.tokens.sign(payload);
@@ -259,8 +280,8 @@ export class MediaUploadService {
       objectKey,
       mode: "multipart" as const,
       sizeBytes: input.sizeBytes,
-      partSizeBytes: this.config.partSizeBytes,
-      partCount: Math.ceil(input.sizeBytes / this.config.partSizeBytes),
+      partSizeBytes,
+      partCount: Math.ceil(input.sizeBytes / partSizeBytes),
       sessionToken,
       expiresAt: new Date(expiresAtMs).toISOString(),
     };
@@ -372,24 +393,81 @@ export class MediaUploadService {
     const session = await this.withSession(
       actor,
       sessionToken,
-      ["PENDING"],
-      async (_tx, session) => session,
+      ["PENDING", "REJECTED"],
+      async (tx, session) => {
+        // Revoke continuation and retain exact cleanup custody BEFORE provider
+        // I/O. Otherwise a concurrent Complete can accept/enqueue the source
+        // while DELETE is in flight, leaving an accepted but missing object.
+        // This terminal V1 snapshot is not recovery admission: legacy grants,
+        // in-flight writes and content identity remain explicitly unknown.
+        const existing = await tx.mediaUploadSession.findUnique({
+          where: { sourceAssetId: session.assetId },
+        });
+        if (!existing) {
+          const now = new Date();
+          this.verifySession(sessionToken);
+          const asset = await tx.mediaAsset.findUniqueOrThrow({
+            where: { id: session.assetId },
+            select: { videoId: true },
+          });
+          const cancelled = await tx.mediaUploadSession.create({
+            data: {
+              sourceProtocolVersion: 1,
+              sourceAssetId: session.assetId,
+              initiatingAccountId: session.accountId,
+              channelId: session.channelId,
+              videoId: asset.videoId,
+              authority: session.adminOverride ? "ADMIN" : "OWNER",
+              mode: session.mode === "single" ? "SINGLE" : "MULTIPART",
+              objectKey: session.objectKey,
+              providerUploadId: session.uploadId,
+              sizeBytes: BigInt(session.sizeBytes),
+              mimeType: session.mimeType,
+              partSizeBytes: BigInt(session.partSizeBytes),
+              contentIdentityAlgorithm: UPLOAD_FILE_IDENTITY_ALGORITHM,
+              contentIdentityDigest: null,
+              state: "ABORTED",
+              createdAt: now,
+              hardExpiresAt: new Date(session.expiresAtMs),
+              // A signed V1 token does not enumerate historical part grants.
+              // Never manufacture a maximum grant cutoff or settlement proof.
+              lastGrantExpiresAt: null,
+              grantsRevokedAt: now,
+              cleanupRequestedAt: now,
+              cleanupRetainUntil: cleanupRetentionDeadline(now),
+            },
+          });
+          await tx.privacyMediaDeletionJob.createMany({
+            data: uploadCleanupJobData(cancelled, actor.accountId, null, now),
+          });
+        }
+        return session;
+      },
+      true,
     );
     if (session.mode === "multipart" && session.uploadId) {
-      await this.storage.abortMultipartUpload({
-        key: session.objectKey,
-        uploadId: session.uploadId,
-      });
+      await this.storage
+        .abortMultipartUpload({ key: session.objectKey, uploadId: session.uploadId })
+        .catch(() => undefined);
     } else {
       await this.storage.deleteObject(session.objectKey).catch(() => undefined);
     }
-    return this.withSession(actor, sessionToken, ["PENDING"], async (tx, current) => {
-      await tx.mediaAsset.update({
-        where: { id: current.assetId },
-        data: { status: "REJECTED", removedAt: new Date() },
-      });
-      return { status: "ABORTED" as const };
-    });
+    // ABORTED acknowledges logical cancellation, never physical deletion. The
+    // existing cleanup worker retains failures/late writes as non-DONE V1 debt.
+    return this.withSession(
+      actor,
+      sessionToken,
+      ["PENDING", "REJECTED"],
+      async (tx, current, status) => {
+        if (status === "PENDING")
+          await tx.mediaAsset.update({
+            where: { id: current.assetId },
+            data: { status: "REJECTED", removedAt: new Date() },
+          });
+        return { status: "ABORTED" as const };
+      },
+      true,
+    );
   }
 
   async cleanupAbandonedUploads(
@@ -463,24 +541,7 @@ export class MediaUploadService {
             ["OPERATIONS", "CONTENT_MODERATOR"],
             owners,
           );
-        } else {
-          const account = await tx.account.findUnique({
-            where: { id: actor.accountId },
-            select: { status: true, authVersion: true },
-          });
-          const sessions = await tx.$queryRaw<Array<{ id: string }>>(
-            Prisma.sql`SELECT id FROM "AccountSession" WHERE id = ${actor.sessionId}::uuid
-              AND "accountId" = ${actor.accountId}::uuid AND "authVersion" = ${actor.authVersion}
-              AND "revokedAt" IS NULL AND "expiresAt" > (clock_timestamp() AT TIME ZONE 'UTC') FOR SHARE`,
-          );
-          if (
-            !account ||
-            account.status !== "ACTIVE" ||
-            account.authVersion !== actor.authVersion ||
-            !sessions.length
-          )
-            throw unauthorized();
-        }
+        } else await this.assertCurrentOwnerSession(tx, actor);
       };
       if (!options.adminOverride) await lockChannelMediaAccounts(tx, actor.accountId, owners);
       await assertActor();
@@ -515,12 +576,13 @@ export class MediaUploadService {
   private async withSession<T>(
     actor: UploadActor,
     sessionToken: string,
-    allowedStatuses: Array<"PENDING" | "UPLOADED">,
+    allowedStatuses: Array<"PENDING" | "UPLOADED" | "REJECTED">,
     operation: (
       tx: Prisma.TransactionClient,
       session: UploadSessionPayload,
       status: string,
     ) => Promise<T>,
+    cancelledSessionAllowed = false,
   ): Promise<T> {
     const session = this.verifySession(sessionToken);
     if (session.accountId !== actor.accountId) {
@@ -531,6 +593,12 @@ export class MediaUploadService {
       );
     }
     return this.database.client.$transaction(async (tx) => {
+      // Regular owners need the same live account/session fence on continuation
+      // as on creation. Lock accounts before media to preserve privacy ordering.
+      const owners = session.adminOverride
+        ? []
+        : await observeChannelMediaOwners(tx, session.channelId);
+      if (!session.adminOverride) await lockChannelMediaAccounts(tx, actor.accountId, owners);
       // adminOverride is signed provenance, not a grant of present authority.
       const assertAuthority = async () => {
         if (session.adminOverride) {
@@ -538,9 +606,13 @@ export class MediaUploadService {
             "OPERATIONS",
             "CONTENT_MODERATOR",
           ]);
-        } else await this.assertChannelOwner(actor.accountId, session.channelId, tx);
+        } else {
+          await this.assertCurrentOwnerSession(tx, actor);
+          await this.assertChannelOwner(actor.accountId, session.channelId, tx);
+        }
       };
       await assertAuthority();
+      if (!session.adminOverride) await assertChannelMediaOwners(tx, session.channelId, owners);
       const observed = await tx.mediaAsset.findUnique({
         where: { id: session.assetId },
         select: { videoId: true },
@@ -563,19 +635,27 @@ export class MediaUploadService {
           mimeType: true,
           status: true,
           uploadIntegrityRequired: true,
+          uploadSession: true,
         },
       });
+      const cancelled =
+        cancelledSessionAllowed && this.isLegacyCancellation(asset?.uploadSession, session);
       if (
         !asset ||
-        asset.uploadIntegrityRequired ||
+        // The DB irreversibly marks any source with a session sidecar. Only
+        // this exact terminal cancellation may finish/replay Abort; no legacy
+        // continuation or worker enqueue is allowed through that marker.
+        (asset.uploadIntegrityRequired && !cancelled) ||
         asset.channelId !== session.channelId ||
         asset.videoId !== observed?.videoId ||
         asset.kind !== "SOURCE_VIDEO" ||
-        asset.removedAt ||
+        (asset.removedAt && !cancelled) ||
+        (asset.uploadSession && !cancelled) ||
+        (asset.status === "REJECTED" && !cancelled) ||
         asset.r2ObjectKey !== session.objectKey ||
         asset.sizeBytes !== BigInt(session.sizeBytes) ||
         asset.mimeType !== session.mimeType ||
-        !allowedStatuses.includes(asset.status as "PENDING" | "UPLOADED")
+        !allowedStatuses.includes(asset.status as "PENDING" | "UPLOADED" | "REJECTED")
       )
         this.changedSession();
       if (asset.videoId) {
@@ -626,12 +706,59 @@ export class MediaUploadService {
     }
   }
 
+  private isLegacyCancellation(
+    cancelled: MediaUploadSession | null | undefined,
+    session: UploadSessionPayload,
+  ): boolean {
+    return Boolean(
+      cancelled &&
+      cancelled.sourceProtocolVersion === 1 &&
+      cancelled.state === "ABORTED" &&
+      cancelled.contentIdentityDigest === null &&
+      cancelled.grantsRevokedAt &&
+      cancelled.cleanupRequestedAt &&
+      cancelled.initiatingAccountId === session.accountId &&
+      cancelled.sourceAssetId === session.assetId &&
+      cancelled.channelId === session.channelId &&
+      cancelled.objectKey === session.objectKey &&
+      cancelled.providerUploadId === session.uploadId &&
+      cancelled.authority === (session.adminOverride ? "ADMIN" : "OWNER") &&
+      cancelled.mode === (session.mode === "single" ? "SINGLE" : "MULTIPART") &&
+      cancelled.sizeBytes === BigInt(session.sizeBytes) &&
+      cancelled.partSizeBytes === BigInt(session.partSizeBytes) &&
+      cancelled.mimeType === session.mimeType &&
+      cancelled.hardExpiresAt.getTime() === session.expiresAtMs,
+    );
+  }
+
   private changedSession(): never {
     throw new MediaUploadError(
       "UPLOAD_STATE_CHANGED",
       "This upload is no longer available. Start a new upload if needed.",
       409,
     );
+  }
+
+  private async assertCurrentOwnerSession(
+    tx: Prisma.TransactionClient,
+    actor: UploadActor,
+  ): Promise<void> {
+    const account = await tx.account.findUnique({
+      where: { id: actor.accountId },
+      select: { status: true, authVersion: true },
+    });
+    const sessions = await tx.$queryRaw<Array<{ id: string }>>(
+      Prisma.sql`SELECT id FROM "AccountSession" WHERE id = ${actor.sessionId}::uuid
+        AND "accountId" = ${actor.accountId}::uuid AND "authVersion" = ${actor.authVersion}
+        AND "revokedAt" IS NULL AND "expiresAt" > (clock_timestamp() AT TIME ZONE 'UTC') FOR SHARE`,
+    );
+    if (
+      !account ||
+      account.status !== "ACTIVE" ||
+      account.authVersion !== actor.authVersion ||
+      !sessions.length
+    )
+      throw unauthorized();
   }
 
   private async assertChannelOwner(
@@ -673,7 +800,14 @@ export class MediaUploadService {
 
   private remainingAuthorizationSeconds(session: UploadSessionPayload): number {
     const remaining = Math.floor((session.expiresAtMs - Date.now()) / 1000);
-    return Math.max(60, Math.min(this.config.uploadUrlTtlSeconds, remaining));
+    if (remaining < 1) {
+      throw new MediaUploadError(
+        "INVALID_UPLOAD_SESSION",
+        "This upload session expired or is invalid. Start the upload again.",
+        401,
+      );
+    }
+    return Math.min(this.config.uploadUrlTtlSeconds, remaining);
   }
 
   private async rejectAsset(assetId: string): Promise<void> {

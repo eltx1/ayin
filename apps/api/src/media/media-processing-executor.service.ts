@@ -106,7 +106,10 @@ export class MediaProcessingExecutorService {
 
       if (isVerifiedCanonical(existingOutput)) {
         await this.requireOwnedStage(job, workerId, "VERIFYING", "RECOVERING_FINAL_OBJECT", 90);
-        await this.storage.downloadToFile(job.outputR2ObjectKey, outputPath);
+        await this.storage.downloadToFile(job.outputR2ObjectKey, outputPath, {
+          exactSizeBytes: existingOutput.sizeBytes,
+          signal,
+        });
         canonicalMetadata = await this.probe(outputPath, signal);
         if (
           !canonicalMetadata.width ||
@@ -122,11 +125,14 @@ export class MediaProcessingExecutorService {
           throw new Error("The processing job has no input R2 object key.");
         }
         await this.requireOwnedStage(job, workerId, "PROCESSING", "DOWNLOADING_SOURCE", 5);
-        await this.storage.downloadToFile(
-          job.inputR2ObjectKey,
-          inputPath,
-          requiredIntegrity ? { exactSizeBytes: requiredIntegrity.sizeBytes, signal } : undefined,
-        );
+        // Legacy sources are mutable until their signed grants settle. The
+        // recorded admission size is still a hard scratch bound, even without
+        // V2's content identity. Never download unbounded bytes after an earlier
+        // matching HEAD, and stop transfer when this worker loses its lease.
+        await this.storage.downloadToFile(job.inputR2ObjectKey, inputPath, {
+          exactSizeBytes: requiredIntegrity?.sizeBytes ?? Number(job.sourceSizeBytes),
+          signal,
+        });
 
         if (requiredIntegrity) {
           await this.requireOwnedStage(job, workerId, "VERIFYING", "VERIFYING_SOURCE_BYTES", 10);

@@ -7,6 +7,8 @@ import { Test, type TestingModule } from "@nestjs/testing";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppModule } from "../src/app.module.js";
+import { UploadSessionTokenService } from "../src/media/upload-session-token.service.js";
+import { assertLegacyCancellationCustody } from "./media-upload-cancellation-test-helper.js";
 import {
   MEDIA_STORAGE_ADAPTER,
   type MediaStorageAdapter,
@@ -417,4 +419,83 @@ databaseDescribe("direct creator media upload", () => {
       }),
     ).toEqual(jobs);
   });
+  for (const change of ["SESSION", "ACCOUNT", "AUTH_VERSION"] as const) {
+    it.each(["authorize-part", "resume", "complete", "abort"] as const)(
+      `rechecks ordinary owner ${change} after %s provider work`,
+      async (path) => {
+        const { owner, session, videoId } = await tokenFixture();
+        const before = await prisma.mediaAsset.findUnique({ where: { id: session.assetId } });
+        const invalidate = async () => {
+          if (change === "SESSION") {
+            await prisma.accountSession.updateMany({
+              where: { accountId: owner.user.account.id },
+              data: { revokedAt: new Date(), revokeReason: "ISOLATED_UPLOAD_AUTHORITY_TEST" },
+            });
+          } else {
+            await prisma.account.update({
+              where: { id: owner.user.account.id },
+              data:
+                change === "ACCOUNT" ? { status: "SUSPENDED" } : { authVersion: { increment: 1 } },
+            });
+          }
+        };
+        if (path === "authorize-part")
+          vi.mocked(storage.authorizeMultipartPart).mockImplementationOnce(async () => {
+            await invalidate();
+            return {
+              url: "https://example.invalid/part",
+              expiresAt: new Date(Date.now() + 60_000),
+            };
+          });
+        if (path === "resume")
+          vi.mocked(storage.listParts).mockImplementationOnce(async () => {
+            await invalidate();
+            return [];
+          });
+        if (path === "complete") {
+          vi.mocked(storage.completeMultipartUpload).mockImplementationOnce(async () => {
+            await invalidate();
+            return { etag: '"complete"' };
+          });
+          vi.mocked(storage.headObject).mockResolvedValueOnce({
+            sizeBytes: 70 * 1024 ** 2,
+            contentType: "video/mp4",
+            etag: '"complete"',
+          });
+        }
+        if (path === "abort")
+          vi.mocked(storage.abortMultipartUpload).mockImplementationOnce(invalidate);
+        const result = await app.inject({
+          method: "POST",
+          url: `/media/uploads/sessions/${path}`,
+          headers: { cookie: owner.cookie },
+          payload: {
+            sessionToken: session.sessionToken,
+            ...(path === "authorize-part" ? { partNumber: 1 } : {}),
+            ...(path === "complete"
+              ? {
+                  parts: Array.from({ length: session.partCount }, (_, index) => ({
+                    partNumber: index + 1,
+                    etag: `part-${index}`,
+                  })),
+                }
+              : {}),
+          },
+        });
+        expect(result.statusCode).toBe(401);
+        expect(result.body).not.toContain("https://example.invalid");
+        expect(await prisma.mediaAsset.findUnique({ where: { id: session.assetId } })).toEqual({
+          ...before,
+          uploadIntegrityRequired: path === "abort",
+        });
+        if (path === "abort")
+          await assertLegacyCancellationCustody(
+            prisma,
+            app.get(UploadSessionTokenService).verify(session.sessionToken),
+            videoId,
+          );
+        expect(await prisma.mediaProcessingJob.count({ where: { videoId } })).toBe(0);
+      },
+    );
+  }
 });
