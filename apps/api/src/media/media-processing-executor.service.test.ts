@@ -75,6 +75,7 @@ it("copies validated backfill MP4 into an independent generation without transco
       id: "backfill-copy",
       videoId: "video",
       sourceMimeType: "video/mp4",
+      sourceSizeBytes: BigInt(payload.length),
       stagingKey: `${sourceKey}#adaptive-backfill-g2`,
       inputR2ObjectKey: sourceKey,
       outputR2ObjectKey: outputKey,

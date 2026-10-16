@@ -38,6 +38,8 @@ export default defineConfig({
           PORT: port,
           WEB_ORIGIN: origin,
           CORS_ORIGIN: origin,
+          NEXT_PUBLIC_API_BASE_URL: "https://127.0.0.1:3001",
+          NEXT_PUBLIC_MEDIA_BASE_URL: "https://media.invalid",
         },
       };
     }),

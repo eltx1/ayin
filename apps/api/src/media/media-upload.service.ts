@@ -642,7 +642,10 @@ export class MediaUploadService {
         cancelledSessionAllowed && this.isLegacyCancellation(asset?.uploadSession, session);
       if (
         !asset ||
-        asset.uploadIntegrityRequired ||
+        // The DB irreversibly marks any source with a session sidecar. Only
+        // this exact terminal cancellation may finish/replay Abort; no legacy
+        // continuation or worker enqueue is allowed through that marker.
+        (asset.uploadIntegrityRequired && !cancelled) ||
         asset.channelId !== session.channelId ||
         asset.videoId !== observed?.videoId ||
         asset.kind !== "SOURCE_VIDEO" ||
