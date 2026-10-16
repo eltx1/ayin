@@ -5,12 +5,14 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 
 const API = "http://127.0.0.1:3001";
-const WEB = "http://127.0.0.1:3000";
 
 // The same bounded journeys run in Chromium, Firefox and WebKit. These are
 // desktop browser engines against an isolated DB and intercepted media, not
 // physical-device, R2, worker-processing or Google-provider acceptance.
-test("critical account provisioning, access denial, logout and RTL", async ({ page }, info) => {
+test("critical account provisioning, access denial, logout and RTL", async ({
+  page,
+  baseURL,
+}, info) => {
   const email = `critical-${info.project.name}-${Date.now()}@e2e.ayin.test`;
   await page.goto("/register?lang=en");
   await page.getByLabel("Name", { exact: true }).fill("Critical browser creator");
@@ -29,7 +31,7 @@ test("critical account provisioning, access denial, logout and RTL", async ({ pa
   );
   expect(bootstrap).toEqual({ profiles: 1, memberships: 1, uploads: 1, tv: 1 });
   const denied = await page.request.get(`${API}/admin/control/users?take=10&page=1`, {
-    headers: { origin: WEB },
+    headers: { origin: new URL(baseURL!).origin },
   });
   expect(denied.status()).toBe(403);
   await page.getByRole("button", { name: "Log out", exact: true }).click();
@@ -57,6 +59,8 @@ test("enforced CSP blocks an untrusted script and allows the configured limited-
   );
   const response = await page.goto("/?lang=en");
   expect(response?.headers()["content-security-policy"]).toContain("script-src");
+  // The HTTPS critical harness must exercise the shipped policy unchanged.
+  expect(response?.headers()["content-security-policy"]).toContain("upgrade-insecure-requests");
   const rejected = await page.evaluate(
     () =>
       new Promise<boolean>((resolve) => {
@@ -175,32 +179,40 @@ test("supported native media decodes, plays, seeks and releases across the criti
       }),
     ) as { id: string; slug: string; sourceKey: string };
     const bytes = readFileSync(file);
-    await page.route(`http://media.invalid/${fixture.sourceKey}`, (route) => {
-      // Match byte-range storage semantics: without this, WebM is treated as a
-      // nonseekable stream even when the complete short fixture was transferred.
-      const requestedRange = route.request().headers().range;
-      const range = requestedRange?.match(/^bytes=(\d+)-(\d*)$/);
-      const start = range ? Number(range[1]) : 0;
-      const end = range?.[2] ? Math.min(Number(range[2]), bytes.length - 1) : bytes.length - 1;
-      if ((requestedRange && !range) || start > end || start >= bytes.length) {
+    let mediaRequests = 0;
+    await page.route(
+      (url) =>
+        ["http:", "https:"].includes(url.protocol) &&
+        url.hostname === "media.invalid" &&
+        url.pathname === `/${fixture.sourceKey}`,
+      (route) => {
+        mediaRequests++;
+        // Match byte-range storage semantics: without this, WebM is treated as a
+        // nonseekable stream even when the complete short fixture was transferred.
+        const requestedRange = route.request().headers().range;
+        const range = requestedRange?.match(/^bytes=(\d+)-(\d*)$/);
+        const start = range ? Number(range[1]) : 0;
+        const end = range?.[2] ? Math.min(Number(range[2]), bytes.length - 1) : bytes.length - 1;
+        if ((requestedRange && !range) || start > end || start >= bytes.length) {
+          return route.fulfill({
+            status: 416,
+            headers: { "content-range": `bytes */${bytes.length}` },
+          });
+        }
+        const body = bytes.subarray(start, end + 1);
         return route.fulfill({
-          status: 416,
-          headers: { "content-range": `bytes */${bytes.length}` },
+          status: range ? 206 : 200,
+          contentType: format.contentType,
+          body,
+          headers: {
+            "access-control-allow-origin": "*",
+            "accept-ranges": "bytes",
+            "content-length": String(body.length),
+            ...(range ? { "content-range": `bytes ${start}-${end}/${bytes.length}` } : {}),
+          },
         });
-      }
-      const body = bytes.subarray(start, end + 1);
-      return route.fulfill({
-        status: range ? 206 : 200,
-        contentType: format.contentType,
-        body,
-        headers: {
-          "access-control-allow-origin": "*",
-          "accept-ranges": "bytes",
-          "content-length": String(body.length),
-          ...(range ? { "content-range": `bytes ${start}-${end}/${bytes.length}` } : {}),
-        },
-      });
-    });
+      },
+    );
     await page.route("**/ads/video/decision/**", (route) =>
       route.fulfill({ json: { enabled: false } }),
     );
@@ -209,6 +221,7 @@ test("supported native media decodes, plays, seeks and releases across the criti
     await expect
       .poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState))
       .toBeGreaterThanOrEqual(2);
+    expect(mediaRequests).toBeGreaterThan(0);
     await video.evaluate((element: HTMLVideoElement) => {
       element.pause();
       element.muted = true;
@@ -254,7 +267,9 @@ test("candidate CSP enforces exact API origins and blocks inline handlers in iso
     if (!candidate)
       throw new Error("Build with AYIN_CSP_REPORT_ONLY=true for candidate acceptance.");
     delete headers["content-security-policy-report-only"];
-    headers["content-security-policy"] = candidate;
+    // Candidate enforcement retains production transport upgrades as well.
+    expect(headers["content-security-policy"]).toContain("upgrade-insecure-requests");
+    headers["content-security-policy"] = `${candidate}; upgrade-insecure-requests`;
     candidateApplied = true;
     await route.fulfill({ response, headers });
   });

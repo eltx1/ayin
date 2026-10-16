@@ -1,11 +1,11 @@
 import { expect, test, type Route } from "@playwright/test";
-const API = "http://127.0.0.1:3001";
 test.use({ serviceWorkers: "block" });
 
 // Actual shared ViewerProduct + QuickUpload components; API identities and
 // storage transfer are synthetic. This does not prove production logout/R2.
 test("standard upload conceals and aborts on suspension, then resets for another account", async ({
   page,
+  baseURL,
 }) => {
   const identity = (digit: string) => ({
     account: {
@@ -39,63 +39,69 @@ test("standard upload conceals and aborts on suspension, then resets for another
   page.on("requestfailed", (request) => {
     if (request.url() === "https://e2e-upload.invalid/scope-test") failedPut = true;
   });
-  await page.route(`${API}/**`, async (route) => {
-    const url = new URL(route.request().url());
-    if (url.pathname === "/auth/me")
-      return route.fulfill({ status: owner ? 200 : 401, json: owner ?? {} });
-    if (url.pathname === "/media/uploads/policy") {
-      policyReads++;
-      return route.fulfill({
-        status: policyMode === "failed" ? 503 : 200,
-        json: {
-          maxFileSizeBytes: policyMode === "invalid" ? 0 : 1024,
-          sessionLifetimeSeconds: 900,
-          reloadResumeSupported: false,
-        },
-      });
-    }
-    if (url.pathname === "/platform/navigation") return route.fulfill({ json: {} });
-    if (url.pathname === "/product-controls")
-      return route.fulfill({
-        json: {
-          navigation: [],
-          deviceVisibility: { web: true, mobile: true, tv: true },
-          announcement: { enabled: false, text: "", href: null },
-          resolvedHero: null,
-        },
-      });
-    if (url.pathname === "/creator/videos/drafts") {
-      drafts++;
-      return route.fulfill({
-        json: {
-          video: {
-            id: "55555555-5555-4555-8555-555555555555",
-            channelId: owner!.channel.id,
-            title: "Private camera source",
-            status: "UPLOADING",
-            visibility: "PUBLIC",
-            commentsEnabled: true,
-            durationMs: null,
-            videoForm: "LONG_FORM",
+  await page.route(
+    (url) =>
+      ["http:", "https:"].includes(url.protocol) &&
+      url.hostname === "127.0.0.1" &&
+      url.port === "3001",
+    async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/auth/me")
+        return route.fulfill({ status: owner ? 200 : 401, json: owner ?? {} });
+      if (url.pathname === "/media/uploads/policy") {
+        policyReads++;
+        return route.fulfill({
+          status: policyMode === "failed" ? 503 : 200,
+          json: {
+            maxFileSizeBytes: policyMode === "invalid" ? 0 : 1024,
+            sessionLifetimeSeconds: 900,
+            reloadResumeSupported: false,
           },
-          uploadSession: {
-            assetId: "66666666-6666-4666-8666-666666666666",
-            sessionToken: "synthetic-test-only",
-            mode: "single",
-            upload: { url: "https://e2e-upload.invalid/scope-test", method: "PUT", headers: {} },
+        });
+      }
+      if (url.pathname === "/platform/navigation") return route.fulfill({ json: {} });
+      if (url.pathname === "/product-controls")
+        return route.fulfill({
+          json: {
+            navigation: [],
+            deviceVisibility: { web: true, mobile: true, tv: true },
+            announcement: { enabled: false, text: "", href: null },
+            resolvedHero: null,
           },
-        },
-      });
-    }
-    if (url.pathname.includes("complete")) completions++;
-    return route.fulfill({ status: 404, json: { error: { code: "SYNTHETIC_UNAVAILABLE" } } });
-  });
+        });
+      if (url.pathname === "/creator/videos/drafts") {
+        drafts++;
+        return route.fulfill({
+          json: {
+            video: {
+              id: "55555555-5555-4555-8555-555555555555",
+              channelId: owner!.channel.id,
+              title: "Private camera source",
+              status: "UPLOADING",
+              visibility: "PUBLIC",
+              commentsEnabled: true,
+              durationMs: null,
+              videoForm: "LONG_FORM",
+            },
+            uploadSession: {
+              assetId: "66666666-6666-4666-8666-666666666666",
+              sessionToken: "synthetic-test-only",
+              mode: "single",
+              upload: { url: "https://e2e-upload.invalid/scope-test", method: "PUT", headers: {} },
+            },
+          },
+        });
+      }
+      if (url.pathname.includes("complete")) completions++;
+      return route.fulfill({ status: 404, json: { error: { code: "SYNTHETIC_UNAVAILABLE" } } });
+    },
+  );
   await page.route("https://e2e-upload.invalid/scope-test", async (route) => {
     if (route.request().method() === "OPTIONS")
       return route.fulfill({
         status: 204,
         headers: {
-          "access-control-allow-origin": "http://127.0.0.1:3000",
+          "access-control-allow-origin": new URL(baseURL!).origin,
           "access-control-allow-methods": "PUT,OPTIONS",
           "access-control-allow-headers": "content-type",
         },
