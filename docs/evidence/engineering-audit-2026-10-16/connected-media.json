@@ -1,8 +1,8 @@
 {
   "kind": "API-connected acceptance; synthetic independent HTTP storage; real PostgreSQL and FFmpeg",
-  "runId": "a360682d-70cc-44e9-b16c-ba4300c83e3f",
-  "sha": "e6badd2a091c81407947aea825a1358709ca6b5a",
-  "run": "38953935571",
+  "runId": "5baba252-6284-4b5e-ac4a-1d14c7e3278d",
+  "sha": "84e340fe0495e89d873a2e29ca0ed3c5ea366375",
+  "run": "38957856990",
   "ffmpegVersion": "ffmpeg version 6.0.1-static https://johnvansickle.com/ffmpeg/  Copyright (c) 2000-2023 the FFmpeg developers",
   "databaseIdentity": {
     "database": "ayin_test",
@@ -15,10 +15,10 @@
     {
       "format": "mp4",
       "result": "PASS",
-      "sourceBytes": 58463,
-      "canonicalBytes": 70914,
-      "sourceSha256": "5ea2b0c5a9e480e178108764c401e239cb10d05af09ced49c485ef82645eb17c",
-      "canonicalSha256": "39e4853ee972ce2c14dfca15df682968f208d0a937f563e73c9d807fb03604f9",
+      "sourceBytes": 58492,
+      "canonicalBytes": 70941,
+      "sourceSha256": "78dadf1b37dabfafb448f3de9025cb07cc78157c6ec6611f50d60f6ed5deafad",
+      "canonicalSha256": "fb08e25217bb0a7d74a310b2f91b631bd2ac78d15a756d3ddee91762fc39d6a5",
       "dimensions": [320, 180],
       "durationMs": 2005,
       "codecs": ["h264", "aac"],
@@ -27,15 +27,15 @@
       "duplicateCompleteJobs": 1,
       "sourceDeleted": true,
       "scratchRemoved": true,
-      "elapsedMs": 771
+      "elapsedMs": 1084
     },
     {
       "format": "mov",
       "result": "PASS",
-      "sourceBytes": 58514,
-      "canonicalBytes": 70914,
-      "sourceSha256": "3bcb9e6d8242cf68c2aba728331f414d8ba733e17096264018887d524918e081",
-      "canonicalSha256": "39e4853ee972ce2c14dfca15df682968f208d0a937f563e73c9d807fb03604f9",
+      "sourceBytes": 58543,
+      "canonicalBytes": 70941,
+      "sourceSha256": "37161fedb372df6a0042939a1c55c072b5d74d5e8aaf20193d4b2a371cc63bf3",
+      "canonicalSha256": "fb08e25217bb0a7d74a310b2f91b631bd2ac78d15a756d3ddee91762fc39d6a5",
       "dimensions": [320, 180],
       "durationMs": 2005,
       "codecs": ["h264", "aac"],
@@ -44,7 +44,7 @@
       "duplicateCompleteJobs": 1,
       "sourceDeleted": true,
       "scratchRemoved": true,
-      "elapsedMs": 505
+      "elapsedMs": 732
     },
     {
       "format": "invalid-mp4",
@@ -64,10 +64,9 @@
   "browser": "NOT_RUN",
   "realR2": "NOT_RUN",
   "physicalDevices": "NOT_RUN",
-  "artifactEvidence": {
-    "jobId": 117151933606,
-    "artifactId": 12070156307,
-    "zipSha256": "64ab71461935e54400dff561f7c53127c2bb358f85d034683627f75eb0dc242b",
-    "independentChecksumVerified": true
+  "artifact": {
+    "id": 12070844220,
+    "sha256": "8c1ac2516ede91a5b88db6a5052ef99ad259626bd7ef646cc072887c00f24204",
+    "checksumVerifiedLocally": true
   }
 }

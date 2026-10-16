@@ -1,0 +1,25 @@
+{
+  "zipSha256": "f333d311632e273223ed18a486e55e6a411c9b458f32c742839a7814598f49a9",
+  "manifest": {
+    "schemaVersion": 1,
+    "sha": "84e340fe0495e89d873a2e29ca0ed3c5ea366375",
+    "repository": "eltx1/ayin",
+    "workflow": ".github/workflows/database.yml",
+    "event": "pull_request",
+    "ref": "refs/pull/294/merge",
+    "runId": "38957856990",
+    "runAttempt": "1",
+    "archiveSha256": "a10c2fbab49b42f67e806131c4ce35e087311fcbbf34d83cdbf189deb2410b95"
+  },
+  "artifactId": 12071658165,
+  "zipAndInnerArchiveVerifiedLocally": true,
+  "acceptance": "CI production-package smoke passed; PR artifact is not eligible for production release",
+  "pathsVerified": [
+    "/",
+    "/clips",
+    "/upload",
+    "/studio",
+    "/watch/artifact-smoke?kids=1",
+    "/manifest.webmanifest"
+  ]
+}
