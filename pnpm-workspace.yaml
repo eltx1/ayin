@@ -19,6 +19,9 @@ overrides:
   "source-map-js@>=1.0.0 <1.2.2": 1.2.2
   "fast-uri@>=3.0.0 <3.1.8": 3.1.8
   "fast-uri@>=4.0.0 <4.1.5": 4.1.5
+  # Development-only glob parsers: patch within each existing major version.
+  "brace-expansion@>=1.0.0 <1.1.21": 1.1.21
+  "brace-expansion@>=5.0.0 <5.0.12": 5.0.12
 
 minimumReleaseAgeExclude:
   - "@nestjs/common@12.0.1"
