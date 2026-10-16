@@ -14,6 +14,8 @@ on:
   workflow_run:
     workflows:
       - Task quality gates
+      - Security gates
+      - V1 browser acceptance
     types:
       - completed
 
@@ -26,21 +28,53 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  release-evidence:
+    # No production environment or secrets are accessible to this read-only gate.
     if: >-
       ${{
-        github.event_name == 'workflow_dispatch' ||
-        (
-          github.event.workflow_run.conclusion == 'success' &&
-          github.event.workflow_run.head_branch == 'main' &&
-          github.event.workflow_run.event == 'push'
-        )
+        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+        (github.event_name == 'workflow_run' &&
+         github.event.workflow_run.head_branch == 'main' &&
+         github.event.workflow_run.event == 'push' &&
+         github.event.workflow_run.head_repository.full_name == github.repository)
       }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      ready: ${{ steps.gates.outputs.ready }}
+      quality_run_id: ${{ steps.gates.outputs.quality_run_id }}
+      quality_run_attempt: ${{ steps.gates.outputs.quality_run_attempt }}
+    env:
+      RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.release_sha }}
+      AUTOMATIC_RELEASE: ${{ github.event_name == 'workflow_run' }}
+      CHECK_DUPLICATE_RELEASE: "true"
+      VALIDATION_RUN_ID: ${{ inputs.validation_run_id }}
+    steps:
+      - name: Checkout trusted main workflow tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Set up pinned release policy runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .nvmrc
+      - name: Require exact-SHA quality, security and browser evidence
+        id: gates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node deploy/release-gates.mjs check
+
+  deploy:
+    needs: release-evidence
+    if: needs.release-evidence.outputs.ready == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: production
     env:
-      VALIDATION_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.validation_run_id }}
+      VALIDATION_RUN_ID: ${{ needs.release-evidence.outputs.quality_run_id }}
+      VALIDATION_RUN_ATTEMPT: ${{ needs.release-evidence.outputs.quality_run_attempt }}
+      AUTOMATIC_RELEASE: ${{ github.event_name == 'workflow_run' }}
       RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.release_sha }}
       DEPLOY_HOST: 13.52.116.200
       DEPLOY_USER: ayin
@@ -59,71 +93,47 @@ jobs:
           [[ "$REMOTE_HOME" == '/home/ayin' ]]
           [[ "$PINNED_SSH_HOST_FINGERPRINT" == SHA256:* ]]
 
-      - name: Require successful main quality gate
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const runId = Number(process.env.VALIDATION_RUN_ID);
-            const expectedSha = process.env.RELEASE_SHA;
-            const { data } = await github.rest.actions.getWorkflowRun({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              run_id: runId,
-            });
-
-            const failures = [];
-            if (data.name !== 'Task quality gates') failures.push(`workflow=${data.name}`);
-            if (data.path !== '.github/workflows/database.yml') failures.push(`workflowPath=${data.path}`);
-            if (data.conclusion !== 'success') failures.push(`conclusion=${data.conclusion}`);
-            if (data.event !== 'push') failures.push(`event=${data.event}`);
-            if (data.head_branch !== 'main') failures.push(`branch=${data.head_branch}`);
-            if (data.head_sha !== expectedSha) failures.push(`sha=${data.head_sha}`);
-
-            if (failures.length > 0) {
-              core.setFailed(`Release is not an approved successful main validation: ${failures.join(', ')}`);
-            }
-
-      - name: Reject superseded automatic release
-        if: ${{ github.event_name == 'workflow_run' }}
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const expectedSha = process.env.RELEASE_SHA;
-            const { data: branch } = await github.rest.repos.getBranch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              branch: 'main',
-            });
-
-            if (branch.commit.sha !== expectedSha) {
-              core.setFailed(
-                `Automatic release ${expectedSha} is superseded by current main ${branch.commit.sha}; refusing stale deployment.`,
-              );
-            }
-
       - name: Checkout trusted deployment tooling
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ env.RELEASE_SHA }}
+          persist-credentials: false
+
+      - name: Checkout current trusted release policy separately
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .release-policy
+          persist-credentials: false
+
+      - name: Set up current pinned release policy runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .release-policy/.nvmrc
+
+      # Revalidate after any environment approval delay and before reading SSH secrets.
+      - name: Revalidate release gates and reject superseded automatic releases
+        id: gates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node .release-policy/deploy/release-gates.mjs check
+          test "$(sed -n 's/^ready=//p' "$GITHUB_OUTPUT")" = true
 
       - name: Download the Web build from the exact successful quality run
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: ayin-web-build-${{ env.RELEASE_SHA }}
+          name: ayin-web-build-${{ env.RELEASE_SHA }}-${{ env.VALIDATION_RUN_ID }}-${{ env.VALIDATION_RUN_ATTEMPT }}
           path: ${{ runner.temp }}/ayin-web-build
           github-token: ${{ github.token }}
           run-id: ${{ env.VALIDATION_RUN_ID }}
           digest-mismatch: error
 
-      - name: Bind the transferred Web archive checksum
+      - name: Verify artifact SHA, trusted run, attempt and archive checksum
         shell: bash
         run: |
           set -euo pipefail
-          archive="$RUNNER_TEMP/ayin-web-build/ayin-web-build.tar.gz"
-          test -f "$archive"
-          checksum="$(sha256sum "$archive" | awk '{print $1}')"
-          [[ "$checksum" =~ ^[0-9a-f]{64}$ ]]
-          echo "WEB_BUILD_SHA256=$checksum" >> "$GITHUB_ENV"
+          node .release-policy/deploy/release-gates.mjs manifest-verify "$RUNNER_TEMP/ayin-web-build"
           echo "WEB_BUILD_REMOTE=$REMOTE_HOME/.deploy-bootstrap/web-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.tar.gz" >> "$GITHUB_ENV"
 
       - name: Configure pinned AYIN SSH trust
@@ -209,9 +219,14 @@ jobs:
           proof_dir="$RUNNER_TEMP/ayin-production-deploy-proof"
           install -d -m 700 "$proof_dir"
           cat > "$proof_dir/deploy-proof.env" <<EOF
-          schema_version=1
+          schema_version=2
           release_sha=$RELEASE_SHA
           validation_run_id=$VALIDATION_RUN_ID
+          validation_run_attempt=$VALIDATION_RUN_ATTEMPT
+          security_run_id=${{ steps.gates.outputs.security_run_id }}
+          security_run_attempt=${{ steps.gates.outputs.security_run_attempt }}
+          browser_run_id=${{ steps.gates.outputs.browser_run_id }}
+          browser_run_attempt=${{ steps.gates.outputs.browser_run_attempt }}
           deploy_run_id=$GITHUB_RUN_ID
           deploy_run_attempt=$GITHUB_RUN_ATTEMPT
           deployed_as=ayin
@@ -219,7 +234,7 @@ jobs:
           EOF
 
       - name: Upload deployment proof
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ayin-production-deploy-proof-${{ env.RELEASE_SHA }}
           path: ${{ runner.temp }}/ayin-production-deploy-proof/deploy-proof.env

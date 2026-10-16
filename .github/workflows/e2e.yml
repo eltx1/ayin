@@ -1,31 +1,11 @@
 name: V1 browser acceptance
 
 on:
-  pull_request:
-    paths:
-      - "apps/**"
-      - "packages/**"
-      - "tests/e2e/**"
-      - "tests/performance-media/**"
-      - "tests/performance-upload/**"
-      - "tests/recovery/**"
-      - "tests/r2-length/**"
-      - "tests/player-localization/**"
-      - "tests/pwa/**"
-      - "tests/captions/**"
-      - "playwright.config.ts"
-      - "playwright.performance.config.ts"
-      - "playwright.native-media.config.ts"
-      - "playwright.changed-routes.config.ts"
-      - "playwright.upload-transport.config.ts"
-      - "playwright.recovery.config.ts"
-      - "playwright.r2-length.config.ts"
-      - "playwright.player-localization.config.ts"
-      - "playwright.pwa.config.ts"
-      - "playwright.captions.config.ts"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - ".github/workflows/e2e.yml"
+  # Every main SHA must have all release evidence, including shared/config-only changes.
+  push:
+    branches: [main]
+  # Include stacked PRs; production evidence still comes only from main pushes.
+  pull_request: {}
   workflow_dispatch:
 
 permissions:
@@ -60,9 +40,12 @@ jobs:
       NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:3001
       NEXT_PUBLIC_MEDIA_BASE_URL: http://media.invalid
       AYIN_E2E_STORAGE: "1"
+      AYIN_CSP_REPORT_ONLY: "true"
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .nvmrc
       - name: Enable pinned pnpm
@@ -71,8 +54,8 @@ jobs:
           corepack prepare pnpm@11.24.0 --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Install Chromium
-        run: pnpm exec playwright install --with-deps chromium
+      - name: Install pinned browser engines
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
       - name: Generate Prisma client and migrate
         run: |
           pnpm db:generate
@@ -80,6 +63,13 @@ jobs:
           pnpm db:seed
       - name: Build release candidate
         run: pnpm build
+      - name: Install pinned media tooling for browser fixtures
+        run: |
+          set -euo pipefail
+          export AYIN_BIN_DIR="$RUNNER_TEMP/ayin-media-bin"
+          bash deploy/ensure-ffmpeg-runtime.sh
+          echo "FFMPEG_PATH=$AYIN_BIN_DIR/ffmpeg" >> "$GITHUB_ENV"
+          echo "FFPROBE_PATH=$AYIN_BIN_DIR/ffprobe" >> "$GITHUB_ENV"
       - name: Run browser acceptance
         # Separate server processes keep independent fixture registration bursts
         # from exhausting the real test-mode limiter; every ordinary test runs once.
@@ -102,7 +92,7 @@ jobs:
         run: pnpm exec playwright test --config playwright.r2-length.config.ts
       - name: Preserve upload recovery evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: upload-recovery-evidence
           path: test-results-recovery
@@ -119,7 +109,7 @@ jobs:
           pnpm test:e2e:captions
       - name: Preserve caption recovery evidence separately
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: caption-recovery-visuals-and-traces
           path: |
@@ -129,13 +119,6 @@ jobs:
             playwright-report-captions
           if-no-files-found: ignore
           retention-days: 7
-      - name: Prepare native player media tooling
-        run: |
-          if ! command -v ffmpeg >/dev/null; then
-            sudo apt-get update
-            sudo apt-get install -y ffmpeg
-          fi
-          ffmpeg -version
       - name: Run localized native player acceptance
         env:
           NEXT_PUBLIC_MEDIA_BASE_URL: http://127.0.0.1:3000
@@ -144,7 +127,7 @@ jobs:
           pnpm exec playwright test --config playwright.player-localization.config.ts
       - name: Preserve localized player evidence separately
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: player-localization-evidence
           path: |
@@ -156,7 +139,7 @@ jobs:
           retention-days: 7
       - name: Preserve policy navigation evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: policy-navigation-evidence
           path: test-results/**/legal-navigation-*.png
@@ -164,14 +147,14 @@ jobs:
           retention-days: 7
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-report
           path: playwright-report
           retention-days: 7
       - name: Preserve Clips layout evidence separately
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: clips-layout-evidence
           path: |
@@ -183,7 +166,7 @@ jobs:
           retention-days: 7
       - name: Preserve Clips audience and social evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: clips-audience-evidence
           path: |
@@ -203,7 +186,7 @@ jobs:
           retention-days: 7
       - name: Preserve Auth recovery visual evidence separately
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: auth-recovery-visuals
           path: |
@@ -214,7 +197,7 @@ jobs:
           retention-days: 7
       - name: Preserve Catalog discovery visual evidence separately
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: catalog-discovery-visuals
           path: |
@@ -226,7 +209,7 @@ jobs:
           retention-days: 7
       - name: Upload PWA lifecycle failure report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-report-pwa
           path: playwright-report-pwa
@@ -234,7 +217,7 @@ jobs:
           retention-days: 7
       - name: Preserve public product visual evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: public-directory-visuals
           path: |
@@ -246,7 +229,7 @@ jobs:
           retention-days: 7
       - name: Preserve controlled runtime measurements
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: controlled-runtime-measurements
           path: test-results/**/performance-baseline-*.json
@@ -254,7 +237,7 @@ jobs:
           retention-days: 30
       - name: Preserve real PWA lifecycle evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: pwa-lifecycle-evidence
           path: test-results-pwa/**/pwa-lifecycle-*.json
@@ -262,7 +245,7 @@ jobs:
           retention-days: 30
       - name: Preserve PWA lifecycle visual evidence separately
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: pwa-lifecycle-visuals
           path: test-results-pwa/**/design-pwa-*.png
@@ -270,7 +253,7 @@ jobs:
           retention-days: 7
       - name: Preserve Admin channel visual evidence separately
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: admin-channel-visuals
           path: test-results/**/design-admin-channels-*.png
@@ -278,7 +261,7 @@ jobs:
           retention-days: 7
       - name: Preserve Creator finance visual evidence separately
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: creator-finance-visuals
           path: test-results/**/design-creator-finance-*.png
@@ -286,7 +269,7 @@ jobs:
           retention-days: 7
       - name: Preserve Creator TV visual evidence separately
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: creator-tv-visuals
           path: test-results/**/design-creator-tv-management-*.png
@@ -294,7 +277,7 @@ jobs:
           retention-days: 7
       - name: Preserve Admin finance visual evidence separately
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: admin-finance-visuals
           path: test-results/**/design-admin-finance-*.png
@@ -302,7 +285,7 @@ jobs:
           retention-days: 7
       - name: Preserve upload history visual evidence separately
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: upload-history-visuals
           path: test-results/**/design-upload-history-*.png
@@ -311,7 +294,7 @@ jobs:
 
       - name: Preserve Admin payout detail visual evidence separately
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: admin-payout-detail-visuals
           path: test-results/**/design-admin-payout-detail-*.png
@@ -320,7 +303,7 @@ jobs:
 
       - name: Preserve native account administration visuals
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: admin-users-visuals
           path: test-results/**/design-admin-users-*.png
@@ -329,7 +312,7 @@ jobs:
 
       - name: Preserve public policy channel and playlist visuals separately
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: public-channel-playlist-policy-visuals
           path: test-results/**/design-policy-*.png
@@ -338,7 +321,7 @@ jobs:
 
       - name: Preserve native TV administration visuals
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: admin-tv-visuals
           path: test-results/**/design-admin-tv-*.png
@@ -347,7 +330,7 @@ jobs:
 
       - name: Preserve native video administration visuals
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: admin-videos-visuals
           path: test-results/**/design-admin-videos-*.png
@@ -356,7 +339,7 @@ jobs:
 
       - name: Preserve Studio Content pagination visuals
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: studio-content-pagination-visuals
           path: |
@@ -367,7 +350,7 @@ jobs:
 
       - name: Preserve consolidated advertising recovery visuals
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: advertising-navigation-visuals
           path: test-results/**/design-advertising-*.png
@@ -376,7 +359,7 @@ jobs:
 
       - name: Preserve direct advertiser and campaign visuals
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: direct-campaign-workspace-visuals
           path: test-results/**/design-direct-*.png
@@ -385,7 +368,7 @@ jobs:
 
       - name: Preserve Advertising editor visuals
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: admin-advertising-editor-visuals
           path: test-results/**/advertising-editor-*.png
@@ -394,7 +377,7 @@ jobs:
 
       - name: Preserve long-content MediaCard visuals
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: media-card-long-content-visuals
           path: test-results/**/design-media-card-long-*.png
@@ -403,7 +386,7 @@ jobs:
 
       - name: Preserve native video advertising visuals
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: admin-video-ads-visuals
           path: test-results/**/design-admin-video-ads-*.png
@@ -412,7 +395,7 @@ jobs:
 
       - name: Preserve Viewer account session recovery visuals
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: account-session-recovery-visuals
           path: test-results/**/design-account-session-recovery-*.png
@@ -421,7 +404,7 @@ jobs:
 
       - name: Preserve account privacy recovery visuals
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: account-privacy-recovery-visuals
           path: test-results/**/design-account-privacy-*.png
@@ -430,7 +413,7 @@ jobs:
 
       - name: Preserve creator finance account-scope recovery visuals
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: creator-finance-account-scope-visuals
           path: test-results/**/design-creator-finance-scope-*.png
@@ -439,7 +422,7 @@ jobs:
 
       - name: Preserve whole-account scope recovery visuals
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: account-workspace-scope-visuals
           path: test-results/**/design-account-workspace-*.png
@@ -448,7 +431,7 @@ jobs:
 
       - name: Preserve product continuation visuals
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: product-continuation-visuals
           path: |
@@ -462,7 +445,7 @@ jobs:
 
       - name: Preserve Product Controls original mobile visuals
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: product-controls-mobile-visuals
           path: |
@@ -477,7 +460,7 @@ jobs:
       # acceptance command. Retain outputs when an explicit laboratory run supplies them.
       - name: Preserve explicit synthetic upload measurements
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: synthetic-upload-measurements
           path: test-results/upload-transport/**/upload-transport-runtime.json

@@ -20,7 +20,29 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // Keep the complete suite on Chromium; only these bounded critical journeys
+  // are repeated on the other engines (not the visual/performance labs).
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    {
+      name: "firefox-critical",
+      testMatch: [
+        "**/cross-browser-critical.acceptance.spec.ts",
+        "**/upload-transport.acceptance.spec.ts",
+        "**/quick-upload-account-scope.acceptance.spec.ts",
+      ],
+      use: { ...devices["Desktop Firefox"] },
+    },
+    {
+      name: "webkit-critical",
+      testMatch: [
+        "**/cross-browser-critical.acceptance.spec.ts",
+        "**/upload-transport.acceptance.spec.ts",
+        "**/quick-upload-account-scope.acceptance.spec.ts",
+      ],
+      use: { ...devices["Desktop Safari"] },
+    },
+  ],
   webServer: [
     {
       command: "pnpm --filter @ayin/api start",
