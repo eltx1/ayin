@@ -4,8 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 
-const API = "http://127.0.0.1:3001";
-
 // The same bounded journeys run in Chromium, Firefox and WebKit. These are
 // desktop browser engines against an isolated DB and intercepted media, not
 // physical-device, R2, worker-processing or Google-provider acceptance.
@@ -13,6 +11,7 @@ test("critical account provisioning, access denial, logout and RTL", async ({
   page,
   baseURL,
 }, info) => {
+  const API = `${new URL(baseURL!).protocol}//127.0.0.1:3001`;
   const email = `critical-${info.project.name}-${Date.now()}@e2e.ayin.test`;
   await page.goto("/register?lang=en");
   await page.getByLabel("Name", { exact: true }).fill("Critical browser creator");
@@ -258,7 +257,9 @@ test("supported native media decodes, plays, seeks and releases across the criti
 
 test("candidate CSP enforces exact API origins and blocks inline handlers in isolation", async ({
   page,
+  baseURL,
 }) => {
+  const API = `${new URL(baseURL!).protocol}//127.0.0.1:3001`;
   let candidateApplied = false;
   await page.route("**/login?csp-candidate=1", async (route) => {
     const response = await route.fetch();

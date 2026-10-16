@@ -72,8 +72,15 @@ jobs:
           echo "FFPROBE_PATH=$AYIN_BIN_DIR/ffprobe" >> "$GITHUB_ENV"
       - name: Verify local HTTPS transport preserves security headers
         run: node --test deploy/test-critical-browser-transport.mjs
+      - name: Build Web with HTTPS origins for the critical browser environment
+        env:
+          NEXT_PUBLIC_API_BASE_URL: https://127.0.0.1:3001
+          NEXT_PUBLIC_MEDIA_BASE_URL: https://media.invalid
+        run: pnpm --filter @ayin/web build
       - name: Run critical journeys on Chromium Firefox and WebKit over HTTPS
         run: pnpm exec playwright test --config playwright.critical.config.ts
+      - name: Restore the HTTP build for the independent ordinary browser environment
+        run: pnpm --filter @ayin/web build
       - name: Run browser acceptance
         # Separate server processes keep independent fixture registration bursts
         # from exhausting the real test-mode limiter; every ordinary test runs once.
