@@ -133,3 +133,14 @@ Combined e6badd2 quality38953935571 failed8/2405passed/3skipped; connected-media
 - Updated complete code candidate48b183630c49523223cfe7c2b9795129f9badac3 exactlymatcheslocal7a4256e tree2fa3674d099169757cc98788ae579c4f6eb8b031. This supersedes521a for finalsource; source2e6681 alreadyhasconnected5/5 andsecuritySUCCESS butfinalfullgatesremainseparate. No mainmerge/deploy.
 
 - Bookkeeping correction19:47UTC: candidate48b1836 accidentally included priorreportheada746f200 asancestor; GitHubautomaticallymarked documentationPR289 merged into the isolatedcandidatebranch. No main/applicationfixmerge orproductiondeploy occurred. Do notstate “noPRmerged” withoutthisexception. NewdraftreportPR294 carries the finaldocumentationdiff/acceptance; keepcandidatebase48b1836 frozen. No historyrewrite tohidethisevent.
+
+### Final application acceptance checkpoint — 20:07UTC
+
+- Exact tested merge84e340fe0495e89d873a2e29ca0ed3c5ea366375 shares tree1a24cf9822da60d3bb6f3cd14e4de52b78498f8c with headfb2a83/local5cf3ee4. Quality38957856990 and security38957857236 SUCCESS. API units1133/Web1218/DB58; API integration2430PASS/3SKIP/0FAIL andDB5PASS. The3dedicated-env skips execute separately in connected-media5/5PASS on sameSHA; nevercountthemasPASSintheskippedgate.
+- RealPG/FFmpeg independentHTTP evidenceartifact12070844220 checksumverified8c1ac2516ede91a5b88db6a5052ef99ad259626bd7ef646cc072887c00f24204. ActualWebartifact12071658165 ZIPandinnerarchivechecksumsverified; manifest eventpull_request is NOTproductioneligibility. Sixroutes/staticasset/headerssmokepassed.
+- Currentbrowser38957857187 criticalHTTPSstepSUCCESS; fullordinary/latergroupsstillrunning. Awaittheirexactresults. No newapplicationedits. Finaldocupdatewillbeidentifiedseparatelyfromtestedsource.
+- Financial historicalimpact remainsunverified: requiresreadonlyconsistentledger/reportreconciliation, distinguisheslinearlegitimatecorrectionsfromforks, usesstoredsnapshotsandretire-estimateeffects. Anyrepairrequiresapprovedappend-only,idempotentcompensation; no automaticaddAdjustment retries orpaid-statechanges.
+
+### Browser fixture follow-through — 20:12 UTC
+
+The older combined browser run 38953935537 passed ordinary580/skip1, critical21, PWA10, recovery20, V2 multipart1, local SigV4 six and captions18, then failed localized player setup: two bare ffmpeg calls ignored the installed FFMPEG_PATH. The actual fixture-generation loop reproduced ENOENT before and generated36 files after the two-call correction. This is test tooling, not evidence of a player product defect. Code acceptance is being rerun; the old workflow remains FAILED.
