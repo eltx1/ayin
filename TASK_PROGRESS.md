@@ -131,3 +131,5 @@ Combined e6badd2 quality38953935571 failed8/2405passed/3skipped; connected-media
 
 - Final retained-counter sweep found the same confirmed bug in comment/search/trust singleton maps. PR293 e5ed96af uses existingboundedcounter, preserves30/min,60/min,10/5min and429s; 9FAIL/8PASS before,80/80PASS after,types/lint/formatpass.4filesonly,noDB/configchanges.
 - Updated complete code candidate48b183630c49523223cfe7c2b9795129f9badac3 exactlymatcheslocal7a4256e tree2fa3674d099169757cc98788ae579c4f6eb8b031. This supersedes521a for finalsource; source2e6681 alreadyhasconnected5/5 andsecuritySUCCESS butfinalfullgatesremainseparate. No mainmerge/deploy.
+
+- Bookkeeping correction19:47UTC: candidate48b1836 accidentally included priorreportheada746f200 asancestor; GitHubautomaticallymarked documentationPR289 merged into the isolatedcandidatebranch. No main/applicationfixmerge orproductiondeploy occurred. Do notstate “noPRmerged” withoutthisexception. NewdraftreportPR294 carries the finaldocumentationdiff/acceptance; keepcandidatebase48b1836 frozen. No historyrewrite tohidethisevent.
