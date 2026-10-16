@@ -1,7 +1,6 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-const API = "http://127.0.0.1:3001";
 test.use({ serviceWorkers: "block" });
 test.beforeEach(() => {
   const url = new URL(
@@ -19,6 +18,7 @@ for (const mismatched of [false, true]) {
     baseURL,
   }) => {
     const WEB = new URL(baseURL!).origin;
+    const API = `${new URL(baseURL!).protocol}//127.0.0.1:3001`;
     const registration = await page.request.post(`${API}/auth/register`, {
       headers: { origin: WEB },
       data: {

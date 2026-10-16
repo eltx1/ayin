@@ -191,7 +191,6 @@ jobs:
       DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_test?schema=public
       TEST_DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_test?schema=public
       AYIN_CONNECTED_MEDIA_ACCEPTANCE: "1"
-      AYIN_CONNECTED_MEDIA_EVIDENCE_PATH: ${{ runner.temp }}/ayin-connected-media-evidence.json
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -212,6 +211,8 @@ jobs:
           echo "FFMPEG_PATH=$AYIN_BIN_DIR/ffmpeg" >> "$GITHUB_ENV"
           echo "FFPROBE_PATH=$AYIN_BIN_DIR/ffprobe" >> "$GITHUB_ENV"
       - name: Accept direct upload processing publication and playback bytes
+        env:
+          AYIN_CONNECTED_MEDIA_EVIDENCE_PATH: ${{ runner.temp }}/ayin-connected-media-evidence.json
         run: node scripts/with-test-database.mjs corepack pnpm --filter @ayin/api exec vitest run --fileParallelism=false test/connected-media.acceptance.test.ts test/helpers/connected-media-object-store.test.ts
       - name: Retain sanitized connected acceptance evidence
         if: always()
