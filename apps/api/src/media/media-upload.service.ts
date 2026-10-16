@@ -184,6 +184,10 @@ export class MediaUploadService {
     const assetId = randomUUID();
     const objectKey = `channels/${channelId}/media/${assetId}/source.${sourceExtension(mimeType)}`;
     const mode = input.sizeBytes >= this.config.multipartThresholdBytes ? "multipart" : "single";
+    // Both the browser contract and R2 allow at most 10,000 parts. Keep the
+    // configured target for ordinary uploads, but grow it just enough for a
+    // permitted large source; the token binds this exact per-session geometry.
+    const partSizeBytes = Math.max(this.config.partSizeBytes, Math.ceil(input.sizeBytes / 10_000));
     const expiresAtMs = Date.now() + this.config.uploadUrlTtlSeconds * 1000;
     let uploadId: string | null = null;
 
@@ -213,7 +217,7 @@ export class MediaUploadService {
       mode,
       mimeType,
       sizeBytes: input.sizeBytes,
-      partSizeBytes: this.config.partSizeBytes,
+      partSizeBytes,
       expiresAtMs,
     };
     const sessionToken = this.tokens.sign(payload);
@@ -264,8 +268,8 @@ export class MediaUploadService {
       objectKey,
       mode: "multipart" as const,
       sizeBytes: input.sizeBytes,
-      partSizeBytes: this.config.partSizeBytes,
-      partCount: Math.ceil(input.sizeBytes / this.config.partSizeBytes),
+      partSizeBytes,
+      partCount: Math.ceil(input.sizeBytes / partSizeBytes),
       sessionToken,
       expiresAt: new Date(expiresAtMs).toISOString(),
     };

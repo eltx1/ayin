@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { HttpException } from "@nestjs/common";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { platformSettingCatalog } from "../platform-config/platform-settings.catalog.js";
 import { MediaUploadService, type UploadActor } from "./media-upload.service.js";
 import { loadMediaStorageConfig } from "./media-storage.config.js";
 import { UploadRateLimiter } from "./upload-rate-limiter.js";
@@ -15,7 +16,11 @@ const sizeBytes = 70 * 1024 ** 2;
 
 type Change = "SESSION_REVOKED" | "ACCOUNT_SUSPENDED" | "AUTH_VERSION_CHANGED" | "NONE";
 type Operation = "authorizePart" | "resumeParts" | "complete" | "abort";
-function fixture(change: Change, changeDuringProvider = true) {
+function fixture(
+  change: Change,
+  changeDuringProvider = true,
+  options: { partSizeBytes?: number; maximumBytes?: number } = {},
+) {
   let revoked = !changeDuringProvider && change === "SESSION_REVOKED";
   const account = {
     status: !changeDuringProvider && change === "ACCOUNT_SUSPENDED" ? "SUSPENDED" : "ACTIVE",
@@ -79,7 +84,10 @@ function fixture(change: Change, changeDuringProvider = true) {
     abortMultipartUpload: vi.fn(async () => invalidate()),
   };
   const lifecycle = { enqueueUploadedAssetInTransaction: vi.fn() };
-  const config = loadMediaStorageConfig({ APP_ENV: "test" });
+  const config = loadMediaStorageConfig({
+    APP_ENV: "test",
+    ...(options.partSizeBytes ? { R2_PART_SIZE_BYTES: String(options.partSizeBytes) } : {}),
+  });
   const tokens = new UploadSessionTokenService(config);
   const token = tokens.sign({
     version: 1,
@@ -98,7 +106,7 @@ function fixture(change: Change, changeDuringProvider = true) {
     { client: { ...tx, $transaction: (run: (value: typeof tx) => unknown) => run(tx) } } as never,
     {
       get: vi.fn(async (key: string) =>
-        key === "uploadMaxSizeBytes" ? 5 * 1024 ** 3 : 100 * 1024 ** 3,
+        key === "uploadMaxSizeBytes" ? (options.maximumBytes ?? 5 * 1024 ** 3) : 100 * 1024 ** 3,
       ),
     } as never,
     storage as never,
@@ -117,7 +125,7 @@ function fixture(change: Change, changeDuringProvider = true) {
       );
     return service[operation](actor, token);
   };
-  return { run, tx, lifecycle, storage, service };
+  return { run, tx, lifecycle, storage, service, tokens };
 }
 
 afterEach(() => {
@@ -179,5 +187,53 @@ describe("ordinary owner current upload authority", () => {
       statusCode: 429,
     });
     expect(f.storage.createMultipartUpload).toHaveBeenCalledTimes(12);
+  });
+  it.each([
+    [5 * 1024 ** 2, 10_000 * 5 * 1024 ** 2, 5 * 1024 ** 2],
+    [5 * 1024 ** 2, 10_000 * 5 * 1024 ** 2 + 1, 5 * 1024 ** 2 + 1],
+    [5 * 1024 ** 2, 50 * 1024 ** 3, Math.ceil((50 * 1024 ** 3) / 10_000)],
+    [16 * 1024 ** 2, 50 * 1024 ** 3, 16 * 1024 ** 2],
+    [5 * 1024 ** 3, 50 * 1024 ** 3, 5 * 1024 ** 3],
+  ])(
+    "keeps allowed multipart source %i/%i within 10,000 parts",
+    async (configuredPartBytes, sourceBytes, expectedPartBytes) => {
+      vi.useFakeTimers();
+      const maximumBytes = 50 * 1024 ** 3;
+      expect(platformSettingCatalog.uploadMaxSizeBytes.schema.safeParse(maximumBytes).success).toBe(
+        true,
+      );
+      const f = fixture("NONE", true, { partSizeBytes: configuredPartBytes, maximumBytes });
+      const session = await f.service.createSession(actor, {
+        channelId,
+        sizeBytes: sourceBytes,
+        mimeType: "video/mp4",
+      });
+      expect(session.mode).toBe("multipart");
+      if (session.mode !== "multipart") throw new Error("Expected multipart fixture.");
+      expect(session.partSizeBytes).toBe(expectedPartBytes);
+      expect(session.partCount).toBeLessThanOrEqual(10_000);
+      expect(session.partCount).toBe(Math.ceil(sourceBytes / session.partSizeBytes));
+      const finalPartBytes = sourceBytes - (session.partCount - 1) * session.partSizeBytes;
+      expect(finalPartBytes).toBeGreaterThan(0);
+      expect(finalPartBytes).toBeLessThanOrEqual(session.partSizeBytes);
+      const signed = f.tokens.verify(session.sessionToken);
+      expect(signed.partSizeBytes).toBe(session.partSizeBytes);
+      expect(signed.sizeBytes).toBe(sourceBytes);
+      expect(f.storage.createMultipartUpload).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("still rejects a source above the approved business maximum before allocating multipart storage", async () => {
+    vi.useFakeTimers();
+    const maximumBytes = 50 * 1024 ** 3;
+    const f = fixture("NONE", true, { partSizeBytes: 5 * 1024 ** 2, maximumBytes });
+    await expect(
+      f.service.createSession(actor, {
+        channelId,
+        sizeBytes: maximumBytes + 1,
+        mimeType: "video/mp4",
+      }),
+    ).rejects.toMatchObject({ code: "VIDEO_TOO_LARGE", statusCode: 413 });
+    expect(f.storage.createMultipartUpload).not.toHaveBeenCalled();
   });
 });
