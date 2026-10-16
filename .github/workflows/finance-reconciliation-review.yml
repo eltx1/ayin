@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - "apps/api/src/revenue/**"
+      - "apps/api/src/admin/admin-governance.service.ts"
+      - "apps/api/test/finance-channel-contract.integration.test.ts"
       - "apps/api/test/revenue-reconciliation-concurrency.integration.test.ts"
       - ".github/workflows/finance-reconciliation-review.yml"
 permissions:
@@ -27,8 +29,10 @@ jobs:
       DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_test?schema=public
       TEST_DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_test?schema=public
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .nvmrc
       - run: corepack enable
@@ -36,4 +40,4 @@ jobs:
       - run: corepack pnpm packages:build
       - run: corepack pnpm db:migrate:deploy
       - run: corepack pnpm db:seed
-      - run: corepack pnpm --filter @ayin/api exec vitest run --fileParallelism=false --testTimeout=30000 test/revenue-reconciliation-concurrency.integration.test.ts
+      - run: corepack pnpm --filter @ayin/api exec vitest run --fileParallelism=false --testTimeout=30000 test/revenue-reconciliation-concurrency.integration.test.ts test/finance-channel-contract.integration.test.ts
