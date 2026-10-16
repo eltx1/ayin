@@ -107,3 +107,13 @@ Baseline main/live SHA: `73f08d7e1d19e6ab8256718eb4d390c4fcbe653d`. Existing PR2
 - Final local application snapshot881820f includes the narrow Clips feedback containment. One synthetic built-Next Chromium case passed loading→500→bounded recovery scroll→ready; no physical-device or real-storage claim. PR288 is independent on main. Internal testing snapshot branch: `audit/internal-test-candidate-20261016`; no large merge PR or production release. Finance final quality38937883096 passed all2319 API integration-gate tests (overlaps units), DB5 and production archive smoke on dc1b559.
 
 - Handoff verification on local source881820f0bd4682758aca83c3eab7cdf9550ec217: format:check, lint and typecheck all exit0. Last change was Clips CSS plus its focused browser regression; build and that test passed. Latest PR checks still queued/running are not credited as success. Main and existing PR260/262 were re-read unchanged at17:57UTC.
+
+### Audit continuation — unified candidate pending acceptance
+
+- Local source285dfb69669077204e5777460d0c912210af4031 exactly matches remote isolated candidate36fd66ff2a3c3882a84f44b87ed34bb47e029498 tree4c208c494501f08f5b5a133a4c3c4296a6794080. No main/deploy/merge or production writes.
+- Finance compliance/dispute authority: real PG red16FAIL/43PASS then green59/59 on5f23a00, run38952231123.
+- Encrypted synthetic PG restore PASS on5142e4e/run38952467572;18guards and corrupt/wrong-key/existing-target checks. Local filesystem storage, not production backup.
+- Legacy cancellation confirmed by PG red3; firstfix exposed irreversible-marker self-rejection (5FAIL/3PASS). Exact-Abort correction published2ef0ae8; green8pending. RetainedV1debt remains quota-charged without settlement proof.
+- Worker manifest/PUT response and legacy download bounds fixed; actualservice red/green evidence. Critical browser HTTPS build origins corrected without security/assertion weakening; latestCI pending.
+- Connected media3pipeline cases plus2store helpers added in291; actualPG+FFmpeg+boundedindependentHTTP, notR2. Workflowcontext fix5aaa93e; acceptancepending.
+- Next: execute combined candidate gates, diagnose remaining failures, update exactSHA evidence in audit, then request normal code review only. ExternalR2/device/provider/productionbackup limits remain explicit. No background completion promise.
