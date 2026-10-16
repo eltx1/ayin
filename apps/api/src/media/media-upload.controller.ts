@@ -1,4 +1,14 @@
-import { Body, Controller, HttpException, Inject, Post, Req, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  HttpException,
+  Inject,
+  Post,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 import { z } from "zod";
 
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
@@ -31,6 +41,12 @@ const completeSchema = sessionSchema.extend({
 @UseGuards(AuthGuard)
 export class MediaUploadController {
   constructor(@Inject(MediaUploadService) private readonly uploads: MediaUploadService) {}
+
+  @Get("policy")
+  @Header("Cache-Control", "private, no-store")
+  policy() {
+    return this.run(() => this.uploads.getUploadPolicy());
+  }
 
   @Post("sessions")
   async createSession(@Req() request: AuthenticatedRequest, @Body() body: unknown) {

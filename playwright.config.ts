@@ -1,8 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-if (!databaseUrl)
-  throw new Error("TEST_DATABASE_URL or DATABASE_URL is required for Playwright E2E.");
+import { requireTestDatabase } from "./scripts/test-database-guard.mjs";
+
+const databaseUrl = requireTestDatabase();
 
 export default defineConfig({
   testDir: "tests/e2e",
@@ -20,12 +20,34 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // Keep the complete suite on Chromium; only these bounded critical journeys
+  // are repeated on the other engines (not the visual/performance labs).
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    {
+      name: "firefox-critical",
+      testMatch: [
+        "**/cross-browser-critical.acceptance.spec.ts",
+        "**/upload-transport.acceptance.spec.ts",
+        "**/quick-upload-account-scope.acceptance.spec.ts",
+      ],
+      use: { ...devices["Desktop Firefox"] },
+    },
+    {
+      name: "webkit-critical",
+      testMatch: [
+        "**/cross-browser-critical.acceptance.spec.ts",
+        "**/upload-transport.acceptance.spec.ts",
+        "**/quick-upload-account-scope.acceptance.spec.ts",
+      ],
+      use: { ...devices["Desktop Safari"] },
+    },
+  ],
   webServer: [
     {
       command: "pnpm --filter @ayin/api start",
       url: "http://127.0.0.1:3001/health",
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 120_000,
       env: {
         ...process.env,
@@ -46,7 +68,7 @@ export default defineConfig({
     {
       command: "pnpm --filter @ayin/web start",
       url: "http://127.0.0.1:3000",
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 120_000,
       env: {
         ...process.env,

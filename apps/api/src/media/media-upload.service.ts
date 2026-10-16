@@ -120,6 +120,16 @@ export class MediaUploadService {
     @Inject(UploadRateLimiter) private readonly rateLimiter: UploadRateLimiter,
   ) {}
 
+  async getUploadPolicy() {
+    // This is the ordinary upload contract, not a recovery capability or a
+    // reservation. Admission still checks current settings and channel quota.
+    return {
+      maxFileSizeBytes: (await this.settings.get("uploadMaxSizeBytes")) as number,
+      sessionLifetimeSeconds: this.config.uploadUrlTtlSeconds,
+      reloadResumeSupported: false as const,
+    };
+  }
+
   async createSession(
     actor: UploadActor,
     input: CreateUploadSessionInput,
