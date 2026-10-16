@@ -68,3 +68,20 @@ test("runner fails before executing child when test database is absent", () => {
   assert.equal(result.status, 1);
   assert.doesNotMatch(result.stdout, /CHILD_EXECUTED/);
 });
+
+test("Vitest setup binds implicit client configuration to the validated test URL", () => {
+  const env = { ...process.env, APP_ENV: "test", TEST_DATABASE_URL: url };
+  delete env.DATABASE_URL;
+  const setup = new URL("./check-test-database.mjs", import.meta.url).href;
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `import ${JSON.stringify(setup)}; if (process.env.DATABASE_URL !== process.env.TEST_DATABASE_URL) process.exitCode = 1;`,
+    ],
+    { env, encoding: "utf8" },
+  );
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, "");
+});

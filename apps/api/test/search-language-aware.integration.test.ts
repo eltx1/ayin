@@ -1,10 +1,11 @@
 import { createPrismaClient } from "@ayin/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { requireTestDatabase } from "../../../scripts/test-database-guard.mjs";
 
 import { LanguageAwarePostgresSearchService } from "../src/search/language-aware-postgres-search.service.js";
 import { SearchLanguageContextService } from "../src/search/search-language-context.service.js";
 
-const client = createPrismaClient();
+const client = createPrismaClient(requireTestDatabase());
 const database = { client } as never;
 const context = new SearchLanguageContextService();
 const search = new LanguageAwarePostgresSearchService(database, context);
