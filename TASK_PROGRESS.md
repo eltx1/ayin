@@ -128,3 +128,6 @@ Combined e6badd2 quality38953935571 failed8/2405passed/3skipped; connected-media
 
 - Focused privacy/authority/upload/cancellation PG acceptance now87/87PASS, noSKIP/deadlock, run38956429001/job117160345499, head84c2afb/mergefb3ae748. Syntheticstorage, realisolatedPG. UIstack#287updateddd726d4 tosameacceptedparentfix.
 - Final continuation candidate521a4b352634cdce1fa655706c80b2d3d121a3e5 exactlymatcheslocaldc48850 treeb307b7b3b4f1be185efe3937f36c0e3fdcdb43b0. Includesprivacyandedgefixes. ReportPR289addsdocumentationonlyandwillruncombinedquality/security/browser/connectedacceptance. No mainmerge/deployment. Finalresultsstillpending.
+
+- Final retained-counter sweep found the same confirmed bug in comment/search/trust singleton maps. PR293 e5ed96af uses existingboundedcounter, preserves30/min,60/min,10/5min and429s; 9FAIL/8PASS before,80/80PASS after,types/lint/formatpass.4filesonly,noDB/configchanges.
+- Updated complete code candidate48b183630c49523223cfe7c2b9795129f9badac3 exactlymatcheslocal7a4256e tree2fa3674d099169757cc98788ae579c4f6eb8b031. This supersedes521a for finalsource; source2e6681 alreadyhasconnected5/5 andsecuritySUCCESS butfinalfullgatesremainseparate. No mainmerge/deploy.
