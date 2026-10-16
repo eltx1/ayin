@@ -282,7 +282,7 @@ test.describe.serial("EN/AR decoded player controls", () => {
     fixture = fixtureCommand<Fixture>("seed");
     hlsDirectory = mkdtempSync(path.join(os.tmpdir(), "ayin-player-locale-hls-"));
     for (const height of [160, 320]) {
-      execFileSync("ffmpeg", [
+      execFileSync(process.env.FFMPEG_PATH ?? "ffmpeg", [
         "-hide_banner",
         "-loglevel",
         "error",
@@ -307,7 +307,7 @@ test.describe.serial("EN/AR decoded player controls", () => {
         `${hlsDirectory}/${height}p-%03d.ts`,
         `${hlsDirectory}/${height}p.m3u8`,
       ]);
-      execFileSync("ffmpeg", [
+      execFileSync(process.env.FFMPEG_PATH ?? "ffmpeg", [
         "-hide_banner",
         "-loglevel",
         "error",
