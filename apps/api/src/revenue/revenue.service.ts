@@ -164,6 +164,8 @@ export class RevenueService {
       throw new BadRequestException("Invalid channel contract.");
     const data = parsed.data;
     return this.database.client.$transaction(async (tx) => {
+      // Acquire authority before channel/ledger locks; retain it through commit.
+      await assertAdminFinanceAuthority(tx, actorAccountId);
       const channels = await tx.$queryRaw<Array<{ id: string }>>(
         Prisma.sql`/* ayin-contract-write-lock */ SELECT "id" FROM "Channel" WHERE "id" = ${channelId}::uuid FOR UPDATE`,
       );
@@ -207,6 +209,8 @@ export class RevenueService {
   async importRevenue(actorAccountId: string, input: unknown) {
     const data = revenueImportSchema.parse(input);
     return this.database.client.$transaction(async (tx) => {
+      // Acquire authority before channel/ledger locks; retain it through commit.
+      await assertAdminFinanceAuthority(tx, actorAccountId);
       let created = 0;
       let duplicates = 0;
       for (const entry of data.entries) {
@@ -274,6 +278,8 @@ export class RevenueService {
       data.campaignId ?? null,
     );
     return this.database.client.$transaction(async (tx) => {
+      // Acquire authority before channel/ledger locks; retain it through commit.
+      await assertAdminFinanceAuthority(tx, actorAccountId);
       const entry = await tx.earningsLedgerEntry.create({
         data: {
           channelId: data.channelId,
