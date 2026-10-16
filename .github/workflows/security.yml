@@ -1,34 +1,11 @@
 name: Security gates
 
 on:
+  # Every main SHA must have all release evidence, including shared/config-only changes.
   push:
-    branches:
-      - main
-    paths:
-      - "apps/**"
-      - "packages/**"
-      - "deploy/**"
-      - "tests/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - ".nvmrc"
-      - ".github/workflows/security.yml"
-      - ".github/codeql/**"
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "apps/**"
-      - "packages/**"
-      - "deploy/**"
-      - "tests/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - ".nvmrc"
-      - ".github/workflows/security.yml"
-      - ".github/codeql/**"
+    branches: [main]
+  # Include stacked PRs; production evidence still comes only from main pushes.
+  pull_request: {}
   schedule:
     - cron: "17 4 * * 1"
   workflow_dispatch:
