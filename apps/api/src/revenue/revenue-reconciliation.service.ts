@@ -1,8 +1,9 @@
-import type { Prisma } from "@ayin/db";
+import { Prisma } from "@ayin/db";
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
 import { DatabaseService } from "../database/database.service.js";
+import { assertAdminFinanceAuthority } from "./admin-finance-authority.js";
 import { selectEffectiveContract } from "./contract-selection.js";
 import { applyRevenueShareMicros, formatMoneyMicros, parseMoneyMicros } from "./money.js";
 import {
@@ -99,6 +100,16 @@ export class RevenueReconciliationService {
 
     try {
       return await this.database.client.$transaction(async (tx) => {
+        // A source row can recur under a different report ID. Serialize that
+        // source before reading prior rows so concurrent corrections cannot
+        // both credit the same amount. The existing ledger key only deduplicates
+        // one report; it does not protect reconciliation across reports.
+        await tx.$queryRaw(
+          Prisma.sql`/* ayin-reconciliation-source-lock */ SELECT pg_advisory_xact_lock(hashtextextended(${`ayin:revenue-reconciliation:${report.source}`}, 0))::text`,
+        );
+        // The controller check predates any wait for this source. Recheck and
+        // retain the active account/finance role until this ledger write commits.
+        await assertAdminFinanceAuthority(tx, actorAccountId);
         const concurrent = await tx.revenueSourceReport.findUnique({
           where: {
             source_sourceReportId: {
@@ -285,6 +296,7 @@ export class RevenueReconciliationService {
             creatorMicros,
             ledgerEntryId: primaryLedgerEntryId,
             priorRowId: previous?.id ?? null,
+            previousCreatedAt: previous?.createdAt,
           });
         }
 
@@ -511,6 +523,7 @@ export class RevenueReconciliationService {
       creatorMicros: bigint | null;
       ledgerEntryId: string | null;
       priorRowId: string | null;
+      previousCreatedAt?: Date | undefined;
     },
   ) {
     return tx.revenueSourceReportRow.create({
@@ -535,6 +548,10 @@ export class RevenueReconciliationService {
         priorRowId: input.priorRowId,
         reason: input.reason.slice(0, 500),
         memo: input.row.memo ?? null,
+        // PostgreSQL now() is the transaction start, possibly before a source
+        // lock wait. Keep accepted correction order strict even within one ms
+        // or when the waiting transaction started earlier than its predecessor.
+        createdAt: new Date(Math.max(Date.now(), (input.previousCreatedAt?.getTime() ?? 0) + 1)),
       },
     });
   }
