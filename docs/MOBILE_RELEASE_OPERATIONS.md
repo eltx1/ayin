@@ -67,7 +67,7 @@ For Android Analytics DebugView, use `adb shell setprop debug.firebase.analytics
 
 ## Rollback
 
-Turn off platform-specific ads, analytics or notifications in AYIN mobile admin for a feature rollback. Keep the push worker disabled until delivery configuration is accepted. Do not modify settings during an ad or upload; clients apply them on safe initialization boundaries. Existing in-flight OS push delivery is not recallable.
+Turn off platform-specific ads, analytics or notifications in AYIN mobile admin for a feature rollback. Client configuration is fetched at hosted-interface initialization, so this is not an instant broadcast to already-open sessions: it takes effect at the next initialization. The server push dispatcher separately rechecks configuration before sending. Keep the push worker disabled until delivery configuration is accepted. Do not modify settings during an ad or upload; clients apply them on safe initialization boundaries. Existing in-flight OS push delivery is not recallable.
 
 For hosted UI regressions, use the established AYIN server release rollback and retain backward-compatible bridge handling. Do not force-reload active uploads or playback. Native optional features fail closed on unsupported config; old PWA/native clients retain their existing fallbacks. A bundled retry screen is not a last-known-good offline copy of the full SSR site.
 

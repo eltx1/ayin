@@ -35,6 +35,14 @@ export class UserBlocksController {
     return this.blocks.list(request.ayinAuth.accountId);
   }
 
+  @Get("channels/:channelId")
+  @Header("Cache-Control", "private, no-store")
+  channelStatus(@Req() request: AuthenticatedRequest, @Param("channelId") id: string) {
+    const parsed = z.uuid().safeParse(id);
+    if (!parsed.success) throw new BadRequestException("Invalid channel.");
+    return this.blocks.channelStatus(request.ayinAuth.accountId, parsed.data);
+  }
+
   @Post()
   @Header("Cache-Control", "private, no-store")
   block(@Req() request: AuthenticatedRequest, @Body() input: unknown) {

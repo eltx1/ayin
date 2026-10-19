@@ -65,6 +65,7 @@ class MainActivity : AppCompatActivity() {
     private var shellFullscreen = false
     private var networkCallbackRegistered = false
     private var lastNetworkOnline: Boolean? = null
+    @Volatile private var testDocument: Pair<String, String>? = null
     private data class VideoSelection(
         val view: WebView,
         val url: String,
@@ -131,13 +132,18 @@ class MainActivity : AppCompatActivity() {
             },
         )
 
-        val restored = savedInstanceState?.let { webView.restoreState(it) } != null
+        // Instrumentation supplies its HTTPS document after launch. Do not start a
+        // competing production request (including restore) in this debug-only mode.
+        val fixtureMode = BuildConfig.DEBUG && intent.getBooleanExtra(TEST_FIXTURE_MODE, false)
+        val restored = !fixtureMode && savedInstanceState?.let { webView.restoreState(it) } != null
         lastTrustedUrl =
             savedInstanceState?.getString(STATE_LAST_TRUSTED_URL)?.takeIf(::isTrustedWebUrl)
                 ?: BuildConfig.AYIN_ORIGIN
         directBackArmed = savedInstanceState?.getBoolean(STATE_DIRECT_BACK_ARMED) ?: false
 
-        if (!restored) loadIntent(intent) else mobileRuntime.opened(intent)
+        if (!fixtureMode) {
+            if (!restored) loadIntent(intent) else mobileRuntime.opened(intent)
+        }
         webView.requestFocus()
         debugLog("created platform=${BuildConfig.SHELL_PLATFORM} restored=$restored")
     }
@@ -625,6 +631,19 @@ class MainActivity : AppCompatActivity() {
         }
 
     private inner class AyinWebViewClient : WebViewClient() {
+        override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+            if (BuildConfig.DEBUG && request.isForMainFrame && request.method == "GET" && isTrustedOrigin(request.url)) {
+                val fixture = testDocument
+                if (fixture != null && request.url.toString() == fixture.first) {
+                    return WebResourceResponse(
+                        "text/html", "UTF-8", 200, "OK", mapOf("Cache-Control" to "no-store"),
+                        fixture.second.byteInputStream(Charsets.UTF_8),
+                    )
+                }
+            }
+            return super.shouldInterceptRequest(view, request)
+        }
+
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
             super.onPageStarted(view, url, favicon)
             if (view === webView) {
@@ -796,23 +815,26 @@ class MainActivity : AppCompatActivity() {
         debugLog("fullscreen=$enabled")
     }
 
-    internal fun loadTestHtmlForTests(html: String) {
+    internal fun loadTestHtmlForTests(html: String): String {
         check(BuildConfig.DEBUG)
-        webView.loadDataWithBaseURL(
-            BuildConfig.AYIN_ORIGIN,
-            html,
-            "text/html",
-            "UTF-8",
-            // Match a real trusted navigation in both JavaScript and WebView.getUrl().
-            // A null history URL leaves getUrl() at about:blank on some WebView versions.
-            BuildConfig.AYIN_ORIGIN,
-        )
+        check(intent.getBooleanExtra(TEST_FIXTURE_MODE, false))
+        val target = "${BuildConfig.AYIN_ORIGIN}/__ayin_shell_test__/${System.nanoTime()}"
+        webView.stopLoading()
+        testDocument = target to html
+        // Exercise the production HTTPS origin boundary, never a data: document.
+        webView.loadUrl(target)
+        return target
     }
 
     internal fun simulateRendererRecoveryForTests() {
         check(BuildConfig.DEBUG)
         val target = currentTrustedUrl()
         lastTrustedUrl = target
+        // Re-create the same local test document at its current SPA URL; recovery
+        // must not depend on a production route or network availability.
+        if (intent.getBooleanExtra(TEST_FIXTURE_MODE, false)) {
+            testDocument = testDocument?.let { target to it.second }
+        }
         replaceWebView(target, rendererRecovery = true)
     }
 
@@ -832,6 +854,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        internal const val TEST_FIXTURE_MODE = "net.ayin.shell.TEST_FIXTURE_MODE"
         private const val TAG = "AyinShell"
         private const val MAX_BRIDGE_MESSAGE_LENGTH = 32768
         private const val MAX_EXTERNAL_URL_LENGTH = 2048

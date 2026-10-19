@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Prisma } from "@ayin/db";
-import { blockTargetSchema } from "./user-blocks.controller.js";
+import type { DatabaseService } from "../database/database.service.js";
+import type { AuthRateLimiter } from "../auth/auth-rate-limiter.js";
+import type { AuthenticatedRequest } from "../auth/auth.guard.js";
+import { blockTargetSchema, UserBlocksController } from "./user-blocks.controller.js";
+import { UserBlocksService } from "./user-blocks.service.js";
 import {
   assertNoUserBlock,
   blockedAccountIds,
@@ -31,6 +35,41 @@ describe("user safety block contracts", () => {
     const db = { userBlock: { findFirst } } as unknown as Prisma.TransactionClient;
     await expect(assertNoUserBlock(db, actor, [other])).rejects.toMatchObject({ status: 403 });
     expect(findFirst).toHaveBeenCalledWith({ where: blockedRelationWhere(actor, [other]) });
+  });
+  it("returns only the channel safety status using the bidirectional account predicate", async () => {
+    const channelId = "7f778266-717e-402b-b97a-b851f64849ad";
+    const findFirst = vi.fn().mockResolvedValue({ blockerAccountId: other });
+    const findMany = vi.fn().mockResolvedValue([{ accountId: other }]);
+    const service = new UserBlocksService({
+      client: { userBlock: { findFirst }, channelMember: { findMany } },
+    } as unknown as DatabaseService);
+    expect(await service.channelStatus(actor, channelId)).toEqual({
+      accountId: actor,
+      channelId,
+      blocked: true,
+    });
+    expect(findFirst).toHaveBeenCalledWith({
+      where: blockedRelationWhere(actor, [other]),
+      select: { blockerAccountId: true },
+    });
+    findMany.mockResolvedValueOnce([]);
+    findFirst.mockClear();
+    expect(await service.channelStatus(actor, channelId)).toEqual({
+      accountId: actor,
+      channelId,
+      blocked: false,
+    });
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+  it("rejects malformed channel UUIDs before performing a safety lookup", () => {
+    const channelStatus = vi.fn();
+    const controller = new UserBlocksController(
+      { channelStatus } as unknown as UserBlocksService,
+      {} as AuthRateLimiter,
+    );
+    const request = { ayinAuth: { accountId: actor } } as AuthenticatedRequest;
+    expect(() => controller.channelStatus(request, "not-a-uuid")).toThrow("Invalid channel.");
+    expect(channelStatus).not.toHaveBeenCalled();
   });
   it("deduplicates bilateral relations and makes no identity query for anonymous readers", async () => {
     const findMany = vi.fn().mockResolvedValue([

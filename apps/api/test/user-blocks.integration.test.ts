@@ -149,6 +149,90 @@ databaseDescribe("Account-wide user blocking", () => {
     expect(await prisma.userBlock.count()).toBe(0);
   });
 
+  it("offers a metadata-free account-wide safety lookup for Kids without social features", async () => {
+    const { owner, viewer, third } = await fixture();
+    await prisma.viewerProfile.update({
+      where: { id: viewer.user.profile.id },
+      data: { isKids: true },
+    });
+    const alternate = await prisma.channel.create({
+      data: {
+        handle: `alternate-${randomUUID()}`,
+        name: "Private ownership linkage",
+        members: { create: { accountId: owner.user.account.id, role: "OWNER" } },
+      },
+    });
+    const url = `/user-blocks/channels/${alternate.id}`;
+    expect((await app.inject({ method: "GET", url })).statusCode).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/user-blocks/channels/invalid",
+          headers: viewer.headers,
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url,
+          headers: { ...viewer.headers, "x-ayin-expected-account": third.user.account.id },
+        })
+      ).statusCode,
+    ).toBe(409);
+    const unblocked = await app.inject({ method: "GET", url, headers: viewer.headers });
+    expect(unblocked.statusCode).toBe(200);
+    expect(unblocked.headers["cache-control"]).toContain("no-store");
+    expect(unblocked.json()).toEqual({
+      accountId: viewer.user.account.id,
+      channelId: alternate.id,
+      blocked: false,
+    });
+    // A block of one public channel applies to all channels owned by the account.
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/user-blocks",
+          headers: viewer.headers,
+          payload: { channelId: owner.user.channel.id },
+        })
+      ).statusCode,
+    ).toBe(201);
+    expect((await app.inject({ method: "GET", url, headers: viewer.headers })).json()).toEqual({
+      accountId: viewer.user.account.id,
+      channelId: alternate.id,
+      blocked: true,
+    });
+    // The reverse relation is checked without exposing either account's identity.
+    const reverse = await app.inject({
+      method: "GET",
+      url: `/user-blocks/channels/${viewer.user.channel.id}`,
+      headers: owner.headers,
+    });
+    expect(reverse.json()).toEqual({
+      accountId: owner.user.account.id,
+      channelId: viewer.user.channel.id,
+      blocked: true,
+    });
+    const absentId = randomUUID();
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/user-blocks/channels/${absentId}`,
+          headers: viewer.headers,
+        })
+      ).json(),
+    ).toEqual({
+      accountId: viewer.user.account.id,
+      channelId: absentId,
+      blocked: false,
+    });
+  });
+
   it("removes subscriptions and suppresses blocked notifications without resubscribing on unblock", async () => {
     const { owner, viewer } = await fixture();
     expect(

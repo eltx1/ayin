@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { useAccountFreeze, useAccountWorkspace } from "@/components/account/account-workspace";
-import { requestAccountScope } from "@/lib/account-scope";
+import { AccountScopeError, requestAccountScope } from "@/lib/account-scope";
+import { readChannelBlockStatus } from "@/lib/channel-block-status";
 import { ActionButton } from "@/components/ui/design-system";
 import styles from "@/app/(viewer)/account/account.module.css";
 const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
@@ -204,40 +205,37 @@ export function ChannelBlockGate({
   children,
 }: {
   channelId: string;
-  children: import("react").ReactNode;
+  children: ReactNode;
 }) {
   const { locale } = useI18n(),
     ar = locale === "ar";
   const [blocked, setBlocked] = useState(false);
   useEffect(() => {
-    const controller = new AbortController();
+    let controller: AbortController | undefined;
     const refresh = () => {
-      void import("@/lib/api")
-        .then(async ({ apiBaseUrl }) => {
-          const response = await fetch(apiBaseUrl + "/social/channels/" + channelId, {
-            credentials: "include",
-            cache: "no-store",
-            signal: controller.signal,
-          });
-          if (controller.signal.aborted) return;
-          if (response.status === 403) {
-            const result = await response.json();
-            if (!controller.signal.aborted && result?.error?.code === "USER_BLOCKED")
-              setBlocked(true);
-          } else if (response.ok || response.status === 401) setBlocked(false);
+      controller?.abort();
+      const active = new AbortController();
+      controller = active;
+      void readChannelBlockStatus(channelId, active.signal)
+        .then((value) => {
+          if (!active.signal.aborted) setBlocked(value);
         })
-        .catch(() => undefined);
+        .catch((error: unknown) => {
+          if (!active.signal.aborted && error instanceof AccountScopeError && error.status === 401)
+            setBlocked(false);
+        });
     };
     const changed = (event: Event) => {
-      if ((event as CustomEvent<{ channelId?: string }>).detail?.channelId === channelId)
+      if ((event as CustomEvent<{ channelId?: string }>).detail?.channelId === channelId) {
+        controller?.abort();
         setBlocked(true);
-      else refresh();
+      } else refresh();
     };
     refresh();
     window.addEventListener("focus", refresh);
     window.addEventListener("ayin:user-blocked", changed);
     return () => {
-      controller.abort();
+      controller?.abort();
       window.removeEventListener("focus", refresh);
       window.removeEventListener("ayin:user-blocked", changed);
     };

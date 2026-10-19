@@ -10,6 +10,7 @@ import {
 import type { AuthenticatedRequest } from "../auth/auth.guard.js";
 import { DatabaseService } from "../database/database.service.js";
 import { analyticsPseudonym } from "../analytics/analytics-identity.js";
+import { blockedRelationWhere } from "./user-blocks.policy.js";
 
 type Authority = AuthenticatedRequest["ayinAuth"];
 export type BlockTarget =
@@ -18,6 +19,25 @@ export type BlockTarget =
 @Injectable()
 export class UserBlocksService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+
+  async channelStatus(accountId: string, channelId: string) {
+    // Safety is account-wide, including Kids profiles, without invoking social
+    // features or disclosing the owner's identity and other channels.
+    const owners = await this.database.client.channelMember.findMany({
+      where: { channelId, role: "OWNER" },
+      select: { accountId: true },
+    });
+    const relation = owners.length
+      ? await this.database.client.userBlock.findFirst({
+          where: blockedRelationWhere(
+            accountId,
+            owners.map((owner) => owner.accountId),
+          ),
+          select: { blockerAccountId: true },
+        })
+      : null;
+    return { accountId, channelId, blocked: relation !== null };
+  }
 
   async list(accountId: string) {
     const rows = await this.database.client.userBlock.findMany({

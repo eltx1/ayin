@@ -1,0 +1,109 @@
+name: Mobile administration and Kids browser acceptance
+
+on:
+  pull_request:
+    paths:
+      - "apps/**"
+      - "packages/**"
+      - "tests/e2e/admin-mobile.acceptance.spec.ts"
+      - "tests/e2e/public-channel-playlist-policy.acceptance.spec.ts"
+      - "tests/e2e/db-helper.mjs"
+      - "tests/e2e/mfa-helper.ts"
+      - "playwright.config.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/mobile-browser-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-browser-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mobile-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: ayin_e2e
+          POSTGRES_USER: ayin
+          POSTGRES_PASSWORD: ayin
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ayin -d ayin_e2e"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    # Isolated runner database only. No Firebase account or production credentials.
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_e2e?schema=public
+      TEST_DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_e2e?schema=public
+      AUTH_TOKEN_SECRET: task-29-e2e-auth-secret-with-more-than-32-characters
+      UPLOAD_SESSION_SECRET: task-29-e2e-upload-secret-with-more-than-32-characters
+      PAYOUT_DATA_ENCRYPTION_KEY: CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk=
+      WEB_ORIGIN: http://127.0.0.1:3000
+      CORS_ORIGIN: http://127.0.0.1:3000
+      NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:3001
+      NEXT_PUBLIC_MEDIA_BASE_URL: http://media.invalid
+      AYIN_E2E_STORAGE: "1"
+      MOBILE_PUSH_WORKER_ENABLED: "false"
+      PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-mobile
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Install locked dependencies and Chromium
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+      - name: Prepare isolated PostgreSQL and build production applications
+        run: |
+          pnpm db:generate
+          pnpm db:migrate:deploy
+          pnpm db:seed
+          pnpm build
+      - name: Verify mobile administration and Kids regression journeys
+        # Existing journeys supplement full V1 acceptance, which remains unchanged.
+        # Auth, MFA and persistence use the real local API/DB; delivery stays OFF.
+        run: |
+          pnpm exec playwright test \
+            tests/e2e/admin-mobile.acceptance.spec.ts \
+            tests/e2e/public-channel-playlist-policy.acceptance.spec.ts \
+            --project=chromium --workers=1 --output=test-results-mobile
+      - name: Record source provenance
+        if: always()
+        env:
+          AYIN_SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          mkdir -p test-results-mobile
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          pathlib.Path("test-results-mobile/provenance.json").write_text(json.dumps({
+              "sourceHead": os.environ["AYIN_SOURCE_HEAD_SHA"],
+              "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "workflowRun": os.environ["GITHUB_RUN_ID"],
+              "node": subprocess.check_output(["node", "--version"], text=True).strip(),
+              "pnpm": subprocess.check_output(["pnpm", "--version"], text=True).strip(),
+              "scope": "Existing mobile-admin and Kids journeys with local PostgreSQL; no Ads, Analytics or FCM delivery proof."
+          }, indent=2) + "\n")
+          PY
+      - name: Retain browser report and failure diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ayin-mobile-browser-${{ github.sha }}
+          path: |
+            playwright-report-mobile/
+            test-results-mobile/
+          if-no-files-found: ignore
+          retention-days: 7

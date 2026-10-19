@@ -124,7 +124,7 @@ class ShellBaselineInstrumentedTest {
                     .contains("ayin_task77_session=baseline"),
             )
 
-            loadHarness(scenario)
+            val harnessId = loadHarness(scenario)
             evaluateJavascript(
                 scenario,
                 "history.pushState({}, '', '/watch/task77-spa-route'); true",
@@ -152,6 +152,10 @@ class ShellBaselineInstrumentedTest {
             )
             scenario.onActivity {
                 assertTrue(it.lastTrustedUrlForTests().endsWith("/watch/task77-spa-route"))
+            }
+            assertTrue(awaitJsBoolean(scenario, "document.readyState === 'complete' && window.__ayinHarnessId === '$harnessId'"))
+            scenario.onActivity {
+                assertEquals(BuildConfig.AYIN_ORIGIN + "/watch/task77-spa-route", it.webView.url)
             }
             assertTrue(
                 CookieManager.getInstance()
@@ -202,14 +206,17 @@ class ShellBaselineInstrumentedTest {
     private fun launch(): ActivityScenario<MainActivity> {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         return ActivityScenario.launch(
-            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            Intent(context, MainActivity::class.java)
+                .putExtra(MainActivity.TEST_FIXTURE_MODE, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
     }
 
-    private fun loadHarness(scenario: ActivityScenario<MainActivity>) {
+    private fun loadHarness(scenario: ActivityScenario<MainActivity>): String {
         val harnessId = System.nanoTime().toString()
+        var harnessUrl = ""
         scenario.onActivity {
-            it.loadTestHtmlForTests(
+            harnessUrl = it.loadTestHtmlForTests(
                 """
                 <!doctype html>
                 <html>
@@ -244,10 +251,12 @@ class ShellBaselineInstrumentedTest {
         }
         assertTrue(awaitJsBoolean(scenario, "document.readyState === 'complete' && window.__ayinHarnessId === '$harnessId'"))
         scenario.onActivity {
-            assertEquals("Harness must have a trusted native URL", BuildConfig.AYIN_ORIGIN.trimEnd('/'), it.webView.url?.trimEnd('/'))
+            assertEquals("Harness must have the exact trusted HTTPS fixture URL", harnessUrl, it.webView.url)
             it.webView.requestFocus()
         }
+        assertTrue(awaitJsBoolean(scenario, "location.href === ${JSONObject.quote(harnessUrl)}"))
         assertTrue(awaitJsBoolean(scenario, "location.origin === ${JSONObject.quote(BuildConfig.AYIN_ORIGIN)}"))
+        return harnessId
     }
 
     private fun awaitJsBoolean(

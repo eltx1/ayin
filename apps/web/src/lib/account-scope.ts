@@ -136,6 +136,9 @@ export async function requestAccountScope<T>(
   );
   const userBlocksPath =
     ((method === "GET" || method === "POST") && path === "/user-blocks") ||
+    (method === "GET" &&
+      /^\/user-blocks\/channels\/[0-9a-f-]{36}$/i.test(path) &&
+      uuid.test(path.split("/")[3]!)) ||
     (method === "DELETE" &&
       /^\/user-blocks\/[0-9a-f-]{36}$/i.test(path) &&
       uuid.test(path.split("/")[2]!));
