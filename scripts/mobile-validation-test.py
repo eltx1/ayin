@@ -3,6 +3,10 @@
 import base64
 import importlib.util
 import os
+import json
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 import plistlib
 import struct
@@ -48,6 +52,17 @@ class ReleaseConfigurationTests(unittest.TestCase):
     def test_unsigned_config_does_not_require_private_key(self):
         with patch.dict(os.environ, self.base(), clear=True):
             self.assertIsNone(config.validate('android'))
+
+    def test_android_json_maps_only_configured_client_values(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'google-services.json'
+            result = subprocess.run([sys.executable, str(Path(__file__).with_name('mobile-release-config.py')), 'android', '--firebase-json', str(output)], env=self.base(), capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            generated = json.loads(output.read_text())
+            self.assertEqual(generated['client'][0]['client_info']['android_client_info']['package_name'], 'net.ayin.app.mobile')
+            self.assertEqual(generated['project_info']['project_number'], self.base()['AYIN_FIREBASE_SENDER_ID'])
+            self.assertEqual(generated['client'][0]['api_key'][0]['current_key'], self.base()['AYIN_FIREBASE_API_KEY'])
+            self.assertNotIn(self.base()['AYIN_FIREBASE_API_KEY'], result.stdout + result.stderr)
 
     def test_signed_config_requires_key(self):
         with patch.dict(os.environ, self.base(), clear=True), self.assertRaisesRegex(ValueError, 'AYIN_ANDROID_KEYSTORE_BASE64'):

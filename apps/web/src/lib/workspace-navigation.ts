@@ -123,7 +123,10 @@ export const adminNavigation: readonly WorkspaceNavigationGroup[] = [
   {
     id: "settings",
     label: "navigation.settings",
-    items: [{ label: "navigation.settings", href: "/admin/settings", roles: operations }],
+    items: [
+      { label: "navigation.settings", href: "/admin/settings", roles: operations },
+      { label: "navigation.mobile", href: "/admin/mobile", roles: ["SUPERADMIN"] },
+    ],
   },
 ];
 

@@ -16,7 +16,7 @@ const destinations = (groups: typeof adminNavigation) =>
 describe("workspace information architecture", () => {
   it("keeps all existing Admin and Studio destinations exactly once", () => {
     const inventories = [
-      { groups: adminNavigation, count: 18 },
+      { groups: adminNavigation, count: 19 },
       { groups: studioNavigation, count: 12 },
     ];
     for (const { groups, count } of inventories) {
@@ -34,8 +34,8 @@ describe("workspace information architecture", () => {
 
   it("preserves role visibility and excludes empty groups without mutating the source", () => {
     expect(visibleAdminNavigation([])).toEqual([]);
-    expect(destinations(visibleAdminNavigation(["SUPERADMIN"]))).toHaveLength(18);
-    expect(destinations(visibleAdminNavigation(["ADMIN"]))).toHaveLength(18);
+    expect(destinations(visibleAdminNavigation(["SUPERADMIN"]))).toHaveLength(19);
+    expect(destinations(visibleAdminNavigation(["ADMIN"]))).toHaveLength(19);
     expect(destinations(visibleAdminNavigation(["FINANCE_MANAGER"]))).toEqual([
       "/admin",
       "/admin/revenue",
@@ -54,7 +54,7 @@ describe("workspace information architecture", () => {
     expect(operations).toContain("/admin/users");
     expect(operations).not.toContain("/admin/advertising");
     expect(operations).not.toContain("/admin/revenue");
-    expect(destinations(adminNavigation)).toHaveLength(18);
+    expect(destinations(adminNavigation)).toHaveLength(19);
   });
 
   it("matches locale and nested paths without prefix collisions or active-root noise", () => {

@@ -315,6 +315,8 @@ enum RecommendationFeedbackType {
 }
 
 model Account {
+  userBlocksMade     UserBlock[] @relation("UserBlocksMade")
+  userBlocksReceived UserBlock[] @relation("UserBlocksReceived")
   id              String        @id @default(uuid()) @db.Uuid
   email           String        @unique @db.VarChar(320)
   passwordHash    String?       @db.VarChar(255)
@@ -330,6 +332,8 @@ model Account {
   channelMemberships      ChannelMember[]
   rightsDeclarations      ContentRightsDeclaration[]
   notifications           Notification[]
+  mobileDevices           MobileDevice[]
+  mobilePushDeliveries     MobilePushDelivery[]
   auditLogs               AdminAuditLog[]            @relation("AdminAuditActor")
   assignedModerationCases ModerationCase[]           @relation("ModerationAssignee")
   contentSeedBatches      ContentSeedBatch[]
@@ -355,6 +359,7 @@ model AccountSession {
   revokeReason String?   @db.VarChar(64)
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  mobileDevices MobileDevice[]
 
   @@index([accountId, revokedAt, expiresAt])
   @@index([expiresAt])
@@ -833,6 +838,7 @@ model Notification {
   createdAt DateTime         @default(now())
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  mobilePushDeliveries MobilePushDelivery[]
 
   @@index([accountId, readAt, createdAt])
 }
@@ -1320,4 +1326,50 @@ model CommunityPostReport {
 
   @@index([status, createdAt])
   @@index([postId, status])
+}
+
+
+// Tokens are delivery addresses, never authentication credentials. Session binding is mandatory.
+model MobileDevice {
+  id             String   @id @default(uuid()) @db.Uuid
+  installationId String   @unique @db.Uuid
+  accountId      String   @db.Uuid
+  sessionId      String   @db.Uuid
+  token          String   @db.Text
+  tokenHash      String   @unique @db.VarChar(64)
+  platform       String   @db.VarChar(10)
+  appVersion     String   @db.VarChar(64)
+  preferences    Json     @db.JsonB
+  revokedAt      DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  lastSeenAt     DateTime @default(now())
+  notificationCursorAt DateTime @default(now())
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  session AccountSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  deliveries MobilePushDelivery[]
+  @@index([accountId, revokedAt])
+  @@index([sessionId, revokedAt])
+  @@index([revokedAt, lastSeenAt])
+}
+
+model MobilePushDelivery {
+  id             String   @id @default(uuid()) @db.Uuid
+  deviceId       String?  @db.Uuid
+  installationId String   @db.Uuid
+  accountId      String   @db.Uuid
+  notificationId String   @db.Uuid
+  dedupeKey      String   @db.VarChar(128)
+  type           String   @db.VarChar(20)
+  status         String   @db.VarChar(20)
+  providerCode   String?  @db.VarChar(80)
+  providerMessageId String? @db.VarChar(240)
+  createdAt      DateTime @default(now())
+  completedAt    DateTime?
+  device MobileDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  @@unique([installationId, dedupeKey])
+  @@index([accountId, createdAt])
+  @@index([installationId, createdAt])
 }

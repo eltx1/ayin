@@ -6,7 +6,8 @@ The existing production-origin AndroidX WebView shell is reused. Its existing mo
 
 - Google Mobile Ads `com.google.android.gms:play-services-ads:25.5.0` (2026-09-17 supported Legacy API; min API 24, shell min 26). Chosen for official stable native banner/interstitial APIs and existing AndroidX compatibility, not third-party bridge maintenance. No mediation adapters installed.
 - UMP `com.google.android.ump:user-messaging-platform:4.0.0`.
-- Firebase BoM `34.19.0`, with `firebase-analytics` and `firebase-messaging`. This reviewed pre-35 major line avoids introducing the October Firebase major upgrade simultaneously with first integration. No Firebase Auth/database replacement.
+- Firebase BoM `34.19.0`, with `firebase-analytics`, `firebase-messaging`, and `firebase-crashlytics`. This reviewed pre-35 major line avoids introducing the October Firebase major upgrade simultaneously with first integration. No Firebase Auth/database replacement.
+- Crashlytics Gradle plugin `3.0.8` and Google Services `4.5.0`, applied only when actual Firebase client config is supplied.
 - Existing AGP 8.13.2, Kotlin 2.2.21, compile/target SDK 36 and Java 17 retained.
 - Gradle dependency locking is enabled; CI must resolve/write and review actual locks. An unresolved lockfile is not a reproducible release.
 
@@ -22,6 +23,8 @@ Pass through secure CI environment configuration or local Gradle properties. Nev
 | `AYIN_FIREBASE_API_KEY` | Restricted Firebase client API key |
 | `AYIN_FIREBASE_PROJECT_ID` | Firebase project ID |
 | `AYIN_FIREBASE_SENDER_ID` | Firebase project number / sender ID |
+| `AYIN_FIREBASE_CONFIG_FILE` | Actual Firebase Android client `google-services.json`, stored outside Git; required with configured Firebase |
+| `AYIN_CRASHLYTICS_UPLOAD_MAPPING` | `true` for configured signed release, `false` for unsigned CI checks |
 | `AYIN_ADMOB_ANDROID_APP_ID` | Android AdMob app ID with `~`, release only |
 | `AYIN_VERSION_CODE` | Monotonically increasing integer, default 2 |
 | `AYIN_VERSION_NAME` | Version name, default 1.1.0 |
@@ -48,4 +51,4 @@ Send data-only FCM messages. Local service checks opt-in, runtime-enabled type, 
 
 Run Gradle mobile unit tests, lint, debug APK, minified release APK/AAB, merged-manifest and 16KB alignment checks on CI. Run actual Google-enabled Android device tests for UMP accept/refuse/options, Analytics DebugView (`adb shell setprop debug.firebase.analytics.app net.ayin.app.mobile`), sample banner/interstitial lifecycle and FCM foreground/background/killed/tap/logout/account switch. Unit fixtures validate schema/PII rejection and cannot demonstrate SDK delivery.
 
-Crashlytics is intentionally not advertised/installed yet: release mapping upload and account configuration must be available before enabling useful native crash reporting; web JavaScript monitoring remains a separate existing concern. Native feed ad, rewarded, app-open, native IMA/player, Cast, camera/microphone capture, share receiving and background uploader are not added. Their adoption needs a reviewed native release. Existing document picker passes a URI and never reads the entire selected video into JavaScript. Persisted background upload/file leases are not implied.
+Crashlytics native SDK is included, disabled by default, shares the explicitly disclosed analytics/diagnostics opt-in, clears unsent reports when disabled, and never receives a user ID/custom text logs. With real Firebase configuration, pinned Google Services/Crashlytics plugins generate build IDs. `AYIN_CRASHLYTICS_UPLOAD_MAPPING=true` uploads release R8 mapping; unsigned CI disables upload and retains mapping. Actual symbolication/crash receipt remains a configured-device release gate. Crashlytics does not capture web JavaScript errors; web monitoring remains separate. Native feed ad, rewarded, app-open, native IMA/player, Cast, camera/microphone capture, share receiving and background uploader are not added. Their adoption needs a reviewed native release. Existing document picker passes a URI and never reads the entire selected video into JavaScript. Persisted background upload/file leases are not implied.

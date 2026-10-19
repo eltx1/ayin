@@ -1,5 +1,5 @@
 export type NativeShellPlatform =
-  "android" | "android-tv" | "google-tv" | "fire-tv" | "tizen" | "webos";
+  "android" | "ios" | "android-tv" | "google-tv" | "fire-tv" | "tizen" | "webos";
 
 export type NativeRemoteKey =
   | "UP"
@@ -70,7 +70,7 @@ export function detectNativeShell(): NativeShellCapabilities | null {
   if (typeof window === "undefined" || !window.AyinNative?.getPlatform) return null;
   const platform = normalizePlatform(window.AyinNative.getPlatform());
   if (!platform) return null;
-  const tv = platform !== "android";
+  const tv = platform !== "android" && platform !== "ios";
   return {
     platform,
     tv,
@@ -85,6 +85,7 @@ export function normalizePlatform(value: string): NativeShellPlatform | null {
   const normalized = value.trim().toLowerCase();
   if (
     normalized === "android" ||
+    normalized === "ios" ||
     normalized === "android-tv" ||
     normalized === "google-tv" ||
     normalized === "fire-tv" ||

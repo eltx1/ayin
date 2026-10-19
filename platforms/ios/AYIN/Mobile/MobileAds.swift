@@ -96,7 +96,7 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
     }
 
     private func permitted() throws -> MobileRuntimeConfig {
-        guard let config, config.ads.enabled, config.ads.audience == "general", !underAge else { throw MobileBridgeError.disabled }
+        guard let config, config.ads.enabled, config.ads.platforms.ios.enabled, config.ads.audience == "general", !underAge else { throw MobileBridgeError.disabled }
         guard privacyChecked, ConsentInformation.shared.canRequestAds else { throw MobileBridgeError.consentRequired }
         guard appIDConfigured, UIApplication.shared.applicationState == .active else { throw MobileBridgeError.unavailable }
         guard !busy else { throw MobileBridgeError.busy }
@@ -111,7 +111,9 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
         // No IDFA prompt and no personalized ad requests in this release.
         MobileAds.shared.requestConfiguration.tagForUnderAgeOfConsent = NSNumber(value: underAge)
         MobileAds.shared.requestConfiguration.maxAdContentRating = .general
-        MobileAds.shared.requestConfiguration.publisherFirstPartyIDEnabled = false
+        MobileAds.shared.requestConfiguration.setPublisherFirstPartyIDEnabled(false)
+        MobileAds.shared.requestConfiguration.publisherPrivacyPersonalizationState = .disabled
+        MobileAds.shared.disableSDKCrashReporting()
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             MobileAds.shared.start { _ in continuation.resume() }
         }
@@ -211,14 +213,16 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
             sessionCount += 1
             lastShown = Date()
             interstitial = nil
-            ad.present(from: owner)
             // Retain through dismissal, even though it cannot be presented a second time.
             presentingAd = ad
+            ad.present(from: owner)
             return ["status": "showing"]
         }
         guard !interstitialLoading else { throw MobileBridgeError.busy }
         guard Date().timeIntervalSince(lastRequest) >= max(30, Double(value.ads.retryBackoffMs) / 1000) else { throw MobileBridgeError.rateLimited }
+        let requestGeneration = loadGeneration
         try await initialize()
+        guard loadGeneration == requestGeneration else { throw MobileBridgeError.disabled }
         _ = try permitted()
         lastRequest = Date()
         interstitialLoading = true

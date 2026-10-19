@@ -19,6 +19,8 @@ import org.json.JSONObject
 import java.util.UUID
 
 internal object MobilePushState {
+    val deliveryLock = Any()
+    fun validUuid(value: String) = value.matches(Regex("[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}"))
     const val CHANNEL = "ayin_updates"
     var listener: ((JSONObject) -> Unit)? = null
     fun prefs(context: Context) = context.getSharedPreferences("ayin_mobile_private", Context.MODE_PRIVATE)
@@ -45,11 +47,12 @@ class AyinMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
+        synchronized(MobilePushState.deliveryLock) {
         if (!MobilePushState.allowed(this)) return
         val data = message.data
         val account = MobilePushState.prefs(this).getString("account_id", "")
         if (data["recipientAccountId"] != account) return
-        val id = data["notificationId"]?.takeIf { runCatching { UUID.fromString(it) }.isSuccess } ?: return
+        val id = data["notificationId"]?.takeIf(MobilePushState::validUuid) ?: return
         val type = data["type"]?.takeIf { it in setOf("system", "channel", "video", "comment", "subscription", "moderation", "monetization") } ?: return
         val p = MobilePushState.prefs(this)
         if (!p.getBoolean("push_type_$type", true)) return
@@ -62,7 +65,7 @@ class AyinMessagingService : FirebaseMessagingService() {
         MobilePushState.emit(event)
         MobilePushState.channel(this)
         val intent = Intent(this, MainActivity::class.java).apply {
-            data = android.net.Uri.parse(target)
+            this.data = android.net.Uri.parse(target)
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("ayin_notification_id", id)
             putExtra("ayin_recipient_id", account)
@@ -75,7 +78,10 @@ class AyinMessagingService : FirebaseMessagingService() {
             .setAutoCancel(true).setContentIntent(pending).setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .build()
         if (Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-            NotificationManagerCompat.from(this).notify(id.hashCode(), notification)
+            // Atomic with logout's local detach/cancel: a queued old-user delivery cannot win afterward.
+            if (MobilePushState.allowed(this) && MobilePushState.prefs(this).getString("account_id", null) == account)
+                NotificationManagerCompat.from(this).notify(id.hashCode(), notification)
+        }
         }
     }
 }

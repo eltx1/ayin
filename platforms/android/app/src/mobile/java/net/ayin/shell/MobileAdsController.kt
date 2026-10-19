@@ -35,6 +35,7 @@ internal class MobileAdsController(
     private val handler = Handler(Looper.getMainLooper())
     private val consent = UserMessagingPlatform.getConsentInformation(activity)
     private var consentRefreshed = false
+    private var ageAllowed = false
     private var consentBusy = false
     private var initialized = false
     private var initializing = false
@@ -84,7 +85,7 @@ internal class MobileAdsController(
             "ads.hideBanner" -> { require(p.length() == 0); hideBanner(); done(JSONObject(), null) }
             "ads.banner" -> {
                 require(p.keys().asSequence().toSet() == setOf("placement"))
-                val placement = placement(p)
+                val placement = placement(p).also { require(it == "browse_bottom") }
                 if (!canRequest() || !config.bannerEnabled) { done(null, "ADS_DISABLED_OR_CONSENT_REQUIRED"); return }
                 if (banner != null && bannerPlacement == placement) { done(JSONObject().put("state", if(bannerLoading) "loading" else "ready"), null); return }
                 initialize { ready ->
@@ -95,7 +96,7 @@ internal class MobileAdsController(
             }
             "ads.interstitial" -> {
                 require(p.keys().asSequence().toSet() == setOf("placement", "naturalTransition") && p.opt("naturalTransition") == true)
-                val placement = placement(p)
+                val placement = placement(p).also { require(it == "browse_transition") }
                 if (!canRequest() || !config.interstitialEnabled || interstitialShowing || shownThisSession >= config.maxPerSession) { done(null, "ADS_DISABLED_OR_CAPPED"); return }
                 if (SystemClock.elapsedRealtime() - lastInterstitialAt < config.cooldownSeconds * 1000L) { done(null, "COOLDOWN"); return }
                 val ad = interstitial
@@ -133,6 +134,7 @@ internal class MobileAdsController(
         require(p.keys().asSequence().toSet().all { it == "underAgeOfConsent" })
         if (!active || consentBusy || interstitialShowing) { done(null, "BUSY_OR_BACKGROUND"); return }
         if (config.audience == "unknown") { done(null, "AUDIENCE_NOT_CONFIGURED"); return }
+        ageAllowed = false
         val underAge = when {
             p.opt("underAgeOfConsent") is Boolean -> p.getBoolean("underAgeOfConsent")
             config.audience == "children" -> true
@@ -140,6 +142,7 @@ internal class MobileAdsController(
         }
         // Child-directed operation is not enabled without a separately reviewed product policy.
         if (underAge || config.audience == "children") { hideBanner(); clearInterstitial(); done(null, "AGE_RESTRICTED_ADS_DISABLED"); return }
+        ageAllowed = true
         consentBusy = true
         val requestEpoch = epoch
         hideBanner(); clearInterstitial()
@@ -169,7 +172,7 @@ internal class MobileAdsController(
     }
     private fun privacyStatus() = JSONObject().put("canRequestAds", consentRefreshed && consent.canRequestAds())
         .put("privacyOptionsRequired", consent.privacyOptionsRequirementStatus == ConsentInformation.PrivacyOptionsRequirementStatus.REQUIRED)
-    private fun canRequest() = active && !destroyed && configured && config.adsEnabled && config.audience == "general" && !playing && !sensitive && consentRefreshed && !consentBusy && consent.canRequestAds()
+    private fun canRequest() = active && !destroyed && configured && config.adsEnabled && config.audience == "general" && !playing && !sensitive && ageAllowed && consentRefreshed && !consentBusy && consent.canRequestAds()
     private fun initialize(done: (Boolean) -> Unit) {
         if (initialized) { done(true); return }
         if (initializing) { done(false); return }
@@ -207,7 +210,8 @@ internal class MobileAdsController(
         view.setOnPaidEventListener { value -> revenue("banner", placement, paidKey, value) }
         view.adListener = object : AdListener() {
             override fun onAdLoaded() {
-                if (generation != bannerGeneration || !canRequest()) { hideBanner(); return }
+                if (generation != bannerGeneration) return
+                if (!canRequest()) { hideBanner(); return }
                 bannerLoading = false
                 paidKey = UUID.randomUUID().toString()
                 host.visibility = View.VISIBLE
@@ -277,6 +281,6 @@ internal class MobileAdsController(
     fun resume() { active = true; banner?.resume() }
     fun pause() { active = false; banner?.pause(); hideBanner(); if (!interstitialShowing) clearInterstitial() }
     fun navigation() { hideBanner() }
-    fun reset() { epoch++; consentRefreshed = false; consentBusy = false; hideBanner(); clearInterstitial(); shownThisSession = 0 }
+    fun reset() { epoch++; consentRefreshed = false; ageAllowed = false; consentBusy = false; hideBanner(); clearInterstitial(); shownThisSession = 0 }
     fun destroy() { destroyed = true; active = false; handler.removeCallbacksAndMessages(null); hideBanner(); clearInterstitial() }
 }

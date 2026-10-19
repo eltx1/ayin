@@ -1,17 +1,24 @@
 import SwiftUI
 
 struct RootView: View {
-    @EnvironmentObject private var router: AppRouter
     @State private var showingNative = false
 
     var body: some View {
         HostedWebView(nativeFallback: { showingNative = true })
-            .sheet(isPresented: $showingNative) {
-                VStack(spacing: 0) {
-                    HStack { Spacer(); Button("Return to AYIN") { showingNative = false }.padding() }
-                    HomeView()
-                }
+            .fullScreenCover(isPresented: $showingNative) {
+                NativeHomeRoot(close: { showingNative = false })
             }
+    }
+}
+
+private struct NativeHomeRoot: View {
+    @EnvironmentObject private var router: AppRouter
+    let close: () -> Void
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack { Spacer(); Button("Return to AYIN", action: close).padding() }
+            HomeView()
+        }
             .fullScreenCover(item: $router.player, onDismiss: router.playerDidDismiss) { destination in
                 PlayerScreen(destination: destination)
                     .id(destination.id)

@@ -44,6 +44,7 @@ jobs:
       AYIN_FIREBASE_PROJECT_ID: ${{ vars.AYIN_FIREBASE_PROJECT_ID }}
       AYIN_FIREBASE_SENDER_ID: ${{ vars.AYIN_FIREBASE_SENDER_ID }}
       AYIN_FIREBASE_API_KEY: ${{ secrets.AYIN_FIREBASE_API_KEY }}
+      AYIN_CRASHLYTICS_UPLOAD_MAPPING: ${{ inputs.signed && 'true' || 'false' }}
     steps:
       - uses: actions/checkout@v7
       - name: Validate mobile release security gates
@@ -59,7 +60,9 @@ jobs:
           set -euo pipefail
           flags=()
           if [ "$SIGNED" = true ]; then flags+=(--signed); fi
-          python3 scripts/mobile-release-config.py android "${flags[@]}"
+          firebase_config="$RUNNER_TEMP/ayin-google-services.json"
+          python3 scripts/mobile-release-config.py android "${flags[@]}" --firebase-json "$firebase_config"
+          echo "AYIN_FIREBASE_CONFIG_FILE=$firebase_config" >> "$GITHUB_ENV"
           test -f platforms/android/app/gradle.lockfile
       - uses: actions/setup-java@v4
         with:
@@ -118,7 +121,7 @@ jobs:
           retention-days: 14
       - name: Remove temporary upload key
         if: always()
-        run: rm -f "$RUNNER_TEMP/upload.keystore"
+        run: rm -f "$RUNNER_TEMP/upload.keystore" "$RUNNER_TEMP/ayin-google-services.json"
 
   ios:
     if: github.ref == 'refs/heads/main' && inputs.platform == 'ios'
@@ -142,9 +145,9 @@ jobs:
           AYIN_IOS_PROFILE_BASE64: ${{ secrets.AYIN_IOS_PROFILE_BASE64 }}
         run: |
           set -euo pipefail
-          flags=()
+          flags=(ios --firebase-plist platforms/ios/AYIN/GoogleService-Info.plist)
           if [ "$SIGNED" = true ]; then flags+=(--signed); fi
-          python3 scripts/mobile-release-config.py ios "${flags[@]}" --firebase-plist platforms/ios/AYIN/GoogleService-Info.plist
+          python3 scripts/mobile-release-config.py "${flags[@]}"
           test -f platforms/ios/Package.resolved
           test -d "$DEVELOPER_DIR"
       - name: Install XcodeGen
@@ -223,11 +226,11 @@ jobs:
         run: |
           set -euo pipefail
           state=unsigned
-          flags=()
+          flags=(--artifact "$RUNNER_TEMP/ayin-release/AYIN.xcarchive.zip")
           if [ "$SIGNED" = true ]; then state=distribution; flags+=(--artifact "$RUNNER_TEMP/ayin-release/AYIN.ipa"); fi
           python3 scripts/mobile-build-metadata.py --platform ios --signing "$state" \
             --output "$RUNNER_TEMP/ayin-release/build-metadata.json" \
-            --artifact "$RUNNER_TEMP/ayin-release/AYIN.xcarchive.zip" "${flags[@]}"
+            "${flags[@]}"
       - uses: actions/upload-artifact@v4
         with:
           name: ayin-ios-production-${{ inputs.version_code }}-${{ github.sha }}

@@ -1,0 +1,97 @@
+.page {
+  display: grid;
+  gap: 1.25rem;
+  max-width: 72rem;
+  margin-inline: auto;
+}
+.page > div {
+  min-width: 0;
+}
+.page section,
+.page details {
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: clamp(1rem, 3vw, 1.5rem);
+  margin-block: 1.25rem;
+}
+.page section h2 {
+  margin-block-start: 0;
+  font-size: 1.15rem;
+}
+.page label {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-block: 0.7rem;
+  line-height: 1.5;
+}
+.page fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-block: 1rem;
+  padding: 1rem;
+  min-width: 0;
+}
+.page legend {
+  padding-inline: 0.5rem;
+  font-weight: 700;
+}
+.page input:not([type="checkbox"]),
+.page textarea,
+.page select {
+  background: var(--background);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--foreground);
+  font: inherit;
+  min-height: 44px;
+  padding: 0.65rem 0.8rem;
+  width: min(100%, 26rem);
+  max-width: 100%;
+}
+.page textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+.page input[type="checkbox"] {
+  accent-color: var(--brand-magenta);
+  width: 1.1rem;
+  height: 1.1rem;
+}
+.page input:focus-visible,
+.page textarea:focus-visible,
+.page select:focus-visible {
+  outline: 2px solid var(--brand-magenta);
+  outline-offset: 2px;
+}
+.page button {
+  margin-inline-end: 0.6rem;
+  margin-block: 0.3rem;
+}
+.page pre {
+  font-size: 0.8rem;
+  max-height: 24rem;
+  padding: 0.75rem;
+  background: var(--background);
+  border-radius: var(--radius-sm);
+}
+.page summary {
+  cursor: pointer;
+  min-height: 32px;
+}
+.page p {
+  color: var(--muted);
+  line-height: 1.6;
+}
+@media (max-width: 600px) {
+  .page label {
+    align-items: flex-start;
+  }
+  .page input:not([type="checkbox"]),
+  .page textarea,
+  .page select {
+    width: 100%;
+  }
+}

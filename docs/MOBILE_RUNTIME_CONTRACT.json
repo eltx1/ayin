@@ -6,8 +6,8 @@
     "ios": "1.0.0"
   },
   "latestAppVersion": {
-    "android": "1.0.0",
-    "ios": "1.0.0"
+    "android": "1.1.0",
+    "ios": "1.1.0"
   },
   "ads": {
     "enabled": false,
@@ -23,10 +23,12 @@
     },
     "platforms": {
       "android": {
+        "enabled": false,
         "bannerUnitId": "",
         "interstitialUnitId": ""
       },
       "ios": {
+        "enabled": false,
         "bannerUnitId": "",
         "interstitialUnitId": ""
       }

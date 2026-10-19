@@ -8,7 +8,7 @@ struct MobileRuntimeConfig: Decodable {
     struct Ads: Decodable {
         struct Toggle: Decodable { let enabled: Bool }
         struct Interstitial: Decodable { let enabled: Bool; let cooldownSeconds: Int; let maxPerSession: Int }
-        struct Units: Decodable { let bannerUnitId: String; let interstitialUnitId: String }
+        struct Units: Decodable { let enabled: Bool; let bannerUnitId: String; let interstitialUnitId: String }
         struct Platforms: Decodable { let ios: Units }
         let enabled: Bool; let testMode: Bool; let audience: String
         let banner: Toggle; let interstitial: Interstitial; let platforms: Platforms
@@ -36,12 +36,23 @@ struct MobileRuntimeConfig: Decodable {
               (60...3600).contains(value.ads.interstitial.cooldownSeconds),
               (0...20).contains(value.ads.interstitial.maxPerSession),
               (1000...30000).contains(value.ads.requestTimeoutMs),
-              (0...2).contains(value.ads.retryCount), (500...30000).contains(value.ads.retryBackoffMs),
+              (0...3).contains(value.ads.retryCount), (500...30000).contains(value.ads.retryBackoffMs),
               ["unknown", "general", "children"].contains(value.ads.audience),
               validUnit(value.ads.platforms.ios.bannerUnitId), validUnit(value.ads.platforms.ios.interstitialUnitId),
               validVersion(value.minimumAppVersion.ios), validVersion(value.latestAppVersion.ios),
-              value.notifications.types.count <= 16, !value.notifications.richMedia
+              value.notifications.types.count <= 7,
+              Set(value.notifications.types).isSubset(of: ["system", "channel", "video", "comment", "subscription", "moderation", "monetization"]),
+              Set(value.notifications.types).count == value.notifications.types.count, !value.notifications.richMedia
         else { throw MobileBridgeError.invalidConfig }
+        let minimum = value.minimumAppVersion.ios.split(separator: ".").compactMap { Int($0) }
+        let latest = value.latestAppVersion.ios.split(separator: ".").compactMap { Int($0) }
+        guard !latest.lexicographicallyPrecedes(minimum),
+              !value.ads.enabled || value.ads.audience == "general" else { throw MobileBridgeError.invalidConfig }
+        if value.ads.enabled && value.ads.platforms.ios.enabled && !value.ads.testMode {
+            guard !value.ads.banner.enabled || !value.ads.platforms.ios.bannerUnitId.isEmpty,
+                  !value.ads.interstitial.enabled || !value.ads.platforms.ios.interstitialUnitId.isEmpty
+            else { throw MobileBridgeError.invalidConfig }
+        }
         return value
     }
 
@@ -59,13 +70,18 @@ struct MobileRuntimeConfig: Decodable {
         value.isEmpty || value.range(of: #"^ca-app-pub-[0-9]{16}/[0-9]{10}$"#, options: .regularExpression) != nil
     }
     private static func validVersion(_ value: String) -> Bool {
-        value.range(of: #"^[0-9]{1,5}\.[0-9]{1,5}\.[0-9]{1,5}$"#, options: .regularExpression) != nil
+        value.range(of: #"^[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}$"#, options: .regularExpression) != nil
     }
 }
 
 enum MobileContract {
     static let capabilities = ["privacy", "analytics", "ads.banner", "ads.interstitial", "notifications", "session.reset"]
     static let methods: Set<String> = ["runtime.configure", "privacy.request", "privacy.options", "analytics.consent", "analytics.event", "analytics.user", "ads.banner", "ads.hideBanner", "ads.interstitial", "notifications.request", "notifications.token", "session.reset"]
+
+    static func boolean(_ value: Any?) -> Bool? {
+        guard let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else { return nil }
+        return number.boolValue
+    }
 
     static func trusted(_ url: URL?) -> Bool {
         guard let url else { return false }
@@ -89,13 +105,14 @@ enum MobileContract {
             "upload_started": ["size_bucket"], "upload_resumed": ["size_bucket"],
             "upload_completed": ["size_bucket"], "upload_failed": ["size_bucket"]
         ]
-        guard let keys = schemas[name], Set(params.keys).isSubset(of: keys) else { throw MobileBridgeError.invalidRequest }
+        guard let keys = schemas[name], Set(params.keys) == keys else { throw MobileBridgeError.invalidRequest }
         for (key, value) in params {
             switch key {
             case "screen_name":
                 guard let value = value as? String, ["home", "watch", "clips", "search", "channel", "account", "upload", "other"].contains(value) else { throw MobileBridgeError.invalidRequest }
             case "content_type":
                 guard let value = value as? String, ["video", "clip"].contains(value) else { throw MobileBridgeError.invalidRequest }
+                if name == "video_progress" && value != "video" { throw MobileBridgeError.invalidRequest }
             case "size_bucket":
                 guard let value = value as? String, ["small", "medium", "large", "unknown"].contains(value) else { throw MobileBridgeError.invalidRequest }
             case "query_length", "position_seconds":

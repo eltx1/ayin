@@ -34,6 +34,7 @@ class MobilePolicyTest {
         assertThrows(IllegalArgumentException::class.java) { MobileConfig.parse(data) }
         ads.put("audience", "general").put("testMode", false)
         ads.getJSONObject("banner").put("enabled", true)
+        ads.getJSONObject("platforms").getJSONObject("android").put("enabled", true)
         assertThrows(IllegalArgumentException::class.java) { MobileConfig.parse(data) }
     }
     @Test fun versionComparisonIsNumericAndRolloutStable() {

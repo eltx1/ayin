@@ -3,6 +3,7 @@
 import argparse
 import base64
 import os
+import json
 from pathlib import Path
 import plistlib
 import re
@@ -57,12 +58,30 @@ def main():
     parser.add_argument('platform', choices=['android', 'ios'])
     parser.add_argument('--signed', action='store_true')
     parser.add_argument('--firebase-plist', type=Path)
+    parser.add_argument('--firebase-json', type=Path)
     args = parser.parse_args()
     try:
         plist = validate(args.platform, args.signed)
         if args.firebase_plist and plist:
             args.firebase_plist.parent.mkdir(parents=True, exist_ok=True)
             args.firebase_plist.write_bytes(plist)
+        if args.firebase_json and args.platform == 'android':
+            config = {
+                'project_info': {
+                    'project_number': os.environ['AYIN_FIREBASE_SENDER_ID'],
+                    'project_id': os.environ['AYIN_FIREBASE_PROJECT_ID'],
+                },
+                'client': [{
+                    'client_info': {
+                        'mobilesdk_app_id': os.environ['AYIN_FIREBASE_ANDROID_APP_ID'],
+                        'android_client_info': {'package_name': 'net.ayin.app.mobile'},
+                    },
+                    'api_key': [{'current_key': os.environ['AYIN_FIREBASE_API_KEY']}],
+                }],
+                'configuration_version': '1',
+            }
+            args.firebase_json.parent.mkdir(parents=True, exist_ok=True)
+            args.firebase_json.write_text(json.dumps(config) + '\n')
     except ValueError as exc:
         raise SystemExit(str(exc)) from None
     print(f'{args.platform} release configuration fields validated; external account validity remains a device/release check.')

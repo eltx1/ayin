@@ -65,6 +65,8 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
         configuration.allowsInlineMediaPlayback = true
         configuration.allowsPictureInPictureMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = [.audio]
+        let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.1.0"
+        configuration.applicationNameForUserAgent = "AYINMobile/iOS/\(appVersion)"
         configuration.websiteDataStore = .default()
         configuration.userContentController.add(WeakMobileScriptHandler(self), name: "ayinNative")
         let capabilities = MobileContract.capabilities.map { "'\($0)'" }.joined(separator: ",")
@@ -82,7 +84,6 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
         webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
         webView.scrollView.contentInsetAdjustmentBehavior = .never
-        webView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile AYINMobile/iOS/1.0.0"
 
         let toolbar = UIStackView()
         toolbar.axis = .horizontal
@@ -176,7 +177,8 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
         guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
         if navigationAction.targetFrame?.isMainFrame == false {
             // Embedded media may use third-party frames. Message handling below never trusts a subframe.
-            decisionHandler(url.scheme == "https" || url.scheme == "about" ? .allow : .cancel)
+            // Do not create same-origin/about:blank frames that could reach window.top's API.
+            decisionHandler(url.scheme == "https" && !MobileContract.trusted(url) ? .allow : .cancel)
             return
         }
         if MobileContract.trusted(url) { decisionHandler(.allow); return }
@@ -223,7 +225,7 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
         Task { [weak self] in
             guard let self else { return }
             var response: [String: Any] = ["id": id]
-            do { response["result"] = try await dispatch(method, params: params); response["ok"] = true }
+            do { response["result"] = try await dispatch(method, params: params, generation: generation); response["ok"] = true }
             catch { response["ok"] = false; response["error"] = ["code": (error as? MobileBridgeError)?.rawValue ?? "native_failure"] }
             guard generation == documentGeneration else { return }
             pendingIDs.remove(id)
@@ -240,7 +242,8 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
         guard Set(params.keys).isSubset(of: allowed) else { throw MobileBridgeError.invalidRequest }
     }
 
-    private func dispatch(_ method: String, params: [String: Any]) async throws -> [String: Any] {
+    private func dispatch(_ method: String, params: [String: Any], generation: UUID) async throws -> [String: Any] {
+        guard generation == documentGeneration else { throw MobileBridgeError.invalidRequest }
         let firebase = MobileFirebase.shared
         switch method {
         case "runtime.configure":
@@ -248,11 +251,17 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
             guard let raw = params["config"] else { throw MobileBridgeError.invalidConfig }
             let config = try MobileRuntimeConfig.parse(raw)
             guard !ads.busy else { throw MobileBridgeError.busy }
+            if runtimeConfigured {
+                let uploading = try? await webView.callAsyncJavaScript("return document.documentElement.dataset.ayinUploadActive === 'true' || /^\\/(?:en\\/|ar\\/)?upload(?:\\/|$)/.test(location.pathname)", arguments: [:], in: nil, contentWorld: .page)
+                guard uploading as? Bool == false else { throw MobileBridgeError.busy }
+            }
+            guard generation == documentGeneration else { throw MobileBridgeError.invalidRequest }
             let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
             guard config.supports(appVersion: version, installationId: firebase.installationId) else { throw MobileBridgeError.unsupported }
             try ads.configure(config); firebase.configure(config)
             bridgeReady = true; runtimeConfigured = true
             return ["platform": "ios", "appVersion": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0", "installationId": firebase.installationId,
+                    "boundAccountId": firebase.accountId as Any? ?? NSNull(),
                     "configured": ["firebase": firebase.configured, "ads": ads.appIDConfigured]]
         case "session.reset":
             try keys(params, [])
@@ -263,13 +272,13 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
         switch method {
         case "privacy.request":
             try keys(params, ["underAgeOfConsent"])
-            guard let age = params["underAgeOfConsent"] as? Bool else { throw MobileBridgeError.invalidRequest }
+            guard let age = MobileContract.boolean(params["underAgeOfConsent"]) else { throw MobileBridgeError.invalidRequest }
             lastUnderAge = age
             return try await ads.privacy(requestUnderAge: age)
         case "privacy.options": try keys(params, []); return try await ads.privacy(requestUnderAge: lastUnderAge, options: true)
         case "analytics.consent":
             try keys(params, ["enabled"])
-            guard let value = params["enabled"] as? Bool else { throw MobileBridgeError.invalidRequest }
+            guard let value = MobileContract.boolean(params["enabled"]) else { throw MobileBridgeError.invalidRequest }
             firebase.setConsent(value); return ["enabled": value]
         case "analytics.event":
             try keys(params, ["name", "params"])
@@ -285,14 +294,14 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
         case "ads.hideBanner": try keys(params, []); ads.hideBanner(); return ["hidden": true]
         case "ads.interstitial":
             try keys(params, ["placement", "naturalTransition"]); try placement(params)
-            guard params["naturalTransition"] as? Bool == true else { throw MobileBridgeError.invalidRequest }
-            let mediaActive = try? await webView.callAsyncJavaScript("return Array.from(document.querySelectorAll('video,audio')).some(m => !m.paused && !m.ended)", arguments: [:], in: nil, contentWorld: .page)
-            guard mediaActive as? Bool == false else { throw MobileBridgeError.busy }
+            guard MobileContract.boolean(params["naturalTransition"]) == true else { throw MobileBridgeError.invalidRequest }
+            let mediaActive = try? await webView.callAsyncJavaScript("return document.documentElement.dataset.ayinUploadActive === 'true' || Array.from(document.querySelectorAll('video,audio')).some(m => !m.paused && !m.ended)", arguments: [:], in: nil, contentWorld: .page)
+            guard generation == documentGeneration, mediaActive as? Bool == false else { throw MobileBridgeError.busy }
             return try await ads.naturalTransition()
         case "notifications.request", "notifications.token":
             try keys(params, ["accountId"])
             guard let account = params["accountId"] as? String, UUID(uuidString: account) != nil else { throw MobileBridgeError.invalidRequest }
-            firebase.bindAccount(account)
+            try firebase.bindAccount(account)
             if method == "notifications.request" { return ["granted": try await firebase.requestNotifications()] }
             return ["token": await firebase.currentToken() as Any? ?? NSNull()]
         default: throw MobileBridgeError.unsupported
@@ -319,6 +328,7 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
     }
 }
 
+@MainActor
 private final class WeakMobileScriptHandler: NSObject, WKScriptMessageHandler {
     weak var target: WKScriptMessageHandler?
     init(_ target: WKScriptMessageHandler) { self.target = target }

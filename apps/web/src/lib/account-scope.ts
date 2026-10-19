@@ -134,8 +134,14 @@ export async function requestAccountScope<T>(
         social[3] === (social[1] === "videos" ? "reaction" : "subscription") &&
         (method !== "PUT" || !social[4]))),
   );
+  const userBlocksPath =
+    ((method === "GET" || method === "POST") && path === "/user-blocks") ||
+    (method === "DELETE" &&
+      /^\/user-blocks\/[0-9a-f-]{36}$/i.test(path) &&
+      uuid.test(path.split("/")[2]!));
   if (
-    (!socialPath &&
+    (!userBlocksPath &&
+      !socialPath &&
       (method === "PUT" || !/^\/(auth|privacy|creator)\/[a-zA-Z0-9/_?=&%.-]+$/.test(path))) ||
     (method === "GET" && body !== undefined) ||
     (options.expectedAccountId !== undefined && !uuid.test(options.expectedAccountId)) ||

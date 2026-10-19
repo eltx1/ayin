@@ -34,10 +34,12 @@ import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import kotlinx.coroutines.Dispatchers
@@ -258,6 +260,12 @@ class MainActivity : AppCompatActivity() {
     private fun attachWebView(view: WebView) {
         webView = view
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.BLACK) }
+        // Target 36 enforces edge-to-edge. Reserve cutout/system/IME space for web and native ads.
+        ViewCompat.setOnApplyWindowInsetsListener(root) { container, insets ->
+            val safe = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout() or WindowInsetsCompat.Type.ime())
+            container.setPadding(safe.left, safe.top, safe.right, safe.bottom)
+            insets
+        }
         bannerHost = FrameLayout(this)
         val stage = FrameLayout(this)
         stage.addView(view, FrameLayout.LayoutParams(-1, -1))
@@ -283,6 +291,7 @@ class MainActivity : AppCompatActivity() {
         mobileRuntime = MobileRuntimeFactory.create(this, bannerHost, ::emitMobileEvent)
         installOriginScopedBridge(view)
         setContentView(root)
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mobileRuntime.resume()
         view.requestFocus()
     }
 
@@ -365,7 +374,7 @@ class MainActivity : AppCompatActivity() {
               });
               reportNavigation();
             })();
-        """.trimIndent() + "\n" + MobileBridgePolicy.bootstrap(mobileRuntime.capabilities)
+        """.trimIndent() + if (mobileRuntime.capabilities.isEmpty()) "" else "\n" + MobileBridgePolicy.bootstrap(mobileRuntime.capabilities)
     }
 
     private fun emitMobileEvent(event: JSONObject) {
@@ -379,7 +388,7 @@ class MainActivity : AppCompatActivity() {
     private fun handleMobileRequest(payload: JSONObject) {
         val id = payload.optString("id")
         val method = payload.optString("method")
-        if (!MobileBridgePolicy.validId(id) || id in pendingMobileRequests || id in completedMobileRequests) return
+        if (payload.opt("id") !is String || !MobileBridgePolicy.validId(id) || id in pendingMobileRequests || id in completedMobileRequests) return
         val params = payload.optJSONObject("params")
         val generation = documentGeneration
         fun send(result: JSONObject?, error: String?) {
@@ -395,7 +404,8 @@ class MainActivity : AppCompatActivity() {
         }
         if (pendingMobileRequests.size >= 16) return
         pendingMobileRequests.add(id)
-        if (method !in MobileBridgePolicy.methods || params == null) { send(null, "INVALID_REQUEST"); return }
+        if (payload.keys().asSequence().toSet() != setOf("type", "id", "method", "params") || payload.opt("method") !is String ||
+            method !in MobileBridgePolicy.methods || params == null) { send(null, "INVALID_REQUEST"); return }
         webView.postDelayed({ send(null, "TIMEOUT") }, 180_000)
         try { mobileRuntime.request(method, params, ::send) } catch (_: Exception) { send(null, "INVALID_PARAMETERS") }
     }
@@ -645,6 +655,7 @@ class MainActivity : AppCompatActivity() {
             }
             lastTrustedUrl = currentTrustedUrl(view)
             offlineView.visibility = View.GONE
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mobileRuntime.resume()
             mobileRuntime.pageReady()
             if (rendererRecoveryPending) {
                 rendererRecoveryPending = false

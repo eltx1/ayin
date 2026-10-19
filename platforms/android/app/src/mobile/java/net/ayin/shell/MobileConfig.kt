@@ -61,12 +61,13 @@ internal data class MobileConfig(
             val platforms = ads.getJSONObject("platforms").also { fields(it, "android", "ios") }
             for (key in listOf("android", "ios")) {
                 val inventory = platforms.getJSONObject(key)
-                fields(inventory, "bannerUnitId", "interstitialUnitId")
+                fields(inventory, "enabled", "bannerUnitId", "interstitialUnitId")
+                bool(inventory, "enabled")
                 for (format in listOf("bannerUnitId", "interstitialUnitId")) {
                     val id = inventory.opt(format) as? String ?: error("Invalid unit")
                     require(id.isEmpty() || unit.matches(id))
                 }
-                if (bool(ads, "enabled") && !bool(ads, "testMode")) {
+                if (bool(ads, "enabled") && bool(inventory, "enabled") && !bool(ads, "testMode")) {
                     require(!bool(banner, "enabled") || inventory.getString("bannerUnitId").isNotEmpty())
                     require(!bool(interstitial, "enabled") || inventory.getString("interstitialUnitId").isNotEmpty())
                 }
@@ -85,7 +86,7 @@ internal data class MobileConfig(
             val values = notifications.getJSONArray("types")
             val allowedTypes = (0 until values.length()).map { values.get(it) as? String ?: error("Invalid type") }
             require(allowedTypes.size <= 7 && allowedTypes.toSet().size == allowedTypes.size && types.containsAll(allowedTypes))
-            return MobileConfig(bool(ads, "enabled"), bool(ads, "testMode"), audience,
+            return MobileConfig(bool(ads, "enabled") && bool(platform, "enabled"), bool(ads, "testMode"), audience,
                 bool(banner, "enabled"), bool(interstitial, "enabled"), platform.getString("bannerUnitId"), platform.getString("interstitialUnitId"),
                 range(interstitial, "cooldownSeconds", 60, 3600), range(interstitial, "maxPerSession", 0, 20),
                 range(ads, "requestTimeoutMs", 1000, 30000), range(ads, "retryCount", 0, 3),

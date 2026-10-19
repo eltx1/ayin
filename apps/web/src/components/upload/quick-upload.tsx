@@ -9,6 +9,7 @@ import { useI18n } from "@/components/i18n/i18n-provider";
 import { scheduleTimestamp, uploadId, uploadRecord } from "@/lib/quick-upload-contract";
 import { UploadProtocolError } from "@/lib/upload-session";
 
+import { trackMobileEvent } from "@/lib/mobile-runtime";
 import { trackAnalyticsEvent } from "@/lib/analytics";
 import { apiBaseUrl } from "@/lib/api";
 import { uploadPreparedVideoDirectly } from "@/lib/direct-video-upload";
@@ -214,6 +215,10 @@ export function QuickUpload() {
         setMessage(result.message);
         return;
       }
+      trackMobileEvent("upload_started", {
+        size_bucket:
+          selected.size < 10_000_000 ? "small" : selected.size < 100_000_000 ? "medium" : "large",
+      });
       trackAnalyticsEvent("UPLOAD_START", { channelId: identity.channel.id });
       const draft = await createQuickDraft({
         channelId: identity.channel.id,
@@ -259,6 +264,10 @@ export function QuickUpload() {
       const confirmation = await confirmQuickUpload(draft.video.id, controller.signal);
       setProcessingReady(confirmation.status === "DRAFT");
       setProcessingLabel(confirmation.status === "DRAFT" ? copy("Ready") : copy("Queued"));
+      trackMobileEvent("upload_completed", {
+        size_bucket:
+          selected.size < 10_000_000 ? "small" : selected.size < 100_000_000 ? "medium" : "large",
+      });
       trackAnalyticsEvent("UPLOAD_COMPLETE", {
         channelId: identity.channel.id,
         videoId: draft.video.id,
@@ -273,6 +282,7 @@ export function QuickUpload() {
       );
     } catch (error) {
       if (controller.signal.aborted) return;
+      trackMobileEvent("upload_failed", { size_bucket: "unknown" });
       setUncertain(true);
       setMessage(
         error instanceof UploadProtocolError

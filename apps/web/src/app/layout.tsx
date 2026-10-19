@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 
+import { MobileRuntime } from "@/components/mobile/mobile-runtime";
 import { I18nProvider } from "@/components/i18n/i18n-provider";
 import { ViewportFeedback } from "@/components/platform/viewport-feedback";
 import { TvPlatformRuntime } from "@/components/platform/tv-platform-runtime";
@@ -55,6 +56,7 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   colorScheme: "dark",
+  viewportFit: "cover",
   themeColor: "#03030a",
 };
 
@@ -97,6 +99,7 @@ export default async function RootLayout({ children }: RootLayoutProperties) {
             type="application/ld+json"
             dangerouslySetInnerHTML={{ __html: serializeJsonLd(siteStructuredData) }}
           />
+          <MobileRuntime />
           <ServiceWorkerRegistration />
           <ViewportFeedback />
           <TvPlatformRuntime />

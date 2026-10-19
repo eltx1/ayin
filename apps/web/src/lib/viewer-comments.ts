@@ -2,7 +2,7 @@ export interface ViewerComment {
   id: string;
   body: string;
   createdAt: string;
-  authorProfile: { name: string; slug: string };
+  authorProfile: { id?: string; name: string; slug: string };
   likeCount: number;
   creatorHearted: boolean;
   pinned: boolean;
@@ -52,7 +52,11 @@ function comment(value: unknown, depth = 0): ViewerComment {
     id: identity(item.id),
     body: text(item.body, 3000),
     createdAt: date(item.createdAt),
-    authorProfile: { name: text(author.name, 120), slug: text(author.slug, 120) },
+    authorProfile: {
+      ...(author.id === undefined ? {} : { id: identity(author.id) }),
+      name: text(author.name, 120),
+      slug: text(author.slug, 120),
+    },
     likeCount: item.likeCount as number,
     creatorHearted: flag(item.creatorHearted),
     pinned: flag(item.pinned),

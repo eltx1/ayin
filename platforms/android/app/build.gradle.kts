@@ -1,3 +1,6 @@
+import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
+import com.google.gms.googleservices.GoogleServicesTask
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -6,6 +9,22 @@ plugins {
 fun setting(name: String, fallback: String = ""): String =
     providers.gradleProperty(name).orElse(providers.environmentVariable(name)).getOrElse(fallback)
 fun quoted(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+val firebaseConfigured = setting("AYIN_FIREBASE_ANDROID_APP_ID").isNotBlank()
+if (firebaseConfigured) {
+    // Real downloaded client config only. No placeholder Firebase project is generated.
+    val configFile = file(setting("AYIN_FIREBASE_CONFIG_FILE", "src/mobile/google-services.json"))
+    require(configFile.isFile) { "Set AYIN_FIREBASE_CONFIG_FILE to the actual Firebase Android client JSON" }
+    apply(plugin = "com.google.gms.google-services")
+    apply(plugin = "com.google.firebase.crashlytics")
+    tasks.withType<GoogleServicesTask>().configureEach {
+        if (name.contains("Mobile")) googleServicesJsonFiles.setFrom(configFile) else enabled = false
+    }
+    tasks.configureEach {
+        if (name.contains("Crashlytics") && !name.contains("Mobile")) enabled = false
+    }
+}
+
 
 android {
     namespace = "net.ayin.shell"
@@ -28,10 +47,12 @@ android {
             dimension = "surface"
             applicationIdSuffix = ".mobile"
             buildConfigField("String", "SHELL_PLATFORM", "\"android\"")
-            resValue("string", "google_app_id", setting("AYIN_FIREBASE_ANDROID_APP_ID"))
-            resValue("string", "google_api_key", setting("AYIN_FIREBASE_API_KEY"))
-            resValue("string", "project_id", setting("AYIN_FIREBASE_PROJECT_ID"))
-            resValue("string", "gcm_defaultSenderId", setting("AYIN_FIREBASE_SENDER_ID"))
+            if (!firebaseConfigured) {
+                resValue("string", "google_app_id", "")
+                resValue("string", "google_api_key", "")
+                resValue("string", "project_id", "")
+                resValue("string", "gcm_defaultSenderId", "")
+            }
         }
         create("tv") {
             dimension = "surface"
@@ -88,6 +109,7 @@ dependencies {
     "mobileImplementation"(platform("com.google.firebase:firebase-bom:34.19.0"))
     "mobileImplementation"("com.google.firebase:firebase-analytics")
     "mobileImplementation"("com.google.firebase:firebase-messaging")
+    "mobileImplementation"("com.google.firebase:firebase-crashlytics")
 
     implementation("androidx.activity:activity-ktx:1.13.0")
     implementation("androidx.appcompat:appcompat:1.8.0")
@@ -103,3 +125,13 @@ dependencies {
 
 // CI resolves and records locks; production release requires reviewed committed lock state.
 dependencyLocking { lockAllConfigurations() }
+
+if (firebaseConfigured) {
+    android.buildTypes.configureEach {
+        val releaseBuild = name == "release"
+        configure<CrashlyticsExtension> {
+            mappingFileUploadEnabled = releaseBuild && setting("AYIN_CRASHLYTICS_UPLOAD_MAPPING", "false") == "true"
+            nativeSymbolUploadEnabled = false // Kotlin/Java shell; no app-owned NDK library.
+        }
+    }
+}

@@ -1,3 +1,9 @@
+import {
+  assertNoChannelBlock,
+  assertNoProfileBlock,
+  assertNoUserBlock,
+  blockedAccountIds,
+} from "../user-blocks/user-blocks.policy.js";
 import { randomUUID } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
 import type { Prisma } from "@ayin/db";
@@ -153,7 +159,10 @@ export class CommunityService {
           where: { channelId: post.channelId },
           select: { profile: { select: { accountId: true } } },
         });
-        const accountIds = [...new Set(subscribers.map((item) => item.profile.accountId))];
+        const blocked = new Set(await blockedAccountIds(tx, accountId));
+        const accountIds = [...new Set(subscribers.map((item) => item.profile.accountId))].filter(
+          (id) => !blocked.has(id),
+        );
         if (accountIds.length)
           await tx.notification.createMany({
             data: accountIds.map((targetAccountId) => ({
@@ -289,7 +298,7 @@ export class CommunityService {
     return { assetId, status: "VALIDATED" as const };
   }
 
-  async channelPosts(handle: string, take = 30) {
+  async channelPosts(handle: string, take = 30, accountId?: string) {
     await this.ensureEnabled();
     const channel = await this.database.client.channel.findFirst({
       where: { handle, status: "ACTIVE", removedAt: null },
@@ -297,20 +306,32 @@ export class CommunityService {
     });
     if (!channel)
       throw new CommunityError("CHANNEL_NOT_FOUND", "This channel is not available.", 404);
-    const items = await this.visiblePosts({ channelId: channel.id }, take);
+    await assertNoChannelBlock(this.database.client, accountId, channel.id);
+    const blocked = await blockedAccountIds(this.database.client, accountId);
+    const items = await this.visiblePosts(
+      { channelId: channel.id, authorAccountId: { notIn: blocked } },
+      take,
+    );
     return { channel, items };
   }
 
   async subscriberFeed(accountId: string, take = 50) {
     await this.ensureEnabled();
     const profile = await this.profile(accountId);
+    const blocked = await blockedAccountIds(this.database.client, accountId);
     const subscriptions = await this.database.client.subscription.findMany({
-      where: { profileId: profile.id },
+      where: {
+        profileId: profile.id,
+        channel: { members: { none: { role: "OWNER", accountId: { in: blocked } } } },
+      },
       select: { channelId: true },
     });
     return {
       items: await this.visiblePosts(
-        { channelId: { in: subscriptions.map((item) => item.channelId) } },
+        {
+          channelId: { in: subscriptions.map((item) => item.channelId) },
+          authorAccountId: { notIn: blocked },
+        },
         take,
       ),
     };
@@ -318,7 +339,7 @@ export class CommunityService {
 
   async react(accountId: string, postId: string, liked: boolean) {
     const profile = await this.profile(accountId);
-    await this.publicPost(postId);
+    await this.publicPost(postId, accountId);
     if (liked)
       await this.database.client.communityPostReaction.upsert({
         where: { postId_profileId: { postId, profileId: profile.id } },
@@ -340,7 +361,7 @@ export class CommunityService {
 
   async vote(accountId: string, postId: string, optionId: string) {
     const profile = await this.profile(accountId);
-    const post = await this.publicPost(postId);
+    const post = await this.publicPost(postId, accountId);
     if (post.type !== "POLL" || !post.pollOptions.some((option) => option.id === optionId))
       throw new CommunityError("INVALID_POLL_OPTION", "That poll option is not available.");
     await this.database.client.communityPollVote.upsert({
@@ -348,19 +369,20 @@ export class CommunityService {
       create: { postId, optionId, profileId: profile.id },
       update: { optionId },
     });
-    return this.publicPost(postId);
+    return this.publicPost(postId, accountId);
   }
 
   async comment(accountId: string, postId: string, body: string, parentId?: string) {
     const profile = await this.profile(accountId);
-    await this.publicPost(postId);
+    await this.publicPost(postId, accountId);
     if (parentId) {
       const parent = await this.database.client.communityPostComment.findFirst({
         where: { id: parentId, postId, status: "PUBLISHED" },
-        select: { id: true },
+        select: { id: true, authorProfileId: true },
       });
       if (!parent)
         throw new CommunityError("COMMENT_PARENT_NOT_FOUND", "The parent comment is unavailable.");
+      await assertNoProfileBlock(this.database.client, accountId, parent.authorProfileId);
     }
     return this.database.client.communityPostComment.create({
       data: { postId, authorProfileId: profile.id, body, ...(parentId ? { parentId } : {}) },
@@ -512,7 +534,7 @@ export class CommunityService {
       throw new CommunityError("PROFILE_REQUIRED", "A viewer profile is required.", 403);
     return profile;
   }
-  private async publicPost(postId: string) {
+  private async publicPost(postId: string, accountId?: string) {
     const now = new Date();
     const post = await this.database.client.communityPost.findFirst({
       where: {
@@ -535,6 +557,8 @@ export class CommunityService {
     });
     if (!post)
       throw new CommunityError("POST_NOT_FOUND", "This community post is unavailable.", 404);
+    await assertNoChannelBlock(this.database.client, accountId, post.channelId);
+    if (accountId) await assertNoUserBlock(this.database.client, accountId, [post.authorAccountId]);
     return post;
   }
   private async ensureEnabled() {

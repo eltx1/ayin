@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  getMobileState,
+  getMobileServerState,
+  subscribeMobile,
+  nativeDisplayInventoryActive,
+} from "@/lib/mobile-runtime";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 
@@ -24,8 +30,10 @@ import styles from "./page-ad-slot.module.css";
 
 export function PageAdSlot({ placementKey }: { placementKey: string }) {
   const pathname = usePathname();
+  useSyncExternalStore(subscribeMobile, getMobileState, getMobileServerState);
   const consent = useAdvertisingConsent();
   const device = useSyncExternalStore(subscribePageAdDevice, detectPageAdDevice, () => null);
+  if (nativeDisplayInventoryActive()) return null;
   if (!device || !pathname) return <div className={styles.probe} aria-hidden="true" />;
   return (
     <PageAdSlotSession

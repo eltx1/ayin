@@ -4,6 +4,7 @@ import { notFound, permanentRedirect } from "next/navigation";
 import type { CSSProperties } from "react";
 
 import { OwnerChannelActions } from "@/components/channel/owner-channel-actions";
+import { BlockUserButton, ChannelBlockGate } from "@/components/social/user-blocks";
 import { SubscribeButton } from "@/components/social/subscribe-button";
 import styles from "@/components/channel/public-channel.module.css";
 import { trustedApiRegionHeaders } from "@/lib/trusted-region";
@@ -121,101 +122,104 @@ export default async function PublicChannelPage({
   const structuredData = !kidsMode && seoChannel ? buildChannelStructuredData(seoChannel) : null;
 
   return (
-    <main className={styles.page} style={{ "--channel-accent": accent } as CSSProperties}>
-      {structuredData ? (
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }}
-        />
-      ) : null}
-      <div
-        className={styles.banner}
-        style={bannerUrl ? { backgroundImage: `url("${bannerUrl}")` } : undefined}
-        aria-label={t("channel.bannerAria", { name: data.channel.name })}
-      />
-
-      <section className={styles.identity} aria-labelledby="channel-name">
+    <ChannelBlockGate channelId={data.channel.id}>
+      <main className={styles.page} style={{ "--channel-accent": accent } as CSSProperties}>
+        {structuredData ? (
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }}
+          />
+        ) : null}
         <div
-          className={styles.avatar}
-          style={avatarUrl ? { backgroundImage: `url("${avatarUrl}")` } : undefined}
-          aria-label={t("channel.avatarAria", { name: data.channel.name })}
-        >
-          {avatarUrl ? null : initial}
-        </div>
+          className={styles.banner}
+          style={bannerUrl ? { backgroundImage: `url("${bannerUrl}")` } : undefined}
+          aria-label={t("channel.bannerAria", { name: data.channel.name })}
+        />
 
-        <div className={styles.identityCopy}>
-          <h1 dir="auto" id="channel-name">
-            {data.channel.name}
-          </h1>
-          <p className={styles.handle} dir="ltr">
-            @{data.channel.handle}
-          </p>
-          {data.channel.description ? (
-            <p className={styles.summary} dir="auto">
-              {shorten(data.channel.description, 220)}
-            </p>
-          ) : null}
-        </div>
-
-        {!kidsMode ? (
-          <div className={styles.actions}>
-            <SubscribeButton
-              channelId={data.channel.id}
-              className={styles.subscribe}
-              initialCount={data.subscription.subscriberCount}
-            />
-            <OwnerChannelActions handle={data.channel.handle} />
+        <section className={styles.identity} aria-labelledby="channel-name">
+          <div
+            className={styles.avatar}
+            style={avatarUrl ? { backgroundImage: `url("${avatarUrl}")` } : undefined}
+            aria-label={t("channel.avatarAria", { name: data.channel.name })}
+          >
+            {avatarUrl ? null : initial}
           </div>
-        ) : null}
-      </section>
 
-      <nav aria-label={t("channel.sections")} className={styles.tabs}>
-        {tabs.map((tab) => (
-          <Link
-            className={`${styles.tab} ${activeTab === tab.id ? styles.activeTab : ""}`}
-            data-tv-focusable="true"
-            data-tv-focus-id={`channel-tab-${tab.id}`}
-            href={localizePath(
-              tab.id === "home"
-                ? `/c/${data.channel.handle}${policySuffix}`
-                : `/c/${data.channel.handle}?tab=${tab.id}${kidsMode ? "&kids=1" : ""}`,
-              locale,
-            )}
-            key={tab.id}
-          >
-            {channelTabLabel(tab.id, tab.label, locale)}
-          </Link>
-        ))}
-        {!kidsMode && data.features.posts ? (
-          <Link
-            className={styles.tab}
-            data-tv-focusable="true"
-            data-tv-focus-id="channel-community"
-            href={localizePath(`/c/${data.channel.handle}/community`, locale)}
-          >
-            {t("channel.tab.posts")}
-          </Link>
-        ) : null}
-      </nav>
+          <div className={styles.identityCopy}>
+            <h1 dir="auto" id="channel-name">
+              {data.channel.name}
+            </h1>
+            <p className={styles.handle} dir="ltr">
+              @{data.channel.handle}
+            </p>
+            {data.channel.description ? (
+              <p className={styles.summary} dir="auto">
+                {shorten(data.channel.description, 220)}
+              </p>
+            ) : null}
+          </div>
 
-      <div className={styles.content}>
-        {activeTab === "home" ? (
-          <>
-            {!kidsMode ? <CreatorTvSection data={data} locale={locale} /> : null}
-            <VideoSection data={data} limit={8} locale={locale} kidsMode={kidsMode} />
-            <PlaylistSection data={data} limit={4} locale={locale} kidsMode={kidsMode} />
-          </>
-        ) : null}
-        {activeTab === "videos" ? (
-          <VideoSection data={data} locale={locale} kidsMode={kidsMode} />
-        ) : null}
-        {activeTab === "tv" ? <CreatorTvSection data={data} locale={locale} /> : null}
-        {activeTab === "playlists" ? (
-          <PlaylistSection data={data} locale={locale} kidsMode={kidsMode} />
-        ) : null}
-        {activeTab === "about" ? <AboutSection data={data} locale={locale} /> : null}
-      </div>
-    </main>
+          {!kidsMode ? (
+            <div className={styles.actions}>
+              <SubscribeButton
+                channelId={data.channel.id}
+                className={styles.subscribe}
+                initialCount={data.subscription.subscriberCount}
+              />
+              <OwnerChannelActions handle={data.channel.handle} />
+              <BlockUserButton channelId={data.channel.id} />
+            </div>
+          ) : null}
+        </section>
+
+        <nav aria-label={t("channel.sections")} className={styles.tabs}>
+          {tabs.map((tab) => (
+            <Link
+              className={`${styles.tab} ${activeTab === tab.id ? styles.activeTab : ""}`}
+              data-tv-focusable="true"
+              data-tv-focus-id={`channel-tab-${tab.id}`}
+              href={localizePath(
+                tab.id === "home"
+                  ? `/c/${data.channel.handle}${policySuffix}`
+                  : `/c/${data.channel.handle}?tab=${tab.id}${kidsMode ? "&kids=1" : ""}`,
+                locale,
+              )}
+              key={tab.id}
+            >
+              {channelTabLabel(tab.id, tab.label, locale)}
+            </Link>
+          ))}
+          {!kidsMode && data.features.posts ? (
+            <Link
+              className={styles.tab}
+              data-tv-focusable="true"
+              data-tv-focus-id="channel-community"
+              href={localizePath(`/c/${data.channel.handle}/community`, locale)}
+            >
+              {t("channel.tab.posts")}
+            </Link>
+          ) : null}
+        </nav>
+
+        <div className={styles.content}>
+          {activeTab === "home" ? (
+            <>
+              {!kidsMode ? <CreatorTvSection data={data} locale={locale} /> : null}
+              <VideoSection data={data} limit={8} locale={locale} kidsMode={kidsMode} />
+              <PlaylistSection data={data} limit={4} locale={locale} kidsMode={kidsMode} />
+            </>
+          ) : null}
+          {activeTab === "videos" ? (
+            <VideoSection data={data} locale={locale} kidsMode={kidsMode} />
+          ) : null}
+          {activeTab === "tv" ? <CreatorTvSection data={data} locale={locale} /> : null}
+          {activeTab === "playlists" ? (
+            <PlaylistSection data={data} locale={locale} kidsMode={kidsMode} />
+          ) : null}
+          {activeTab === "about" ? <AboutSection data={data} locale={locale} /> : null}
+        </div>
+      </main>
+    </ChannelBlockGate>
   );
 }
 

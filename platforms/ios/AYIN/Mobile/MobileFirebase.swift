@@ -16,7 +16,10 @@ final class MobileFirebase: NSObject, MessagingDelegate, UNUserNotificationCente
     private var receiver: (([String: Any]) -> Void)?
     private var pending: [[String: Any]] = []
     private var seenNotifications: Set<String> = []
-    private var accountId: String?
+    private(set) var accountId: String? = {
+        guard let value = UserDefaults.standard.string(forKey: "ayin.mobile.boundAccount.v1"), UUID(uuidString: value) != nil else { return nil }
+        return value
+    }()
     private var sessionGeneration = UUID()
     private var webReady = false
 
@@ -61,7 +64,10 @@ final class MobileFirebase: NSObject, MessagingDelegate, UNUserNotificationCente
         Analytics.setConsent([.analyticsStorage: allowed ? .granted : .denied, .adStorage: .denied, .adUserData: .denied, .adPersonalization: .denied])
         Analytics.setAnalyticsCollectionEnabled(allowed)
         Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(allowed)
-        if !allowed { Analytics.setUserID(nil) }
+        if !allowed {
+            Analytics.setUserID(nil)
+            Crashlytics.crashlytics().deleteUnsentReports()
+        }
     }
 
     func event(_ name: String, params: [String: Any]) throws {
@@ -95,8 +101,16 @@ final class MobileFirebase: NSObject, MessagingDelegate, UNUserNotificationCente
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return nil }
         if accountId != nil {
+            let generation = sessionGeneration
             Messaging.messaging().isAutoInitEnabled = true
             UIApplication.shared.registerForRemoteNotifications()
+            // A fresh APNs registration is asynchronous. Let the caller register its FCM token
+            // in the same explicit opt-in action instead of requiring a second button press.
+            for _ in 0..<100 {
+                guard generation == sessionGeneration, !Task.isCancelled else { return nil }
+                if let token { return token }
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
         }
         return token
     }
@@ -126,11 +140,12 @@ final class MobileFirebase: NSObject, MessagingDelegate, UNUserNotificationCente
     private func receivedToken(_ value: String?) {
         guard accountId != nil, notificationsRemoteEnabled, let value, !value.isEmpty, value.count <= 4096 else { return }
         token = value
-        emit(["type": "notification.token", "token": value, "tokenType": "fcm"])
+        emit(["type": "notification.token", "token": value, "tokenType": "fcm", "recipientAccountId": accountId as Any? ?? NSNull()])
     }
 
     func reset() async {
         accountId = nil
+        UserDefaults.standard.removeObject(forKey: "ayin.mobile.boundAccount.v1")
         sessionGeneration = UUID()
         analyticsAllowed = false
         applyAnalyticsConsent()
@@ -143,10 +158,14 @@ final class MobileFirebase: NSObject, MessagingDelegate, UNUserNotificationCente
             try? await Messaging.messaging().deleteToken()
         }
         UIApplication.shared.unregisterForRemoteNotifications()
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
     }
 
-    func bindAccount(_ id: String) {
+    func bindAccount(_ id: String) throws {
+        guard accountId == nil || accountId == id else { throw MobileBridgeError.invalidRequest }
         if accountId != id { sessionGeneration = UUID(); accountId = id }
+        UserDefaults.standard.set(id, forKey: "ayin.mobile.boundAccount.v1")
     }
     func bind(_ handler: @escaping ([String: Any]) -> Void) { receiver = handler; webReady = false }
     func navigating() { webReady = false }
@@ -155,7 +174,7 @@ final class MobileFirebase: NSObject, MessagingDelegate, UNUserNotificationCente
         let events = pending
         pending.removeAll()
         for event in events { receiver?(event) }
-        if let token { receiver?(["type": "notification.token", "token": token, "tokenType": "fcm"]) }
+        if let token { receiver?(["type": "notification.token", "token": token, "tokenType": "fcm", "recipientAccountId": accountId as Any? ?? NSNull()]) }
     }
     func unbind() { receiver = nil; webReady = false }
 

@@ -12,8 +12,8 @@ import androidx.core.content.ContextCompat
 import com.google.firebase.FirebaseApp
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.messaging.FirebaseMessaging
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import org.json.JSONObject
-import java.util.UUID
 
 internal object MobileRuntimeFactory {
     fun create(activity: MainActivity, bannerHost: FrameLayout, emit: (JSONObject) -> Unit): MobileRuntime = GoogleMobileRuntime(activity, bannerHost, emit)
@@ -27,6 +27,7 @@ internal class GoogleMobileRuntime(
     private val firebaseReady = FirebaseApp.getApps(activity).isNotEmpty()
     private val adsReady = BuildConfig.ADMOB_APP_ID.matches(Regex("ca-app-pub-[0-9]{16}~[0-9]{10}"))
     private val analytics = if (firebaseReady) FirebaseAnalytics.getInstance(activity) else null
+    private val crashlytics = if (firebaseReady) FirebaseCrashlytics.getInstance() else null
     private val prefs = MobilePushState.prefs(activity)
     private var config = MobileConfig()
     private var analyticsConsent = false
@@ -48,6 +49,8 @@ internal class GoogleMobileRuntime(
         // Collection remains off until the currently authenticated account opts in this session.
         analytics?.setAnalyticsCollectionEnabled(false)
         analytics?.setUserId(null)
+        crashlytics?.setCrashlyticsCollectionEnabled(false)
+        crashlytics?.deleteUnsentReports()
         MobilePushState.channel(activity)
         MobilePushState.listener = { event -> if (!destroyed) nativeEvent(event) }
     }
@@ -65,7 +68,8 @@ internal class GoogleMobileRuntime(
                 require(params.keys().asSequence().toSet() == setOf("config"))
                 if (sensitiveOperation || ads.isPresenting) { done(null, "SENSITIVE_OPERATION"); return }
                 val received = MobileConfig.parse(params.getJSONObject("config"))
-                val eligible = MobileConfig.versionAtLeast(BuildConfig.VERSION_NAME, received.minimumAppVersion) &&
+                val upgradeRequired = !MobileConfig.versionAtLeast(BuildConfig.VERSION_NAME, received.minimumAppVersion)
+                val eligible = !upgradeRequired &&
                     MobileConfig.rolloutBucket(MobilePushState.installationId(activity)) < received.rolloutPercent
                 val parsed = if (eligible) received else received.copy(adsEnabled = false, analyticsEnabled = false, notificationsEnabled = false)
                 // Ads controller defers configuration while fullscreen inventory is visible.
@@ -79,8 +83,12 @@ internal class GoogleMobileRuntime(
                     prefs.edit().putBoolean("push_enabled", false).commit()
                     if (firebaseReady) FirebaseMessaging.getInstance().isAutoInitEnabled = false
                 }
+                pendingNotification?.let(::nativeEvent)
+                pendingNotification = null
                 done(JSONObject().put("platform", "android").put("appVersion", BuildConfig.VERSION_NAME)
+                    .put("runtimeAllowed", eligible).put("upgradeRequired", upgradeRequired)
                     .put("installationId", MobilePushState.installationId(activity))
+                    .put("boundAccountId", prefs.getString("account_id", null) ?: JSONObject.NULL)
                     .put("configured", JSONObject().put("firebase", firebaseReady).put("ads", adsReady)), null)
             }
             "privacy.request", "privacy.options", "ads.banner", "ads.hideBanner", "ads.interstitial" -> ads.request(method, params, done)
@@ -120,8 +128,12 @@ internal class GoogleMobileRuntime(
                 analytics?.setUserId(null)
                 analytics?.setAnalyticsCollectionEnabled(false)
                 analytics?.resetAnalyticsData()
-                prefs.edit().remove("account_id").putBoolean("push_enabled", false).commit()
-                NotificationManagerCompat.from(activity).cancelAll()
+                crashlytics?.setCrashlyticsCollectionEnabled(false)
+                crashlytics?.deleteUnsentReports()
+                synchronized(MobilePushState.deliveryLock) {
+                    prefs.edit().remove("account_id").putBoolean("push_enabled", false).commit()
+                    NotificationManagerCompat.from(activity).cancelAll()
+                }
                 ads.reset()
                 if (firebaseReady) {
                     FirebaseMessaging.getInstance().isAutoInitEnabled = false
@@ -144,13 +156,15 @@ internal class GoogleMobileRuntime(
             FirebaseAnalytics.ConsentType.AD_USER_DATA to FirebaseAnalytics.ConsentStatus.DENIED,
             FirebaseAnalytics.ConsentType.AD_PERSONALIZATION to FirebaseAnalytics.ConsentStatus.DENIED))
         analytics?.setAnalyticsCollectionEnabled(enabled)
+        crashlytics?.setCrashlyticsCollectionEnabled(enabled)
+        if (!enabled) crashlytics?.deleteUnsentReports()
         if (!enabled) analytics?.setUserId(null)
     }
 
     private fun notifications(method: String, params: JSONObject, done: (JSONObject?, String?) -> Unit) {
         require(params.keys().asSequence().toSet() == setOf("accountId"))
         val account = params.getString("accountId")
-        require(runCatching { UUID.fromString(account) }.isSuccess)
+        require(MobilePushState.validUuid(account))
         if (tokenResetting) { done(null, "TOKEN_RESETTING"); return }
         if (!firebaseReady || !config.notificationsEnabled) { done(null, "NOTIFICATIONS_DISABLED"); return }
         val old = prefs.getString("account_id", null)
@@ -204,7 +218,7 @@ internal class GoogleMobileRuntime(
         pendingNotification = JSONObject().put("type", "notification.opened").put("notificationId", id).put("route", "/notifications").put("recipientAccountId", account)
         intent.removeExtra("ayin_notification_id")
     }
-    override fun pageReady() { pendingNotification?.let(::nativeEvent); pendingNotification = null }
+    override fun pageReady() { /* Delivery waits for runtime.configure after the web installs its event listener. */ }
     override fun destroy() {
         destroyed = true
         MobilePushState.listener = null

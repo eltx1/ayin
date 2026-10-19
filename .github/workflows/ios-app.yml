@@ -60,12 +60,12 @@ jobs:
           fi
           lock_dir=AYIN.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
           mkdir -p "$lock_dir"
-          flags=()
+          flags=(-resolvePackageDependencies -project AYIN.xcodeproj -scheme AYIN)
           if [ -f Package.resolved ]; then
             cp Package.resolved "$lock_dir/Package.resolved"
             flags+=(-onlyUsePackageVersionsFromResolvedFile)
           fi
-          xcodebuild -resolvePackageDependencies -project AYIN.xcodeproj -scheme AYIN "${flags[@]}"
+          xcodebuild "${flags[@]}"
           # First resolution is captured for review/commit; no fabricated transitive lock.
           test -f "$lock_dir/Package.resolved"
           mkdir -p "$RUNNER_TEMP/ayin-ios"

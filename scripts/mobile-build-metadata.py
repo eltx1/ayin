@@ -28,8 +28,11 @@ def main():
     for path in args.artifact:
         if not path.is_file():
             raise SystemExit(f'Missing expected artifact: {path}')
+        digest = hashlib.sha256()
         with path.open('rb') as source:
-            digest = hashlib.file_digest(source, 'sha256').hexdigest()
+            for block in iter(lambda: source.read(1024 * 1024), b''):
+                digest.update(block)
+        digest = digest.hexdigest()
         artifacts.append({'file': path.name, 'bytes': path.stat().st_size, 'sha256': digest})
     payload = {
         'schemaVersion': 1,
