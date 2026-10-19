@@ -12,6 +12,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.UUID
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -28,12 +29,23 @@ class ShellBaselineInstrumentedTest {
             assertTrue(awaitJsBoolean(scenario, "typeof window.AyinNative === 'object'"))
             if (BuildConfig.SHELL_PLATFORM == "android") {
                 assertTrue(awaitJsBoolean(scenario, "typeof window.AyinMobile === 'object' && window.AyinMobile.version === 1"))
+                val invalidId = "invalid_" + UUID.randomUUID().toString()
+                val validId = "valid_" + UUID.randomUUID().toString()
                 evaluateJavascript(scenario, """
-                    window.addEventListener('ayin:mobile-response', (e) => { window.__invalidMobile = e.detail; }, { once: true });
-                    window.AyinMobile.request({id:'test_invalid_method',method:'eval',params:{}});
+                    const receiveTestResponse = (event) => {
+                      if (event.detail.id === '$invalidId') window.__invalidMobile = event.detail;
+                      if (event.detail.id === '$validId') window.__validMobile = event.detail;
+                      if (window.__invalidMobile && window.__validMobile) {
+                        window.removeEventListener('ayin:mobile-response', receiveTestResponse);
+                      }
+                    };
+                    window.addEventListener('ayin:mobile-response', receiveTestResponse);
+                    window.AyinMobile.request({id:'$invalidId',method:'eval',params:{}});
+                    window.AyinMobile.request({id:'$validId',method:'session.reset',params:{}});
                     true
                 """.trimIndent())
                 assertTrue(awaitJsBoolean(scenario, "window.__invalidMobile?.ok === false && window.__invalidMobile?.error === 'INVALID_REQUEST'"))
+                assertTrue(awaitJsBoolean(scenario, "window.__validMobile?.ok === true && window.__validMobile?.result?.detached === true"))
             } else {
                 // Mobile-only feature detection must never disable existing TV/Fire web behavior.
                 assertTrue(awaitJsBoolean(scenario, "typeof window.AyinMobile === 'undefined'"))
@@ -231,7 +243,11 @@ class ShellBaselineInstrumentedTest {
             )
         }
         assertTrue(awaitJsBoolean(scenario, "document.readyState === 'complete' && window.__ayinHarnessId === '$harnessId'"))
-        scenario.onActivity { it.webView.requestFocus() }
+        scenario.onActivity {
+            assertEquals("Harness must have a trusted native URL", BuildConfig.AYIN_ORIGIN.trimEnd('/'), it.webView.url?.trimEnd('/'))
+            it.webView.requestFocus()
+        }
+        assertEquals(JSONObjectQuote(BuildConfig.AYIN_ORIGIN), evaluateJavascript(scenario, "location.origin"))
     }
 
     private fun awaitJsBoolean(
@@ -244,7 +260,11 @@ class ShellBaselineInstrumentedTest {
             if (evaluateJavascript(scenario, expression) == "true") return true
             Thread.sleep(50)
         }
-        throw AssertionError("WebView condition failed: $expression; location=" + evaluateJavascript(scenario, "location.href"))
+        var nativeUrl: String? = null
+        scenario.onActivity { nativeUrl = it.webView.url }
+        val bridgeResponses = evaluateJavascript(scenario, "JSON.stringify({invalid:window.__invalidMobile,valid:window.__validMobile})")
+        throw AssertionError("WebView condition failed: $expression; nativeUrl=$nativeUrl; location=" +
+            evaluateJavascript(scenario, "location.href") + "; bridgeResponses=$bridgeResponses")
     }
 
     private fun evaluateJavascript(

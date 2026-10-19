@@ -26,7 +26,7 @@ internal object MobileBridgePolicy {
     fun validId(value: String) = value.matches(Regex("[A-Za-z0-9_-]{1,80}"))
     fun bootstrap(capabilities: List<String>): String = """
         (() => {
-          if (window.top !== window || window.AyinMobile || !window.AyinNativeTransport) return;
+          if (window.top !== window || location.origin !== ${JSONObject.quote(BuildConfig.AYIN_ORIGIN)} || window.AyinMobile || !window.AyinNativeTransport) return;
           const transport = window.AyinNativeTransport;
           Object.defineProperty(window, 'AyinMobile', { value: Object.freeze({
             version: 1,
@@ -38,6 +38,18 @@ internal object MobileBridgePolicy {
               transport.postMessage(JSON.stringify({type:'mobile', id:message.id, method:message.method, params:message.params}));
             }
           }), writable:false, configurable:false });
+          // Retire workers inherited from the older mobile shell. Never remove cached
+          // uploads or reload an active page: its controller ends at normal navigation.
+          if (navigator.serviceWorker && typeof navigator.serviceWorker.getRegistrations === 'function') {
+            navigator.serviceWorker.getRegistrations().then((registrations) => {
+              registrations.slice(0, 32).forEach((registration) => {
+                try {
+                  if (new URL(registration.scope).origin !== location.origin) return;
+                  Promise.resolve(registration.unregister()).catch(() => {});
+                } catch (_) {}
+              });
+            }).catch(() => {});
+          }
         })();
     """.trimIndent()
 }

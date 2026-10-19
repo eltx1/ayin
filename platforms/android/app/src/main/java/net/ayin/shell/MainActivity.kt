@@ -803,7 +803,9 @@ class MainActivity : AppCompatActivity() {
             html,
             "text/html",
             "UTF-8",
-            null,
+            // Match a real trusted navigation in both JavaScript and WebView.getUrl().
+            // A null history URL leaves getUrl() at about:blank on some WebView versions.
+            BuildConfig.AYIN_ORIGIN,
         )
     }
 
