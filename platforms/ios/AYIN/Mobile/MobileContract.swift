@@ -34,15 +34,25 @@ struct MobileRuntimeConfig: Decodable {
               value.web.minimumBridgeVersion <= 1, !value.web.bundleUpdatesEnabled,
               (0...100).contains(value.web.rolloutPercent),
               (60...3600).contains(value.ads.interstitial.cooldownSeconds),
-              (0...10).contains(value.ads.interstitial.maxPerSession),
-              (3000...30000).contains(value.ads.requestTimeoutMs),
-              (0...2).contains(value.ads.retryCount), (1000...30000).contains(value.ads.retryBackoffMs),
-              ["unknown", "general", "adults", "children", "mixed"].contains(value.ads.audience),
+              (0...20).contains(value.ads.interstitial.maxPerSession),
+              (1000...30000).contains(value.ads.requestTimeoutMs),
+              (0...2).contains(value.ads.retryCount), (500...30000).contains(value.ads.retryBackoffMs),
+              ["unknown", "general", "children"].contains(value.ads.audience),
               validUnit(value.ads.platforms.ios.bannerUnitId), validUnit(value.ads.platforms.ios.interstitialUnitId),
               validVersion(value.minimumAppVersion.ios), validVersion(value.latestAppVersion.ios),
               value.notifications.types.count <= 16, !value.notifications.richMedia
         else { throw MobileBridgeError.invalidConfig }
         return value
+    }
+
+    func supports(appVersion: String, installationId: String) -> Bool {
+        let installed = appVersion.split(separator: ".").compactMap { Int($0) }
+        let required = minimumAppVersion.ios.split(separator: ".").compactMap { Int($0) }
+        guard installed.count == 3, required.count == 3,
+              !installed.lexicographicallyPrecedes(required) else { return false }
+        // Stable install cohort, independent of account and process-randomized Swift hashing.
+        let bucket = installationId.utf8.reduce(UInt32(2_166_136_261)) { ($0 ^ UInt32($1)) &* 16_777_619 } % 100
+        return Int(bucket) < web.rolloutPercent
     }
 
     private static func validUnit(_ value: String) -> Bool {

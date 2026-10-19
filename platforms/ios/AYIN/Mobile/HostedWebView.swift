@@ -52,6 +52,7 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
     private var backButton: UIButton!
     private var runtimeConfigured = false
     private var lastUnderAge = true
+    private var deferredNativeEvents: [[String: Any]] = []
 
     init(nativeFallback: @escaping () -> Void) { self.nativeFallback = nativeFallback; super.init(nibName: nil, bundle: nil) }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -65,7 +66,7 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
         configuration.allowsPictureInPictureMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = [.audio]
         configuration.websiteDataStore = .default()
-        configuration.userContentController.add(self, name: "ayinNative")
+        configuration.userContentController.add(WeakMobileScriptHandler(self), name: "ayinNative")
         let capabilities = MobileContract.capabilities.map { "'\($0)'" }.joined(separator: ",")
         configuration.userContentController.addUserScript(WKUserScript(source: """
         (() => {
@@ -113,7 +114,12 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
             bannerContainer.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor), bannerHeight
         ])
         ads = AyinMobileAds(owner: self, bannerContainer: bannerContainer)
-        ads.emit = { [weak self] event in self?.event(event) }
+        ads.emit = { [weak self] event in
+            if let type = event["type"] as? String, let format = event["format"] as? String {
+                MobileFirebase.shared.adEvent(type.replacingOccurrences(of: ".", with: "_"), format: format, code: event["code"] as? String)
+            }
+            self?.event(event)
+        }
         ads.setBannerHeight = { [weak self] height in self?.bannerHeight.constant = height }
         makeOfflineView()
         MobileFirebase.shared.bind { [weak self] event in self?.event(event) }
@@ -222,7 +228,11 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
             guard generation == documentGeneration else { return }
             pendingIDs.remove(id)
             send("ayin:mobile-response", payload: response)
-            if method == "runtime.configure", response["ok"] as? Bool == true { MobileFirebase.shared.ready() }
+            if method == "runtime.configure", response["ok"] as? Bool == true {
+                MobileFirebase.shared.ready()
+                let queued = deferredNativeEvents; deferredNativeEvents.removeAll()
+                queued.forEach(event)
+            }
         }
     }
 
@@ -238,6 +248,8 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
             guard let raw = params["config"] else { throw MobileBridgeError.invalidConfig }
             let config = try MobileRuntimeConfig.parse(raw)
             guard !ads.busy else { throw MobileBridgeError.busy }
+            let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
+            guard config.supports(appVersion: version, installationId: firebase.installationId) else { throw MobileBridgeError.unsupported }
             try ads.configure(config); firebase.configure(config)
             bridgeReady = true; runtimeConfigured = true
             return ["platform": "ios", "appVersion": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0", "installationId": firebase.installationId,
@@ -289,14 +301,28 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
 
     private func placement(_ params: [String: Any]) throws {
         guard let value = params["placement"] as? String,
-              ["home", "feed", "search", "channel", "natural_transition", "video_exit"].contains(value) else { throw MobileBridgeError.invalidRequest }
+              ["home", "feed", "search", "channel", "browse_bottom", "natural_transition", "video_exit"].contains(value) else { throw MobileBridgeError.invalidRequest }
     }
-    private func event(_ payload: [String: Any]) { guard bridgeReady else { return }; send("ayin:mobile-event", payload: payload) }
+    private func event(_ payload: [String: Any]) {
+        guard bridgeReady else {
+            if (payload["type"] as? String)?.hasPrefix("notification.") == true { deferredNativeEvents = Array((deferredNativeEvents + [payload]).suffix(10)) }
+            return
+        }
+        send("ayin:mobile-event", payload: payload)
+    }
     private func send(_ name: String, payload: [String: Any]) {
         guard MobileContract.trusted(webView.url) else { return }
         webView.callAsyncJavaScript("window.dispatchEvent(new CustomEvent(eventName, {detail: payload}));", arguments: ["eventName": name, "payload": payload], in: nil, contentWorld: .page, completionHandler: nil)
     }
     deinit {
         observerTokens.forEach { NotificationCenter.default.removeObserver($0) }
+    }
+}
+
+private final class WeakMobileScriptHandler: NSObject, WKScriptMessageHandler {
+    weak var target: WKScriptMessageHandler?
+    init(_ target: WKScriptMessageHandler) { self.target = target }
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        target?.userContentController(userContentController, didReceive: message)
     }
 }

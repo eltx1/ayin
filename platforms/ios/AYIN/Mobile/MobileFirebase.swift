@@ -94,7 +94,19 @@ final class MobileFirebase: NSObject, MessagingDelegate, UNUserNotificationCente
         guard configured, notificationsRemoteEnabled else { return nil }
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return nil }
+        if accountId != nil {
+            Messaging.messaging().isAutoInitEnabled = true
+            UIApplication.shared.registerForRemoteNotifications()
+        }
         return token
+    }
+
+    func adEvent(_ type: String, format: String, code: String? = nil) {
+        guard configured, analyticsAllowed, analyticsRemoteEnabled,
+              ["ad_request", "ad_loaded", "ad_failed"].contains(type) else { return }
+        var params: [String: Any] = ["ad_format": format]
+        if let code { params["error_code"] = String(code.prefix(40)) }
+        Analytics.logEvent(type, parameters: params)
     }
 
     func apnsRegistered(_ data: Data) {

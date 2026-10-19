@@ -24,6 +24,13 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
     private var lastShown = Date.distantPast
     private var lastRequest = Date.distantPast
     private var paidResponses: Set<String> = []
+    private var sessionGeneration = UUID()
+    private var bannerDesired = false
+    private var bannerAttempts = 0
+    private var bannerGeneration = UUID()
+    private var bannerRetry: Task<Void, Never>?
+    private var interstitialRetry: Task<Void, Never>?
+    private var lastBannerRequest = Date.distantPast
     var emit: ([String: Any]) -> Void = { _ in }
     var setBannerHeight: (CGFloat) -> Void = { _ in }
     var busy: Bool { fullscreen || consentBusy }
@@ -48,6 +55,7 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
         guard appIDConfigured, let owner else { throw MobileBridgeError.unavailable }
         guard !busy, UIApplication.shared.applicationState == .active else { throw MobileBridgeError.busy }
         consentBusy = true
+        let generation = sessionGeneration
         defer { consentBusy = false }
         resetInventory()
         underAge = requestUnderAge
@@ -58,6 +66,7 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
                     if let error { continuation.resume(throwing: error) } else { continuation.resume() }
                 }
             }
+            guard sessionGeneration == generation else { throw MobileBridgeError.disabled }
         } else {
             let parameters = RequestParameters()
             parameters.isTaggedForUnderAgeOfConsent = underAge
@@ -66,6 +75,7 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
                     if let error { continuation.resume(throwing: error) } else { continuation.resume() }
                 }
             }
+            guard sessionGeneration == generation else { throw MobileBridgeError.disabled }
             privacyChecked = true
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 ConsentForm.loadAndPresentIfRequired(from: owner) { error in
@@ -73,6 +83,7 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
                 }
             }
         }
+        guard sessionGeneration == generation else { throw MobileBridgeError.disabled }
         var event = privacyStatus
         event["type"] = "privacy.changed"
         emit(event)
@@ -100,6 +111,7 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
         // No IDFA prompt and no personalized ad requests in this release.
         MobileAds.shared.requestConfiguration.tagForUnderAgeOfConsent = NSNumber(value: underAge)
         MobileAds.shared.requestConfiguration.maxAdContentRating = .general
+        MobileAds.shared.requestConfiguration.publisherFirstPartyIDEnabled = false
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             MobileAds.shared.start { _ in continuation.resume() }
         }
@@ -129,7 +141,15 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
         let value = try permitted()
         guard value.ads.banner.enabled, let unit = unit(value, banner: true), let owner, let container = bannerContainer else { throw MobileBridgeError.disabled }
         if banner != nil { return ["status": "existing"] }
+        if !bannerDesired {
+            guard Date().timeIntervalSince(lastBannerRequest) >= 30 else { throw MobileBridgeError.rateLimited }
+            bannerAttempts = 0
+            bannerDesired = true
+            lastBannerRequest = Date()
+        }
+        let generation = bannerGeneration
         try await initialize()
+        guard generation == bannerGeneration, bannerDesired else { throw MobileBridgeError.disabled }
         _ = try permitted()
         let view = BannerView(adSize: largeAnchoredAdaptiveBanner(width: max(1, owner.view.safeAreaLayoutGuide.layoutFrame.width)))
         banner = view
@@ -150,13 +170,13 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
         bannerTimeout = Task { [weak self, weak view] in
             try? await Task.sleep(nanoseconds: UInt64(value.ads.requestTimeoutMs) * 1_000_000)
             guard !Task.isCancelled, let self, let view, self.banner === view, view.isHidden else { return }
-            self.hideBanner()
-            self.emit(["type": "ad.failed", "format": "banner", "code": "timeout"])
+            self.bannerFailed("timeout")
         }
         return ["status": "loading"]
     }
 
-    func hideBanner() {
+    func hideBanner(preserveIntent: Bool = false) {
+        if !preserveIntent { bannerDesired = false; bannerGeneration = UUID(); bannerRetry?.cancel() }
         bannerTimeout?.cancel()
         bannerTimeout = nil
         banner?.delegate = nil
@@ -164,6 +184,20 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
         banner?.removeFromSuperview()
         banner = nil
         setBannerHeight(0)
+    }
+
+    private func bannerFailed(_ code: String) {
+        hideBanner(preserveIntent: true)
+        emit(["type": "ad.failed", "format": "banner", "code": code])
+        guard let config, bannerDesired, bannerAttempts < config.ads.retryCount else { bannerDesired = false; return }
+        bannerAttempts += 1
+        let generation = bannerGeneration
+        let delay = config.ads.retryBackoffMs * (1 << (bannerAttempts - 1))
+        bannerRetry = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay) * 1_000_000)
+            guard !Task.isCancelled, let self, self.bannerGeneration == generation, self.bannerDesired else { return }
+            _ = try? await self.showBanner()
+        }
     }
 
     func naturalTransition() async throws -> [String: Any] {
@@ -190,13 +224,19 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
         interstitialLoading = true
         let generation = UUID()
         loadGeneration = generation
+        loadInterstitial(unit: unit, config: value, generation: generation, attempt: 0)
+        return ["status": "loading"]
+    }
+
+    private func loadInterstitial(unit: String, config value: MobileRuntimeConfig, generation: UUID, attempt: Int) {
+        guard loadGeneration == generation, (try? permitted()) != nil else { return }
         emit(["type": "ad.request", "format": "interstitial"])
         InterstitialAd.load(with: unit, request: request()) { [weak self] ad, error in
             guard let self, self.loadGeneration == generation else { return }
             self.loadTimeout?.cancel()
             self.interstitialLoading = false
             guard let ad, error == nil, UIApplication.shared.applicationState == .active else {
-                self.emit(["type": "ad.failed", "format": "interstitial", "code": error.map { String(($0 as NSError).code) } ?? "inactive"])
+                self.interstitialFailed(error.map { String(($0 as NSError).code) } ?? "inactive", unit: unit, config: value, generation: generation, attempt: attempt)
                 return
             }
             self.interstitial = ad
@@ -213,7 +253,17 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
             self.interstitialLoading = false
             self.emit(["type": "ad.failed", "format": "interstitial", "code": "timeout"])
         }
-        return ["status": "loading"]
+    }
+
+    private func interstitialFailed(_ code: String, unit: String, config: MobileRuntimeConfig, generation: UUID, attempt: Int) {
+        emit(["type": "ad.failed", "format": "interstitial", "code": code])
+        guard attempt < config.ads.retryCount, loadGeneration == generation, (try? permitted()) != nil else { return }
+        interstitialLoading = true
+        interstitialRetry = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(config.ads.retryBackoffMs * (1 << attempt)) * 1_000_000)
+            guard !Task.isCancelled, let self, self.loadGeneration == generation else { return }
+            self.loadInterstitial(unit: unit, config: config, generation: generation, attempt: attempt + 1)
+        }
     }
 
     private var presentingAd: InterstitialAd?
@@ -224,8 +274,9 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
         interstitialLoading = false
         loadGeneration = UUID()
         loadTimeout?.cancel()
+        interstitialRetry?.cancel()
     }
-    func sessionReset() { resetInventory(); sessionCount = 0; lastShown = .distantPast }
+    func sessionReset() { sessionGeneration = UUID(); privacyChecked = false; underAge = true; resetInventory(); sessionCount = 0; lastShown = .distantPast }
 
     func bannerViewDidReceiveAd(_ bannerView: BannerView) {
         guard banner === bannerView, UIApplication.shared.applicationState == .active, (try? permitted()) != nil else { hideBanner(); return }
@@ -236,8 +287,7 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
     }
     func bannerView(_ bannerView: BannerView, didFailToReceiveAdWithError error: Error) {
         guard banner === bannerView else { return }
-        hideBanner()
-        emit(["type": "ad.failed", "format": "banner", "code": String((error as NSError).code)])
+        bannerFailed(String((error as NSError).code))
     }
     func adDidDismissFullScreenContent(_ ad: FullScreenPresentingAd) {
         fullscreen = false

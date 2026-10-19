@@ -16,6 +16,12 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.FrameLayout
+import android.widget.Button
+import android.widget.TextView
+import android.view.Gravity
+import android.webkit.WebResourceResponse
 import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.ValueCallback
@@ -42,6 +48,12 @@ import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
     internal lateinit var webView: WebView
+    private lateinit var mobileRuntime: MobileRuntime
+    private lateinit var bannerHost: FrameLayout
+    private lateinit var offlineView: LinearLayout
+    private var documentGeneration = 0L
+    private val pendingMobileRequests = mutableSetOf<String>()
+    private val completedMobileRequests = ArrayDeque<String>()
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
     private var lastTrustedUrl = BuildConfig.AYIN_ORIGIN
@@ -61,6 +73,7 @@ class MainActivity : AppCompatActivity() {
     private var fileValidationJob: Job? = null
     private val videoPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val selection = fileSelection.receiveResult() ?: return@registerForActivityResult
+        mobileRuntime.sensitive(false)
         val clip = result.data?.clipData
         val uri = result.data?.data ?: clip?.takeIf { it.itemCount == 1 }?.getItemAt(0)?.uri
         val singleSelection = clip == null || (clip.itemCount == 1 && clip.getItemAt(0).uri == uri)
@@ -122,7 +135,7 @@ class MainActivity : AppCompatActivity() {
                 ?: BuildConfig.AYIN_ORIGIN
         directBackArmed = savedInstanceState?.getBoolean(STATE_DIRECT_BACK_ARMED) ?: false
 
-        if (!restored) loadIntent(intent)
+        if (!restored) loadIntent(intent) else mobileRuntime.opened(intent)
         webView.requestFocus()
         debugLog("created platform=${BuildConfig.SHELL_PLATFORM} restored=$restored")
     }
@@ -144,11 +157,13 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         webView.onResume()
+        mobileRuntime.resume()
         emitLifecycle("resume")
         debugLog("lifecycle=resume")
     }
 
     override fun onPause() {
+        mobileRuntime.pause()
         emitLifecycle("pause")
         CookieManager.getInstance().flush()
         webView.onPause()
@@ -179,6 +194,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         cancelFileSelection()
+        if (::mobileRuntime.isInitialized) mobileRuntime.destroy()
         unregisterNetworkCallback()
         customViewCallback = null
         customView = null
@@ -241,8 +257,32 @@ class MainActivity : AppCompatActivity() {
 
     private fun attachWebView(view: WebView) {
         webView = view
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.BLACK) }
+        bannerHost = FrameLayout(this)
+        val stage = FrameLayout(this)
+        stage.addView(view, FrameLayout.LayoutParams(-1, -1))
+        offlineView = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.BLACK)
+            visibility = View.GONE
+            addView(TextView(this@MainActivity).apply {
+                text = "AYIN\nتعذر الاتصال. تحقق من الإنترنت ثم أعد المحاولة.\nUnable to connect. Check your connection and retry."
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                setPadding(32, 32, 32, 32)
+            })
+            addView(Button(this@MainActivity).apply {
+                text = "إعادة المحاولة / Retry"
+                setOnClickListener { loadTrustedUrl(lastTrustedUrl) }
+            })
+        }
+        stage.addView(offlineView, FrameLayout.LayoutParams(-1, -1))
+        root.addView(stage, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(bannerHost, LinearLayout.LayoutParams(-1, -2))
+        mobileRuntime = MobileRuntimeFactory.create(this, bannerHost, ::emitMobileEvent)
         installOriginScopedBridge(view)
-        setContentView(view)
+        setContentView(root)
         view.requestFocus()
     }
 
@@ -251,6 +291,9 @@ class MainActivity : AppCompatActivity() {
         cancelFileSelection()
         if (customView != null) hideCustomView()
 
+        mobileRuntime.destroy()
+        documentGeneration++
+        pendingMobileRequests.clear()
         val previous = webView
         (previous.parent as? ViewGroup)?.removeView(previous)
         previous.stopLoading()
@@ -288,6 +331,7 @@ class MainActivity : AppCompatActivity() {
         val platform = JSONObject.quote(BuildConfig.SHELL_PLATFORM)
         return """
             (() => {
+              if (window.top !== window) return;
               const transport = window.AyinNativeTransport;
               if (!transport) return;
               const send = (payload) => transport.postMessage(JSON.stringify(payload));
@@ -321,13 +365,46 @@ class MainActivity : AppCompatActivity() {
               });
               reportNavigation();
             })();
-        """.trimIndent()
+        """.trimIndent() + "\n" + MobileBridgePolicy.bootstrap(mobileRuntime.capabilities)
+    }
+
+    private fun emitMobileEvent(event: JSONObject) {
+        runOnUiThread {
+            if (!isDestroyed && ::webView.isInitialized && isTrustedWebUrl(webView.url ?: "")) {
+                webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('ayin:mobile-event',{detail:$event}));", null)
+            }
+        }
+    }
+
+    private fun handleMobileRequest(payload: JSONObject) {
+        val id = payload.optString("id")
+        val method = payload.optString("method")
+        if (!MobileBridgePolicy.validId(id) || id in pendingMobileRequests || id in completedMobileRequests) return
+        val params = payload.optJSONObject("params")
+        val generation = documentGeneration
+        fun send(result: JSONObject?, error: String?) {
+            runOnUiThread {
+                if (!pendingMobileRequests.remove(id)) return@runOnUiThread
+                completedMobileRequests.addLast(id)
+                if (completedMobileRequests.size > 256) completedMobileRequests.removeFirst()
+                if (generation != documentGeneration || isDestroyed || !isTrustedWebUrl(webView.url ?: "")) return@runOnUiThread
+                val response = JSONObject().put("id", id).put("ok", error == null)
+                if (error != null) response.put("error", error) else response.put("result", result ?: JSONObject())
+                webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('ayin:mobile-response',{detail:$response}));", null)
+            }
+        }
+        if (pendingMobileRequests.size >= 16) return
+        pendingMobileRequests.add(id)
+        if (method !in MobileBridgePolicy.methods || params == null) { send(null, "INVALID_REQUEST"); return }
+        webView.postDelayed({ send(null, "TIMEOUT") }, 180_000)
+        try { mobileRuntime.request(method, params, ::send) } catch (_: Exception) { send(null, "INVALID_PARAMETERS") }
     }
 
     private fun handleBridgeMessage(raw: String) {
         if (raw.length > MAX_BRIDGE_MESSAGE_LENGTH) return
         val payload = runCatching { JSONObject(raw) }.getOrNull() ?: return
         when (payload.optString("type")) {
+            "mobile" -> runOnUiThread { handleMobileRequest(payload) }
             "openExternal" -> {
                 val url = payload.optString("url").take(MAX_EXTERNAL_URL_LENGTH)
                 val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return
@@ -343,6 +420,7 @@ class MainActivity : AppCompatActivity() {
                 val state = payload.optString("state").take(MAX_PLAYBACK_STATE_LENGTH)
                 runOnUiThread {
                     webView.keepScreenOn = state == "playing"
+                    mobileRuntime.playback(state == "playing")
                     debugLog("playback=$state")
                 }
             }
@@ -353,6 +431,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     cancelFileSelection()
                     lastTrustedUrl = url
+                    mobileRuntime.navigation()
                     debugLog("navigation=$url")
                 }
             }
@@ -386,12 +465,14 @@ class MainActivity : AppCompatActivity() {
             ShellNavigation.exitOnBackRequested(raw)
         debugLog("deep-link=$target direct-back=$directBackArmed")
         loadTrustedUrl(target)
+        mobileRuntime.opened(intent)
     }
 
     private fun loadTrustedUrl(target: String) {
         if (!isTrustedWebUrl(target)) return
         lastTrustedUrl = target
         mainFrameLoadFailed = false
+        offlineView.visibility = View.GONE
         webView.loadUrl(target)
     }
 
@@ -536,7 +617,13 @@ class MainActivity : AppCompatActivity() {
     private inner class AyinWebViewClient : WebViewClient() {
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
             super.onPageStarted(view, url, favicon)
-            if (view === webView) cancelFileSelection()
+            if (view === webView) {
+                cancelFileSelection()
+                documentGeneration++
+                pendingMobileRequests.clear()
+                completedMobileRequests.clear()
+                mobileRuntime.navigation()
+            }
             if (isTrustedWebUrl(url)) mainFrameLoadFailed = false
         }
 
@@ -557,6 +644,8 @@ class MainActivity : AppCompatActivity() {
                 return
             }
             lastTrustedUrl = currentTrustedUrl(view)
+            offlineView.visibility = View.GONE
+            mobileRuntime.pageReady()
             if (rendererRecoveryPending) {
                 rendererRecoveryPending = false
                 emitLifecycle("renderer-recovered")
@@ -573,6 +662,16 @@ class MainActivity : AppCompatActivity() {
             if (!request.isForMainFrame) return
             mainFrameLoadFailed = true
             debugLog("main-frame-error=${error.errorCode}")
+            offlineView.visibility = View.VISIBLE
+            mobileRuntime.pause()
+        }
+
+        override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, errorResponse: WebResourceResponse) {
+            if (request.isForMainFrame && errorResponse.statusCode >= 500) {
+                mainFrameLoadFailed = true
+                offlineView.visibility = View.VISIBLE
+                mobileRuntime.pause()
+            }
         }
 
         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
@@ -616,8 +715,10 @@ class MainActivity : AppCompatActivity() {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             try {
+                mobileRuntime.sensitive(true)
                 videoPicker.launch(picker)
             } catch (_: RuntimeException) {
+                mobileRuntime.sensitive(false)
                 fileSelection.launchFailed()?.callback?.onReceiveValue(null)
             }
             return true
@@ -719,7 +820,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "AyinShell"
-        private const val MAX_BRIDGE_MESSAGE_LENGTH = 4096
+        private const val MAX_BRIDGE_MESSAGE_LENGTH = 32768
         private const val MAX_EXTERNAL_URL_LENGTH = 2048
         private const val MAX_PLAYBACK_STATE_LENGTH = 64
         private const val BACK_DISPATCH_TIMEOUT_MS = 250L

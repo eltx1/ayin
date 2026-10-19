@@ -4,13 +4,19 @@ on:
   pull_request:
     paths:
       - "platforms/android/**"
-      - "apps/web/src/lib/native-shell-bridge.ts"
-      - "apps/web/src/lib/native-shell-bridge.test.ts"
+      - "apps/web/src/lib/native-shell-bridge*"
+      - "apps/web/src/lib/mobile-*.ts"
       - "apps/web/src/lib/tv-platform-runtime.ts"
       - "apps/web/src/components/player/ayin-player.tsx"
       - "apps/web/src/components/player/live-ayin-player.tsx"
+      - "scripts/mobile-*"
       - ".github/workflows/android-shell.yml"
   workflow_dispatch:
+    inputs:
+      include_tv_emulators:
+        description: "Also test existing Google TV / Fire TV flavors (additional runners)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -19,11 +25,18 @@ concurrency:
   group: android-shell-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  AYIN_BUILD_ENVIRONMENT: development
+  AYIN_SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
   android-shell:
     runs-on: ubuntu-24.04
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
+      - name: Validate mobile release security gates
+        run: python3 scripts/mobile-validation-test.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -37,7 +50,6 @@ jobs:
           test -n "$tools_bin"
           echo "$tools_bin" >> "$GITHUB_PATH"
           echo "$sdk_root/platform-tools" >> "$GITHUB_PATH"
-          echo "$sdk_root/emulator" >> "$GITHUB_PATH"
       - name: Install Android SDK
         run: |
           set -euo pipefail
@@ -46,76 +58,76 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.13"
-      - name: Build mobile, Google TV and Fire TV debug shells
-        shell: bash
+      - name: Resolve locked dependencies
         run: |
           set -euo pipefail
-          for attempt in 1 2 3; do
-            if gradle -p platforms/android               :app:assembleMobileDebug               :app:assembleTvDebug               :app:assembleFireTvDebug; then
-              exit 0
-            fi
-            if [ "$attempt" -eq 3 ]; then exit 1; fi
-            sleep $((attempt * 10))
-          done
-      - name: Run Android JVM baseline tests
-        shell: bash
+          flags=()
+          if [ ! -f platforms/android/app/gradle.lockfile ]; then flags+=(--write-locks); fi
+          gradle -p platforms/android --no-daemon :app:dependencies "${flags[@]}"
+      - name: Unit tests, lint and minified release compilation
         run: |
           set -euo pipefail
-          for attempt in 1 2 3; do
-            if gradle -p platforms/android               :app:testMobileDebugUnitTest               :app:testTvDebugUnitTest               :app:testFireTvDebugUnitTest; then
-              exit 0
-            fi
-            if [ "$attempt" -eq 3 ]; then exit 1; fi
-            sleep $((attempt * 10))
-          done
-      - name: Run Android lint
-        shell: bash
+          gradle -p platforms/android --no-daemon --stacktrace \
+            :app:testMobileDebugUnitTest :app:testTvDebugUnitTest :app:testFireTvDebugUnitTest \
+            :app:lintMobileDebug :app:lintMobileRelease :app:lintTvDebug :app:lintFireTvDebug \
+            :app:assembleMobileDebug :app:assembleTvDebug :app:assembleFireTvDebug \
+            :app:assembleMobileRelease :app:bundleMobileRelease
+      - name: Check release native library and APK alignment
         run: |
           set -euo pipefail
-          for attempt in 1 2 3; do
-            if gradle -p platforms/android               :app:lintMobileDebug               :app:lintTvDebug               :app:lintFireTvDebug; then
-              exit 0
-            fi
-            if [ "$attempt" -eq 3 ]; then exit 1; fi
-            sleep $((attempt * 10))
-          done
+          python3 scripts/mobile-android-page-size.py platforms/android/app/build/outputs/bundle/mobileRelease/app-mobile-release.aab
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          "$sdk_root/build-tools/35.0.0/zipalign" -c -P 16 4 platforms/android/app/build/outputs/apk/mobile/release/app-mobile-release-unsigned.apk
+      - name: Collect distributable files and provenance
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ayin-android"
+          cp platforms/android/app/build/outputs/apk/mobile/debug/app-mobile-debug.apk "$RUNNER_TEMP/ayin-android/"
+          cp platforms/android/app/build/outputs/bundle/mobileRelease/app-mobile-release.aab "$RUNNER_TEMP/ayin-android/ayin-mobile-release-unsigned.aab"
+          cp platforms/android/app/build/outputs/mapping/mobileRelease/mapping.txt "$RUNNER_TEMP/ayin-android/"
+          cp platforms/android/app/gradle.lockfile "$RUNNER_TEMP/ayin-android/gradle.lockfile"
+          python3 scripts/mobile-build-metadata.py --platform android --signing unsigned \
+            --output "$RUNNER_TEMP/ayin-android/build-metadata.json" \
+            --artifact "$RUNNER_TEMP/ayin-android/app-mobile-debug.apk" \
+            --artifact "$RUNNER_TEMP/ayin-android/ayin-mobile-release-unsigned.aab" \
+            --artifact "$RUNNER_TEMP/ayin-android/mapping.txt"
+          echo "Debug APK uses test ads. Release AAB is unsigned; external Firebase/Ads configuration is not injected in public PR jobs." > "$RUNNER_TEMP/ayin-android/READ-ME.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ayin-android-${{ github.sha }}
+          path: ${{ runner.temp }}/ayin-android/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload resolved Gradle lock for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ayin-android-dependency-locks-${{ github.sha }}
+          path: platforms/android/**/gradle.lockfile
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Upload JVM and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ayin-android-reports-${{ github.sha }}
+          path: |
+            platforms/android/app/build/reports/
+            platforms/android/app/build/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
   emulator-baseline:
     name: Emulator baseline (${{ matrix.name }})
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: Android 16 mobile
-            api: "36"
-            tag: google_apis
-            device: pixel_6
-            arch: x86_64
-            flavor: Mobile
-            package: net.ayin.app.mobile
-            apk: app-mobile-debug.apk
-            remoteSmoke: "false"
-          - name: Google TV Android 16
-            api: "36"
-            tag: google-tv
-            device: tv_1080p
-            arch: x86
-            flavor: Tv
-            package: net.ayin.app.tv
-            apk: app-tv-debug.apk
-            remoteSmoke: "true"
-          - name: Fire flavor on Google TV Android 16 emulator
-            api: "36"
-            tag: google-tv
-            device: tv_1080p
-            arch: x86
-            flavor: FireTv
-            package: net.ayin.app.firetv
-            apk: app-fireTv-debug.apk
-            remoteSmoke: "true"
+      matrix: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.include_tv_emulators && '{"include":[{"name":"Android 16 mobile","api":"36","tag":"google_apis","device":"pixel_6","arch":"x86_64","flavor":"Mobile","package":"net.ayin.app.mobile","apk":"app-mobile-debug.apk","remoteSmoke":"false"},{"name":"Google TV Android 16","api":"36","tag":"google-tv","device":"tv_1080p","arch":"x86","flavor":"Tv","package":"net.ayin.app.tv","apk":"app-tv-debug.apk","remoteSmoke":"true"},{"name":"Fire flavor on Google TV Android 16","api":"36","tag":"google-tv","device":"tv_1080p","arch":"x86","flavor":"FireTv","package":"net.ayin.app.firetv","apk":"app-fireTv-debug.apk","remoteSmoke":"true"}]}' || '{"include":[{"name":"Android 16 mobile","api":"36","tag":"google_apis","device":"pixel_6","arch":"x86_64","flavor":"Mobile","package":"net.ayin.app.mobile","apk":"app-mobile-debug.apk","remoteSmoke":"false"}]}') }}
     steps:
       - uses: actions/checkout@v7
+      - name: Validate mobile release security gates
+        run: python3 scripts/mobile-validation-test.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
