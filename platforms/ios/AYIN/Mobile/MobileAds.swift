@@ -7,6 +7,7 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
     private weak var owner: UIViewController?
     private weak var bannerContainer: UIView?
     private var config: MobileRuntimeConfig?
+    private var runtimeAllowed = false
     private var initialized = false
     private var initializing = false
     private var consentBusy = false
@@ -45,10 +46,11 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
         return id.range(of: #"^ca-app-pub-[0-9]{16}~[0-9]{10}$"#, options: .regularExpression) != nil
     }
 
-    func configure(_ value: MobileRuntimeConfig) throws {
+    func configure(_ value: MobileRuntimeConfig, runtimeAllowed: Bool) throws {
         guard !busy else { throw MobileBridgeError.busy }
         resetInventory()
         config = value
+        self.runtimeAllowed = runtimeAllowed
     }
 
     func privacy(requestUnderAge: Bool, options: Bool = false) async throws -> [String: Any] {
@@ -96,7 +98,7 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
     }
 
     private func permitted() throws -> MobileRuntimeConfig {
-        guard let config, config.ads.enabled, config.ads.platforms.ios.enabled, config.ads.audience == "general", !underAge else { throw MobileBridgeError.disabled }
+        guard runtimeAllowed, let config, config.ads.enabled, config.ads.platforms.ios.enabled, config.ads.audience == "general", !underAge else { throw MobileBridgeError.disabled }
         guard privacyChecked, ConsentInformation.shared.canRequestAds else { throw MobileBridgeError.consentRequired }
         guard appIDConfigured, UIApplication.shared.applicationState == .active else { throw MobileBridgeError.unavailable }
         guard !busy else { throw MobileBridgeError.busy }

@@ -164,4 +164,25 @@ describe("mobile identity, consent and notification orchestration (bridge mocks,
     expect(fetch).not.toHaveBeenCalled();
     expect(native.request).not.toHaveBeenCalled();
   });
+  it("clears a persisted push owner when its authenticated session has expired", async () => {
+    identity = null;
+    const runtime = await boot();
+    expect(runtime.getMobileAccountId()).toBeNull();
+    expect(native.request.mock.calls.some(([method]) => method === "session.reset")).toBe(true);
+  });
+  it("does not undo a local notification opt-out after a failed server detach", async () => {
+    config.notifications = { enabled: true, types: ["system"], richMedia: false };
+    const runtime = await boot();
+    await expect(runtime.disableMobileNotifications()).rejects.toThrow("DEVICE_DETACH_FAILED");
+    expect(runtime.getMobileState().notificationsEnabled).toBe(false);
+    vi.mocked(fetch).mockClear();
+    native.request.mockClear();
+    await runtime.refreshMobileAccount();
+    expect(
+      vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes("/mobile/devices/")),
+    ).toBe(false);
+    expect(native.request.mock.calls.some(([method]) => method === "notifications.token")).toBe(
+      false,
+    );
+  });
 });

@@ -38,7 +38,7 @@ targets:
       - package: GoogleMobileAds
         product: GoogleMobileAds
       - package: UserMessagingPlatform
-        product: UserMessagingPlatform
+        product: GoogleUserMessagingPlatform
       - package: Firebase
         product: FirebaseAnalyticsCore
       - package: Firebase

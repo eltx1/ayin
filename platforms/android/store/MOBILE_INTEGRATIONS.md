@@ -17,17 +17,17 @@ Official references checked 2026-10-19: https://developers.google.com/admob/andr
 
 Pass through secure CI environment configuration or local Gradle properties. Never paste signing keys into chat or commit configuration files. Firebase client configuration is not a server credential; use project/app restrictions.
 
-| Name | Purpose |
-| --- | --- |
-| `AYIN_FIREBASE_ANDROID_APP_ID` | Firebase Android app ID for `net.ayin.app.mobile` (not the package name) |
-| `AYIN_FIREBASE_API_KEY` | Restricted Firebase client API key |
-| `AYIN_FIREBASE_PROJECT_ID` | Firebase project ID |
-| `AYIN_FIREBASE_SENDER_ID` | Firebase project number / sender ID |
-| `AYIN_FIREBASE_CONFIG_FILE` | Actual Firebase Android client `google-services.json`, stored outside Git; required with configured Firebase |
-| `AYIN_CRASHLYTICS_UPLOAD_MAPPING` | `true` for configured signed release, `false` for unsigned CI checks |
-| `AYIN_ADMOB_ANDROID_APP_ID` | Android AdMob app ID with `~`, release only |
-| `AYIN_VERSION_CODE` | Monotonically increasing integer, default 2 |
-| `AYIN_VERSION_NAME` | Version name, default 1.1.0 |
+| Name                              | Purpose                                                                                                      |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `AYIN_FIREBASE_ANDROID_APP_ID`    | Firebase Android app ID for `net.ayin.app.mobile` (not the package name)                                     |
+| `AYIN_FIREBASE_API_KEY`           | Restricted Firebase client API key                                                                           |
+| `AYIN_FIREBASE_PROJECT_ID`        | Firebase project ID                                                                                          |
+| `AYIN_FIREBASE_SENDER_ID`         | Firebase project number / sender ID                                                                          |
+| `AYIN_FIREBASE_CONFIG_FILE`       | Actual Firebase Android client `google-services.json`, stored outside Git; required with configured Firebase |
+| `AYIN_CRASHLYTICS_UPLOAD_MAPPING` | `true` for configured signed release, `false` for unsigned CI checks                                         |
+| `AYIN_ADMOB_ANDROID_APP_ID`       | Android AdMob app ID with `~`, release only                                                                  |
+| `AYIN_VERSION_CODE`               | Monotonically increasing integer, default 2                                                                  |
+| `AYIN_VERSION_NAME`               | Version name, default 1.1.0                                                                                  |
 
 Without client configuration, the shell still opens, and `runtime.configure` reports `configured.firebase=false` and/or `configured.ads=false`. These conditions are deployment blockers for the corresponding real SDK proof. Debug always uses Google's sample app ID and sample banner/interstitial unit IDs. Release testMode also uses sample units. An unconfigured unsigned CI validation release uses Google’s documented sample manifest App ID only to keep the standard provider startup safe; BuildConfig remains unconfigured, ad capabilities stay off, and publication must be blocked. Real inventory requires configured app ID, explicit intended general audience, declared age signal, UMP permission and validated AYIN admin configuration. The sample app ID cannot substitute for configuring a real UMP message.
 

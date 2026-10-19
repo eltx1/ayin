@@ -8,12 +8,12 @@ AYIN is a Next.js 16 App Router application with server rendering and authentica
 
 The mobile release reuses Android's shell and adds a first-party hosted WKWebView surface to the existing iOS application. The existing iOS native implementation is retained. Web and native fallback sessions remain separate unless an explicit, reviewed session transfer mechanism is implemented; do not copy bearer tokens into JavaScript or browser storage. Existing AYIN identity and database remain authoritative. Firebase is for native telemetry and messaging, not replacement authentication.
 
-| Layer | Owner | Store release required |
-| --- | --- | --- |
-| Native bridge, Google/Firebase SDKs, permissions, APNs entitlements, picker, native UI | Installed signed binary | Yes |
-| Existing AYIN first-party pages, presentation, content, ordinary bug fixes | HTTPS deployment at ayin.stream | Usually no, within reviewed functionality |
-| Accounts, media, device subscriptions, notification dispatch, validated mobile settings | AYIN API/database | No, when compatible with installed clients |
-| New SDK/ad adapter/native capability or materially new app function | Reviewed binary/product release | Yes |
+| Layer                                                                                   | Owner                           | Store release required                     |
+| --------------------------------------------------------------------------------------- | ------------------------------- | ------------------------------------------ |
+| Native bridge, Google/Firebase SDKs, permissions, APNs entitlements, picker, native UI  | Installed signed binary         | Yes                                        |
+| Existing AYIN first-party pages, presentation, content, ordinary bug fixes              | HTTPS deployment at ayin.stream | Usually no, within reviewed functionality  |
+| Accounts, media, device subscriptions, notification dispatch, validated mobile settings | AYIN API/database               | No, when compatible with installed clients |
+| New SDK/ad adapter/native capability or materially new app function                     | Reviewed binary/product release | Yes                                        |
 
 ## Hosted interface update model
 

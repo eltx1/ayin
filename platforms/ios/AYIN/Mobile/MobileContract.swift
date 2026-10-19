@@ -1,5 +1,6 @@
 import Foundation
 import CoreFoundation
+import CryptoKit
 
 enum MobileBridgeError: String, Error { case invalidRequest, invalidConfig, unavailable, disabled, consentRequired, busy, rateLimited, timeout, unsupported }
 
@@ -57,13 +58,21 @@ struct MobileRuntimeConfig: Decodable {
     }
 
     func supports(appVersion: String, installationId: String) -> Bool {
+        !requiresUpgrade(appVersion: appVersion) && Self.rolloutBucket(installationId: installationId) < web.rolloutPercent
+    }
+
+    func requiresUpgrade(appVersion: String) -> Bool {
         let installed = appVersion.split(separator: ".").compactMap { Int($0) }
         let required = minimumAppVersion.ios.split(separator: ".").compactMap { Int($0) }
         guard installed.count == 3, required.count == 3,
-              !installed.lexicographicallyPrecedes(required) else { return false }
-        // Stable install cohort, independent of account and process-randomized Swift hashing.
-        let bucket = installationId.utf8.reduce(UInt32(2_166_136_261)) { ($0 ^ UInt32($1)) &* 16_777_619 } % 100
-        return Int(bucket) < web.rolloutPercent
+              !installed.lexicographicallyPrecedes(required) else { return true }
+        return false
+    }
+
+    static func rolloutBucket(installationId: String) -> Int {
+        // Same cross-platform cohort: first four SHA-256 bytes as an unsigned big-endian integer.
+        let first = SHA256.hash(data: Data(installationId.utf8)).prefix(4)
+        return Int(first.reduce(UInt64(0)) { ($0 << 8) | UInt64($1) } % 100)
     }
 
     private static func validUnit(_ value: String) -> Bool {

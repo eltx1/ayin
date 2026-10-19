@@ -10,11 +10,11 @@ WKWebView permits main-frame navigation only to `https://ayin.stream` (port 443)
 
 ## Locked SDK dependencies
 
-| Dependency | Exact version | Purpose |
-| --- | --- | --- |
-| Google Mobile Ads | 13.11.0 | Native adaptive banner and natural-transition interstitial |
-| User Messaging Platform | 3.1.0 | Consent refresh, required form, privacy options |
-| Firebase Apple SDK | 13.0.0 | AnalyticsCore, Messaging, Crashlytics |
+| Dependency              | Exact version | Purpose                                                    |
+| ----------------------- | ------------- | ---------------------------------------------------------- |
+| Google Mobile Ads       | 13.11.0       | Native adaptive banner and natural-transition interstitial |
+| User Messaging Platform | 3.1.0         | Consent refresh, required form, privacy options            |
+| Firebase Apple SDK      | 13.0.0        | AnalyticsCore, Messaging, Crashlytics                      |
 
 The project continues to target iOS 17.0 and requires Xcode 26.2 or newer for these SDKs. `project.yml` pins direct SPM packages. The resolved transitive `Package.resolved` produced by macOS CI must be retained and reviewed for release. No mediation adapters, rewarded inventory, native-feed ad renderer, App Open, Notification Service Extension, camera or microphone permissions are added. Text notifications are supported; `richMedia: true` is rejected until a reviewed extension exists.
 
@@ -39,9 +39,9 @@ Only `ad_request`, `ad_loaded`, `ad_failed` are logged manually to consent-gated
 5. Use protected backend FCM credentials for sends. The iOS app never has a service-account send credential. An APNs device token is passed to Firebase internally; only a Firebase registration token crosses the bridge to authenticated device registration.
 6. CI archives preserve dSYMs; the configured release workflow uploads symbols with Firebase's official tool. A missing plist means no symbol upload or runtime Firebase evidence is possible.
 
-`runtime.configure` returns `boundAccountId` (persisted opaque UUID or null), installation UUID, platform, version and availability flags. The web checks its authenticated current account before preserving a previous device binding. Logout/switch clears user ID, resets collection consent, unregisters APNs and deletes FCM token. The backend independently verifies recipient ownership and session validity. Token rotation events include recipientAccountId, never APNs bytes. Foreground notifications for a mismatched account are suppressed. Background APNs alerts use generic content because iOS may display already-queued alerts before application code can run.
+`runtime.configure` returns `boundAccountId` (persisted opaque UUID or null), installation UUID, platform, version, `runtimeAllowed`, `upgradeRequired` and availability flags. Minimum-version or rollout exclusion disables optional SDK features while content remains usable. Both platforms use the first four SHA-256 bytes of the installation UUID modulo 100 for stable rollout. Analytics consent replies report the effective consent/config/Firebase-availability result. The web checks its authenticated current account before preserving a previous device binding. Logout/switch clears user ID, resets collection consent, unregisters APNs and deletes FCM token. The backend independently verifies recipient ownership and session validity. Token rotation events include recipientAccountId, never APNs bytes. Foreground notifications for a mismatched account are suppressed. Background APNs alerts use generic content because iOS may display already-queued alerts before application code can run.
 
-Notification taps queue until bridge/runtime readiness. They carry only the owned notification ID and recipient account; the web requests the authenticated destination-resolution endpoint before navigating. Deleted/private destinations are handled by that endpoint. Foreground/background/terminated delivery and APNs production credentials still require a signed physical device. Silent push and uninterrupted background upload are not promised.
+Notification taps queue until bridge/runtime readiness. Foreground receipt and observed taps log consent-gated `ayin_notification_receive` / `ayin_notification_open` once without IDs or payload text; no background delivery event is fabricated. They carry only the owned notification ID and recipient account; the web requests the authenticated destination-resolution endpoint before navigating. Deleted/private destinations are handled by that endpoint. Foreground/background/terminated delivery and APNs production credentials still require a signed physical device. Silent push and uninterrupted background upload are not promised.
 
 ## Verification and release gates
 

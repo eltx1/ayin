@@ -47,15 +47,17 @@ final class MobileFirebase: NSObject, MessagingDelegate, UNUserNotificationCente
         UNUserNotificationCenter.current().delegate = self
     }
 
-    func configure(_ config: MobileRuntimeConfig) {
-        analyticsRemoteEnabled = config.analytics.enabled
-        notificationsRemoteEnabled = config.notifications.enabled
+    func configure(_ config: MobileRuntimeConfig, runtimeAllowed: Bool) {
+        analyticsRemoteEnabled = runtimeAllowed && config.analytics.enabled
+        notificationsRemoteEnabled = runtimeAllowed && config.notifications.enabled
+        if configured && !notificationsRemoteEnabled { Messaging.messaging().isAutoInitEnabled = false }
         applyAnalyticsConsent()
     }
 
-    func setConsent(_ enabled: Bool) {
+    func setConsent(_ enabled: Bool) -> Bool {
         analyticsAllowed = enabled
         applyAnalyticsConsent()
+        return configured && analyticsAllowed && analyticsRemoteEnabled
     }
 
     private func applyAnalyticsConsent() {
@@ -204,7 +206,7 @@ final class MobileFirebase: NSObject, MessagingDelegate, UNUserNotificationCente
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         let recipient = notification.request.content.userInfo["recipientAccountId"] as? String
-        guard let accountId, recipient == accountId else { completionHandler([]); return }
+        guard notificationsRemoteEnabled, let accountId, recipient == accountId else { completionHandler([]); return }
         self.notification(notification.request.content.userInfo, opened: false)
         completionHandler([.banner, .sound, .badge])
     }

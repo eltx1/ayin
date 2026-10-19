@@ -117,6 +117,16 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/ayin-ios-derived" \
             -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
             CODE_SIGNING_ALLOWED=NO -resultBundlePath "$RUNNER_TEMP/AYINTests.xcresult" test
+      - name: Capture actual simulator startup diagnostic
+        run: |
+          set -euo pipefail
+          udid="${{ steps.simulator.outputs.udid }}"
+          app="$RUNNER_TEMP/ayin-ios-derived/Build/Products/Debug-iphonesimulator/AYIN.app"
+          xcrun simctl install "$udid" "$app"
+          xcrun simctl launch --terminate-running-process "$udid" net.ayin.app.ios
+          sleep 10
+          xcrun simctl io "$udid" screenshot "$RUNNER_TEMP/ayin-ios/AYIN-simulator-diagnostic.png"
+          echo "Actual simulator startup capture. Diagnostic evidence only; not a store-approved screenshot or live Firebase/Ads acceptance." > "$RUNNER_TEMP/ayin-ios/screenshot-notes.txt"
       - name: Create unsigned device archive
         working-directory: platforms/ios
         run: |
@@ -132,7 +142,8 @@ jobs:
             --output "$RUNNER_TEMP/ayin-ios/build-metadata.json" \
             --artifact "$RUNNER_TEMP/ayin-ios/AYIN-simulator.app.zip" \
             --artifact "$RUNNER_TEMP/ayin-ios/AYIN-unsigned.xcarchive.zip" \
-            --artifact "$RUNNER_TEMP/ayin-ios/Package.resolved"
+            --artifact "$RUNNER_TEMP/ayin-ios/Package.resolved" \
+            --artifact "$RUNNER_TEMP/ayin-ios/AYIN-simulator-diagnostic.png"
           echo "Simulator app and unsigned device archive only. Not an installable device IPA or proof of Ads/FCM/Analytics delivery." > "$RUNNER_TEMP/ayin-ios/READ-ME.txt"
       - name: Upload app, archive and resolved package lock
         if: always()

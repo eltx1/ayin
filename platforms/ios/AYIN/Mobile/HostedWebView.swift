@@ -257,11 +257,14 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
             }
             guard generation == documentGeneration else { throw MobileBridgeError.invalidRequest }
             let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
-            guard config.supports(appVersion: version, installationId: firebase.installationId) else { throw MobileBridgeError.unsupported }
-            try ads.configure(config); firebase.configure(config)
+            let runtimeAllowed = config.supports(appVersion: version, installationId: firebase.installationId)
+            let upgradeRequired = config.requiresUpgrade(appVersion: version)
+            try ads.configure(config, runtimeAllowed: runtimeAllowed)
+            firebase.configure(config, runtimeAllowed: runtimeAllowed)
             bridgeReady = true; runtimeConfigured = true
             return ["platform": "ios", "appVersion": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0", "installationId": firebase.installationId,
                     "boundAccountId": firebase.accountId as Any? ?? NSNull(),
+                    "runtimeAllowed": runtimeAllowed, "upgradeRequired": upgradeRequired,
                     "configured": ["firebase": firebase.configured, "ads": ads.appIDConfigured]]
         case "session.reset":
             try keys(params, [])
@@ -279,7 +282,7 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
         case "analytics.consent":
             try keys(params, ["enabled"])
             guard let value = MobileContract.boolean(params["enabled"]) else { throw MobileBridgeError.invalidRequest }
-            firebase.setConsent(value); return ["enabled": value]
+            return ["enabled": firebase.setConsent(value)]
         case "analytics.event":
             try keys(params, ["name", "params"])
             guard let name = params["name"] as? String, let values = params["params"] as? [String: Any] else { throw MobileBridgeError.invalidRequest }

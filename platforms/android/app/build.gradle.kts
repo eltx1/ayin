@@ -18,7 +18,7 @@ if (firebaseConfigured) {
     apply(plugin = "com.google.gms.google-services")
     apply(plugin = "com.google.firebase.crashlytics")
     tasks.withType<GoogleServicesTask>().configureEach {
-        if (name.contains("Mobile")) googleServicesJsonFiles.setFrom(configFile) else enabled = false
+        if (name.contains("Mobile")) googleServicesJsonFiles.set(listOf(configFile)) else enabled = false
     }
     tasks.configureEach {
         if (name.contains("Crashlytics") && !name.contains("Mobile")) enabled = false

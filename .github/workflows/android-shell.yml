@@ -237,6 +237,26 @@ jobs:
             grep -q "dpad=" <<<"$logs"
             grep -q "remote=PLAY_PAUSE" <<<"$logs"
           fi
+      - name: Capture actual emulator startup diagnostic
+        run: |
+          set -euo pipefail
+          package="${{ matrix.package }}"
+          adb shell am force-stop "$package"
+          adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n "$package/net.ayin.shell.MainActivity"
+          sleep 10
+          mkdir -p "$RUNNER_TEMP/ayin-android-diagnostic"
+          adb exec-out screencap -p > "$RUNNER_TEMP/ayin-android-diagnostic/startup.png"
+          python3 scripts/mobile-build-metadata.py --platform android --signing debug \
+            --output "$RUNNER_TEMP/ayin-android-diagnostic/build-metadata.json" \
+            --artifact "$RUNNER_TEMP/ayin-android-diagnostic/startup.png"
+          echo "Actual Android emulator startup capture. Diagnostic only; not store-approved or a physical-device Ads/FCM test." > "$RUNNER_TEMP/ayin-android-diagnostic/READ-ME.txt"
+      - name: Upload emulator startup diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: ayin-android-diagnostic-${{ matrix.flavor }}-${{ github.sha }}
+          path: ${{ runner.temp }}/ayin-android-diagnostic/
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload emulator log on failure
         if: failure()
         uses: actions/upload-artifact@v4

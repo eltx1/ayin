@@ -5,7 +5,11 @@ import { isMobileHost } from "@/lib/mobile-bridge";
 
 export function ServiceWorkerRegistration() {
   useEffect(() => {
-    if (isMobileHost() || process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator)) {
+    if (
+      isMobileHost() ||
+      process.env.NODE_ENV !== "production" ||
+      !("serviceWorker" in navigator)
+    ) {
       return;
     }
 

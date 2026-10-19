@@ -65,16 +65,21 @@ final class MobileContractTests: XCTestCase {
         XCTAssertTrue(config.supports(appVersion: "1.10.0", installationId: "stable"))
         XCTAssertFalse(config.supports(appVersion: "1.8.99", installationId: "stable"))
         XCTAssertFalse(config.supports(appVersion: "broken", installationId: "stable"))
+        XCTAssertFalse(config.requiresUpgrade(appVersion: "1.10.0"))
+        XCTAssertTrue(config.requiresUpgrade(appVersion: "1.8.99"))
     }
 
     func testZeroRolloutDisablesRuntimeAndCohortIsStable() throws {
         var raw = try fixture(); var web = try XCTUnwrap(raw["web"] as? [String: Any])
         web["rolloutPercent"] = 0; raw["web"] = web
         XCTAssertFalse(try MobileRuntimeConfig.parse(raw).supports(appVersion: "1.0.0", installationId: "stable"))
+        XCTAssertFalse(try MobileRuntimeConfig.parse(raw).requiresUpgrade(appVersion: "1.0.0"))
         web["rolloutPercent"] = 50; raw["web"] = web
         let config = try MobileRuntimeConfig.parse(raw)
         let first = config.supports(appVersion: "1.0.0", installationId: "937d94a8-c40f-4806-ac42-c059cc801063")
         for _ in 0..<10 { XCTAssertEqual(config.supports(appVersion: "1.0.0", installationId: "937d94a8-c40f-4806-ac42-c059cc801063"), first) }
+        XCTAssertEqual(MobileRuntimeConfig.rolloutBucket(installationId: "937d94a8-c40f-4806-ac42-c059cc801063"), 56)
+        XCTAssertEqual(MobileRuntimeConfig.rolloutBucket(installationId: "stable"), 53)
     }
 
     func testAnalyticsAllowsBoundedEventsWithoutPII() throws {

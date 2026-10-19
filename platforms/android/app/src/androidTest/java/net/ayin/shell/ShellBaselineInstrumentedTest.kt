@@ -26,6 +26,18 @@ class ShellBaselineInstrumentedTest {
         launch().use { scenario ->
             loadHarness(scenario)
             assertTrue(awaitJsBoolean(scenario, "typeof window.AyinNative === 'object'"))
+            if (BuildConfig.SHELL_PLATFORM == "android") {
+                assertTrue(awaitJsBoolean(scenario, "typeof window.AyinMobile === 'object' && window.AyinMobile.version === 1"))
+                evaluateJavascript(scenario, """
+                    window.addEventListener('ayin:mobile-response', (e) => { window.__invalidMobile = e.detail; }, { once: true });
+                    window.AyinMobile.request({id:'test_invalid_method',method:'eval',params:{}});
+                    true
+                """.trimIndent())
+                assertTrue(awaitJsBoolean(scenario, "window.__invalidMobile?.ok === false && window.__invalidMobile?.error === 'INVALID_REQUEST'"))
+            } else {
+                // Mobile-only feature detection must never disable existing TV/Fire web behavior.
+                assertTrue(awaitJsBoolean(scenario, "typeof window.AyinMobile === 'undefined'"))
+            }
             assertEquals(
                 JSONObjectQuote(BuildConfig.SHELL_PLATFORM),
                 evaluateJavascript(scenario, "window.AyinNative.getPlatform()"),

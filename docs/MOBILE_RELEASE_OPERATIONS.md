@@ -13,20 +13,20 @@ This runbook describes the implemented release path. It is not evidence that a c
 
 Set values through GitHub repository/environment settings and the deployment secret store, never in a chat message, tracked file, PR, or build log. Client Firebase identifiers are embedded app configuration; backend sender keys and signing keys are secrets. Use the `mobile-production` GitHub environment. A distinct staging host/session setup is not currently configured; debug validation is a separate test build, not a claim that staging exists.
 
-| Location | Exact field | Purpose |
-| --- | --- | --- |
-| GitHub environment variable | `AYIN_ADMOB_ANDROID_APP_ID` | Android AdMob app registration, `ca-app-pub-…~…` |
-| GitHub environment variable | `AYIN_ADMOB_IOS_APP_ID` | Separate iOS AdMob app registration |
-| GitHub environment variables | `AYIN_FIREBASE_ANDROID_APP_ID`, `AYIN_FIREBASE_PROJECT_ID`, `AYIN_FIREBASE_SENDER_ID` | Firebase Android client matching the stable package |
-| GitHub environment secret | `AYIN_FIREBASE_API_KEY` | Android Firebase client configuration, restricted as appropriate in Google Cloud |
-| GitHub environment secret | `AYIN_IOS_FIREBASE_PLIST_BASE64` | Firebase-generated GoogleService-Info.plist for the stable iOS bundle |
-| GitHub environment variable | `AYIN_IOS_TEAM_ID` | Apple developer team identifier |
-| GitHub environment secrets | `AYIN_ANDROID_KEYSTORE_BASE64`, `AYIN_ANDROID_KEYSTORE_PASSWORD`, `AYIN_ANDROID_KEY_ALIAS`, `AYIN_ANDROID_KEY_PASSWORD` | Android upload-key signing |
-| GitHub environment secrets | `AYIN_IOS_CERTIFICATE_BASE64`, `AYIN_IOS_CERTIFICATE_PASSWORD`, `AYIN_IOS_PROFILE_BASE64` | Distribution certificate/private key and matching push-enabled provisioning profile |
-| Backend secret mount / environment | `GOOGLE_APPLICATION_CREDENTIALS`, `FCM_PROJECT_ID` | Path to a server-only service-account JSON with Firebase messaging permission, and matching project |
-| Backend environment | `MOBILE_PUSH_WORKER_ENABLED=true` | Explicit opt-in to dispatch existing eligible account notifications; keep false during isolated manual-device tests |
-| Web server environment | `ANDROID_APP_LINKS_SHA256_FINGERPRINTS` | JSON array of actual Play App Signing certificate SHA-256 fingerprints; upload/debug certificates are different |
-| Web server environment | `IOS_APP_LINKS_TEAM_ID` | Actual team ID for Universal Links association |
+| Location                           | Exact field                                                                                                             | Purpose                                                                                                             |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| GitHub environment variable        | `AYIN_ADMOB_ANDROID_APP_ID`                                                                                             | Android AdMob app registration, `ca-app-pub-…~…`                                                                    |
+| GitHub environment variable        | `AYIN_ADMOB_IOS_APP_ID`                                                                                                 | Separate iOS AdMob app registration                                                                                 |
+| GitHub environment variables       | `AYIN_FIREBASE_ANDROID_APP_ID`, `AYIN_FIREBASE_PROJECT_ID`, `AYIN_FIREBASE_SENDER_ID`                                   | Firebase Android client matching the stable package                                                                 |
+| GitHub environment secret          | `AYIN_FIREBASE_API_KEY`                                                                                                 | Android Firebase client configuration, restricted as appropriate in Google Cloud                                    |
+| GitHub environment secret          | `AYIN_IOS_FIREBASE_PLIST_BASE64`                                                                                        | Firebase-generated GoogleService-Info.plist for the stable iOS bundle                                               |
+| GitHub environment variable        | `AYIN_IOS_TEAM_ID`                                                                                                      | Apple developer team identifier                                                                                     |
+| GitHub environment secrets         | `AYIN_ANDROID_KEYSTORE_BASE64`, `AYIN_ANDROID_KEYSTORE_PASSWORD`, `AYIN_ANDROID_KEY_ALIAS`, `AYIN_ANDROID_KEY_PASSWORD` | Android upload-key signing                                                                                          |
+| GitHub environment secrets         | `AYIN_IOS_CERTIFICATE_BASE64`, `AYIN_IOS_CERTIFICATE_PASSWORD`, `AYIN_IOS_PROFILE_BASE64`                               | Distribution certificate/private key and matching push-enabled provisioning profile                                 |
+| Backend secret mount / environment | `GOOGLE_APPLICATION_CREDENTIALS`, `FCM_PROJECT_ID`                                                                      | Path to a server-only service-account JSON with Firebase messaging permission, and matching project                 |
+| Backend environment                | `MOBILE_PUSH_WORKER_ENABLED=true`                                                                                       | Explicit opt-in to dispatch existing eligible account notifications; keep false during isolated manual-device tests |
+| Web server environment             | `ANDROID_APP_LINKS_SHA256_FINGERPRINTS`                                                                                 | JSON array of actual Play App Signing certificate SHA-256 fingerprints; upload/debug certificates are different     |
+| Web server environment             | `IOS_APP_LINKS_TEAM_ID`                                                                                                 | Actual team ID for Universal Links association                                                                      |
 
 Also configure Firebase Console → Project settings → Cloud Messaging → Apple app APNs authentication key. Its `.p8` material, Key ID and Team ID belong in Firebase's secure form, not the repository. Enable Push Notifications for the Apple App ID and regenerate profiles. Confirm development/production APNs environments agree with signing.
 
@@ -44,14 +44,14 @@ Configure UMP privacy messages in AdMob for each registered app. Ad unit IDs are
 
 ## Provider acceptance evidence to collect
 
-| Feature | Required evidence | What does not prove it |
-| --- | --- | --- |
-| AdMob | Visible official test creative, load/show/dismiss callbacks, consent/no-fill/timeout checks, device + app version | SDK dependency or mocked callback |
-| Firebase Analytics | DebugView native event received once with approved parameters, user ID cleared on logout, no SDK-owned revenue duplication | Calling logEvent locally |
-| FCM Android | Targeted send record + device receipt/open in foreground/background/terminated; permission denial/revocation and force-stop limitation recorded | FCM HTTP 200 alone |
-| FCM/APNs iOS | Correct FCM token from Firebase, APNs binding, signed physical iPhone receipt/open and cold launch | APNs token mistaken for FCM token or simulator-only result |
-| Crashlytics | Controlled test crash from a test build, mapped native stack/dSYM association | SDK installed or mapping file saved |
-| Upload | Actual selected video, interruption/reselection/resume, completed file byte integrity, no premature READY | Storage-provider unit mock |
+| Feature            | Required evidence                                                                                                                               | What does not prove it                                     |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| AdMob              | Visible official test creative, load/show/dismiss callbacks, consent/no-fill/timeout checks, device + app version                               | SDK dependency or mocked callback                          |
+| Firebase Analytics | DebugView native event received once with approved parameters, user ID cleared on logout, no SDK-owned revenue duplication                      | Calling logEvent locally                                   |
+| FCM Android        | Targeted send record + device receipt/open in foreground/background/terminated; permission denial/revocation and force-stop limitation recorded | FCM HTTP 200 alone                                         |
+| FCM/APNs iOS       | Correct FCM token from Firebase, APNs binding, signed physical iPhone receipt/open and cold launch                                              | APNs token mistaken for FCM token or simulator-only result |
+| Crashlytics        | Controlled test crash from a test build, mapped native stack/dSYM association                                                                   | SDK installed or mapping file saved                        |
+| Upload             | Actual selected video, interruption/reselection/resume, completed file byte integrity, no premature READY                                       | Storage-provider unit mock                                 |
 
 For Android Analytics DebugView, use `adb shell setprop debug.firebase.analytics.app net.ayin.app.mobile` on the test device and clear it afterwards with `.none.`. On iOS, use Firebase's debug launch argument in the test scheme and inspect the linked project's DebugView. Do not enable debug diagnostics for public production sessions.
 
