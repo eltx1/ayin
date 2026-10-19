@@ -4,106 +4,149 @@ on:
   pull_request:
     paths:
       - "platforms/ios/**"
+      - "scripts/mobile-*"
       - "docs/IOS_DISTRIBUTION.md"
       - ".github/workflows/ios-app.yml"
-  push:
-    branches: [main]
-    paths:
-      - "platforms/ios/**"
-      - "docs/IOS_DISTRIBUTION.md"
-      - ".github/workflows/ios-app.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ios-app-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+  AYIN_BUILD_ENVIRONMENT: development
+  AYIN_SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
   ios:
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v7
-
-      - name: Show Apple toolchain
+      - name: Validate mobile release security gates
+        run: python3 scripts/mobile-validation-test.py
+      - name: Verify pinned Apple toolchain
         run: |
           set -euo pipefail
+          test -d "$DEVELOPER_DIR"
           xcodebuild -version
+          xcodebuild -showsdks
           xcrun simctl list runtimes
-
-      - name: Reject committed Apple signing secrets
+      - name: Reject committed signing secrets
         run: |
           set -euo pipefail
-          if find platforms/ios -type f \( -name '*.p8' -o -name '*.p12' -o -name '*.mobileprovision' -o -name '*.cer' \) -print -quit | grep -q .; then
+          if git ls-files platforms/ios | grep -E '\.(p8|p12|mobileprovision|cer)$'; then
             echo "Apple signing material must not be committed."
             exit 1
           fi
-          if grep -R -E 'DEVELOPMENT_TEAM[[:space:]]*=[[:space:]]*[A-Z0-9]{10}' platforms/ios --exclude-dir=.git; then
-            echo "A concrete Apple Team ID must not be committed by Task 80."
-            exit 1
-          fi
-
       - name: Install XcodeGen
         run: brew install xcodegen
-
-      - name: Generate Xcode project and validate property lists
+      - name: Generate project and resolve exact SDK dependencies
         working-directory: platforms/ios
         run: |
           set -euo pipefail
           xcodegen generate
           plutil -lint AYIN/Info.plist
           plutil -lint AYIN/AYIN.entitlements
+          plutil -lint AYIN/PrivacyInfo.xcprivacy
           python3 -m json.tool store/apple-app-site-association.template.json >/dev/null
           if /usr/libexec/PlistBuddy -c 'Print :NSAppTransportSecurity:NSAllowsArbitraryLoads' AYIN/Info.plist >/dev/null 2>&1; then
             echo "ATS arbitrary loads must remain disabled."
             exit 1
           fi
-
+          lock_dir=AYIN.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
+          mkdir -p "$lock_dir"
+          flags=()
+          if [ -f Package.resolved ]; then
+            cp Package.resolved "$lock_dir/Package.resolved"
+            flags+=(-onlyUsePackageVersionsFromResolvedFile)
+          fi
+          xcodebuild -resolvePackageDependencies -project AYIN.xcodeproj -scheme AYIN "${flags[@]}"
+          # First resolution is captured for review/commit; no fabricated transitive lock.
+          test -f "$lock_dir/Package.resolved"
+          mkdir -p "$RUNNER_TEMP/ayin-ios"
+          cp "$lock_dir/Package.resolved" "$RUNNER_TEMP/ayin-ios/Package.resolved"
       - name: Build unsigned simulator application
         working-directory: platforms/ios
         run: |
           set -euo pipefail
-          xcodebuild             -project AYIN.xcodeproj             -scheme AYIN             -configuration Debug             -sdk iphonesimulator             -destination 'generic/platform=iOS Simulator'             CODE_SIGNING_ALLOWED=NO             clean build
-
-      - name: Verify resolved production origins
+          xcodebuild -project AYIN.xcodeproj -scheme AYIN -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/ayin-ios-derived" \
+            -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
+            CODE_SIGNING_ALLOWED=NO build
+      - name: Verify resolved origins and package simulator app
         run: |
           set -euo pipefail
-          app_plist="$(find "$HOME/Library/Developer/Xcode/DerivedData" -path '*Debug-iphonesimulator/AYIN.app/Info.plist' -print -quit)"
-          test -n "$app_plist"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :AYINAPIBaseURL' "$app_plist")" = "https://api.ayin.stream"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :AYINMediaBaseURL' "$app_plist")" = "https://media.ayin.stream"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :AYINWebBaseURL' "$app_plist")" = "https://ayin.stream"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app_plist")" = "AYIN"
-
-      - name: Select available iPhone Simulator
+          app="$RUNNER_TEMP/ayin-ios-derived/Build/Products/Debug-iphonesimulator/AYIN.app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :AYINAPIBaseURL' "$app/Info.plist")" = "https://api.ayin.stream"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :AYINMediaBaseURL' "$app/Info.plist")" = "https://media.ayin.stream"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :AYINWebBaseURL' "$app/Info.plist")" = "https://ayin.stream"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")" = "AYIN"
+          ditto -c -k --sequesterRsrc --keepParent "$app" "$RUNNER_TEMP/ayin-ios/AYIN-simulator.app.zip"
+      - name: Select available iPhone Simulator for pinned SDK
         id: simulator
         run: |
           set -euo pipefail
           udid="$(python3 - <<'PY'
           import json, subprocess
           payload = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))
-          for _, devices in reversed(list(payload["devices"].items())):
+          for runtime, devices in payload["devices"].items():
+              if not runtime.endswith("iOS-26-2"):
+                  continue
               for device in devices:
                   if device.get("isAvailable") and device.get("name", "").startswith("iPhone"):
                       print(device["udid"])
                       raise SystemExit(0)
-          raise SystemExit("No available iPhone Simulator found")
+          raise SystemExit("No available iPhone Simulator for iOS 26.2")
           PY
           )"
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
-          echo "Using simulator $udid"
-
       - name: Run iOS unit tests
         working-directory: platforms/ios
         run: |
           set -euo pipefail
           xcrun simctl boot "${{ steps.simulator.outputs.udid }}" || true
           xcrun simctl bootstatus "${{ steps.simulator.outputs.udid }}" -b
-          xcodebuild             -project AYIN.xcodeproj             -scheme AYIN             -configuration Debug             -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}"             CODE_SIGNING_ALLOWED=NO             -resultBundlePath "$RUNNER_TEMP/AYINTests.xcresult"             test
-
+          xcodebuild -project AYIN.xcodeproj -scheme AYIN -configuration Debug \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
+            -derivedDataPath "$RUNNER_TEMP/ayin-ios-derived" \
+            -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
+            CODE_SIGNING_ALLOWED=NO -resultBundlePath "$RUNNER_TEMP/AYINTests.xcresult" test
+      - name: Create unsigned device archive
+        working-directory: platforms/ios
+        run: |
+          set -euo pipefail
+          xcodebuild -project AYIN.xcodeproj -scheme AYIN -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/AYIN-unsigned.xcarchive" \
+            -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO archive
+          ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/AYIN-unsigned.xcarchive" "$RUNNER_TEMP/ayin-ios/AYIN-unsigned.xcarchive.zip"
+      - name: Record build provenance
+        run: |
+          python3 scripts/mobile-build-metadata.py --platform ios --signing unsigned \
+            --output "$RUNNER_TEMP/ayin-ios/build-metadata.json" \
+            --artifact "$RUNNER_TEMP/ayin-ios/AYIN-simulator.app.zip" \
+            --artifact "$RUNNER_TEMP/ayin-ios/AYIN-unsigned.xcarchive.zip" \
+            --artifact "$RUNNER_TEMP/ayin-ios/Package.resolved"
+          echo "Simulator app and unsigned device archive only. Not an installable device IPA or proof of Ads/FCM/Analytics delivery." > "$RUNNER_TEMP/ayin-ios/READ-ME.txt"
+      - name: Upload app, archive and resolved package lock
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ayin-ios-${{ github.sha }}
+          path: ${{ runner.temp }}/ayin-ios/
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Upload iOS test result
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ayin-ios-xcresult
+          name: ayin-ios-xcresult-${{ github.sha }}
           path: ${{ runner.temp }}/AYINTests.xcresult
           if-no-files-found: ignore
           retention-days: 7

@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "bridgeVersion": 1,
+  "minimumAppVersion": {
+    "android": "1.0.0",
+    "ios": "1.0.0"
+  },
+  "latestAppVersion": {
+    "android": "1.0.0",
+    "ios": "1.0.0"
+  },
+  "ads": {
+    "enabled": false,
+    "testMode": true,
+    "audience": "unknown",
+    "banner": {
+      "enabled": false
+    },
+    "interstitial": {
+      "enabled": false,
+      "cooldownSeconds": 180,
+      "maxPerSession": 3
+    },
+    "platforms": {
+      "android": {
+        "bannerUnitId": "",
+        "interstitialUnitId": ""
+      },
+      "ios": {
+        "bannerUnitId": "",
+        "interstitialUnitId": ""
+      }
+    },
+    "requestTimeoutMs": 10000,
+    "retryCount": 1,
+    "retryBackoffMs": 2000
+  },
+  "analytics": {
+    "enabled": false
+  },
+  "notifications": {
+    "enabled": false,
+    "types": [
+      "system",
+      "channel",
+      "video",
+      "comment",
+      "subscription",
+      "moderation",
+      "monetization"
+    ],
+    "richMedia": false
+  },
+  "web": {
+    "mode": "hosted",
+    "origin": "https://ayin.stream",
+    "minimumBridgeVersion": 1,
+    "rolloutPercent": 100,
+    "bundleUpdatesEnabled": false
+  }
+}

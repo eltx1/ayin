@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct AYINApp: App {
+    @UIApplicationDelegateAdaptor(MobileAppDelegate.self) private var appDelegate
     @StateObject private var session = SessionController()
     @StateObject private var router = AppRouter()
 
@@ -11,7 +12,10 @@ struct AYINApp: App {
                 .environmentObject(session)
                 .environmentObject(router)
                 .task { await session.restore() }
-                .onOpenURL { router.open($0) }
+                .onOpenURL { MobileNavigation.shared.open($0) }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    if let url = activity.webpageURL { MobileNavigation.shared.open(url) }
+                }
         }
     }
 }

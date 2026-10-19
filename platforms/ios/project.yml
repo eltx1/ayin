@@ -15,6 +15,16 @@ settings:
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     TARGETED_DEVICE_FAMILY: "1,2"
     SUPPORTS_MACCATALYST: NO
+packages:
+  GoogleMobileAds:
+    url: https://github.com/googleads/swift-package-manager-google-mobile-ads.git
+    exactVersion: 13.11.0
+  UserMessagingPlatform:
+    url: https://github.com/googleads/swift-package-manager-google-user-messaging-platform.git
+    exactVersion: 3.1.0
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk.git
+    exactVersion: 13.0.0
 targets:
   AYIN:
     type: application
@@ -24,6 +34,17 @@ targets:
         excludes:
           - Info.plist
           - AYIN.entitlements
+    dependencies:
+      - package: GoogleMobileAds
+        product: GoogleMobileAds
+      - package: UserMessagingPlatform
+        product: UserMessagingPlatform
+      - package: Firebase
+        product: FirebaseAnalyticsCore
+      - package: Firebase
+        product: FirebaseMessaging
+      - package: Firebase
+        product: FirebaseCrashlytics
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: "$(AYIN_BUNDLE_ID)"
@@ -34,6 +55,9 @@ targets:
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: AYIN/Info.plist
+        OTHER_LDFLAGS: "$(inherited) -ObjC"
+        DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+        ENABLE_USER_SCRIPT_SANDBOXING: YES
     scheme:
       gatherCoverageData: true
       testTargets:
