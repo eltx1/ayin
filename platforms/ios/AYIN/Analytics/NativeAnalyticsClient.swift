@@ -30,6 +30,7 @@ struct NativeAnalyticsClient: AnalyticsTracking {
         positionMs: Int? = nil,
         metadata: [String: String] = [:]
     ) async {
+        let deviceClass = await MainActor.run { UIDevice.current.userInterfaceIdiom == .pad ? "TABLET" : "MOBILE" }
         let event = NativeAnalyticsEvent(
             clientEventId: UUID().uuidString,
             schemaVersion: 1,
@@ -40,7 +41,7 @@ struct NativeAnalyticsClient: AnalyticsTracking {
             videoId: videoId,
             channelId: channelId,
             source: "MOBILE",
-            deviceClass: UIDevice.current.userInterfaceIdiom == .pad ? "TABLET" : "MOBILE",
+            deviceClass: deviceClass,
             durationDeltaMs: durationDeltaMs,
             positionMs: positionMs,
             metadata: metadata.isEmpty ? nil : metadata

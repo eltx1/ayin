@@ -111,7 +111,7 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
         initializing = true
         defer { initializing = false }
         // No IDFA prompt and no personalized ad requests in this release.
-        MobileAds.shared.requestConfiguration.tagForUnderAgeOfConsent = NSNumber(value: underAge)
+        MobileAds.shared.requestConfiguration.ageRestrictedTreatment = underAge ? .child : .unspecified
         MobileAds.shared.requestConfiguration.maxAdContentRating = .general
         MobileAds.shared.requestConfiguration.setPublisherFirstPartyIDEnabled(false)
         MobileAds.shared.requestConfiguration.publisherPrivacyPersonalizationState = .disabled
@@ -165,8 +165,10 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
         container.addSubview(view)
         NSLayoutConstraint.activate([view.centerXAnchor.constraint(equalTo: container.centerXAnchor), view.bottomAnchor.constraint(equalTo: container.bottomAnchor)])
         view.paidEventHandler = { [weak self, weak view] value in
-            guard let self, let view else { return }
-            self.paid(value, response: view.responseInfo?.responseIdentifier, format: "banner")
+            Task { @MainActor in
+                guard let self, let view else { return }
+                self.paid(value, response: view.responseInfo?.responseIdentifier, format: "banner")
+            }
         }
         emit(["type": "ad.request", "format": "banner"])
         view.load(request())
@@ -238,19 +240,23 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
         guard loadGeneration == generation, (try? permitted()) != nil else { return }
         emit(["type": "ad.request", "format": "interstitial"])
         InterstitialAd.load(with: unit, request: request()) { [weak self] ad, error in
-            guard let self, self.loadGeneration == generation else { return }
-            self.loadTimeout?.cancel()
-            self.interstitialLoading = false
-            guard let ad, error == nil, UIApplication.shared.applicationState == .active else {
-                self.interstitialFailed(error.map { String(($0 as NSError).code) } ?? "inactive", unit: unit, config: value, generation: generation, attempt: attempt)
-                return
+            Task { @MainActor in
+                guard let self, self.loadGeneration == generation else { return }
+                self.loadTimeout?.cancel()
+                self.interstitialLoading = false
+                guard let ad, error == nil, UIApplication.shared.applicationState == .active else {
+                    self.interstitialFailed(error.map { String(($0 as NSError).code) } ?? "inactive", unit: unit, config: value, generation: generation, attempt: attempt)
+                    return
+                }
+                self.interstitial = ad
+                self.interstitialLoadedAt = Date()
+                ad.fullScreenContentDelegate = self
+                ad.paidEventHandler = { [weak self, weak ad] value in
+                    Task { @MainActor in self?.paid(value, response: ad?.responseInfo.responseIdentifier, format: "interstitial") }
+                }
+                self.emit(["type": "ad.loaded", "format": "interstitial"])
+                // Never auto-present a late load over content. A subsequent natural transition must request it.
             }
-            self.interstitial = ad
-            self.interstitialLoadedAt = Date()
-            ad.fullScreenContentDelegate = self
-            ad.paidEventHandler = { [weak self, weak ad] value in self?.paid(value, response: ad?.responseInfo.responseIdentifier, format: "interstitial") }
-            self.emit(["type": "ad.loaded", "format": "interstitial"])
-            // Never auto-present a late load over content. A subsequent natural transition must request it.
         }
         loadTimeout = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(value.ads.requestTimeoutMs) * 1_000_000)

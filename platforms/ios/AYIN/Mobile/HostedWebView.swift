@@ -324,7 +324,7 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
     }
     private func send(_ name: String, payload: [String: Any]) {
         guard MobileContract.trusted(webView.url) else { return }
-        webView.callAsyncJavaScript("window.dispatchEvent(new CustomEvent(eventName, {detail: payload}));", arguments: ["eventName": name, "payload": payload], in: nil, contentWorld: .page, completionHandler: nil)
+        webView.callAsyncJavaScript("window.dispatchEvent(new CustomEvent(eventName, {detail: payload}));", arguments: ["eventName": name, "payload": payload], in: nil, in: .page, completionHandler: nil)
     }
     deinit {
         observerTokens.forEach { NotificationCenter.default.removeObserver($0) }

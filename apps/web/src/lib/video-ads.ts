@@ -1,3 +1,4 @@
+import { isMobileHost } from "./mobile-bridge";
 import { trackAnalyticsEvent } from "./analytics";
 import { apiBaseUrl } from "./api";
 import type { AdvertisingConsentSnapshot } from "./advertising-consent";
@@ -65,6 +66,8 @@ export interface VideoAdService {
 }
 
 export async function fetchVideoAdDecision(videoId: string, signal?: AbortSignal) {
+  // UMP consent for native ads is not browser IMA consent. Leave content playback unblocked.
+  if (isMobileHost()) return { enabled: false, reason: "NATIVE_VIDEO_ADS_NOT_SUPPORTED" } as const;
   const response = await fetch(`${apiBaseUrl}/ads/video/decision/${encodeURIComponent(videoId)}`, {
     cache: "no-store",
     ...(signal ? { signal } : {}),

@@ -38,6 +38,11 @@ class MobilePolicyTest {
         assertThrows(IllegalArgumentException::class.java) { MobileConfig.parse(data) }
     }
     @Test fun versionComparisonIsNumericAndRolloutStable() {
+        for (invalid in listOf("1.1.0-beta", "10000.1.0", "1.10000.0", "1.0.10000")) {
+            val data = fixture()
+            data.getJSONObject("latestAppVersion").put("android", invalid)
+            assertThrows(IllegalArgumentException::class.java) { MobileConfig.parse(data) }
+        }
         assertTrue(MobileConfig.versionAtLeast("1.10.0", "1.2.0"))
         assertFalse(MobileConfig.versionAtLeast("1.1.0", "2.0.0"))
         val id = "123e4567-e89b-42d3-a456-426614174000"

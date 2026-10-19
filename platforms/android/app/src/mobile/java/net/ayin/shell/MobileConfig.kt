@@ -24,7 +24,7 @@ internal data class MobileConfig(
     companion object {
         private val unit = Regex("ca-app-pub-[0-9]{16}/[0-9]{10}")
         private val types = setOf("system", "channel", "video", "comment", "subscription", "moderation", "monetization")
-        private val version = Regex("[0-9]{1,5}\\.[0-9]{1,5}\\.[0-9]{1,5}(?:-[a-zA-Z0-9.-]{1,32})?")
+        private val version = Regex("[0-9]{1,4}\\.[0-9]{1,4}\\.[0-9]{1,4}")
         private fun fields(obj: JSONObject, vararg expected: String) = require(obj.keys().asSequence().toSet() == expected.toSet())
         private fun bool(obj: JSONObject, key: String): Boolean = (obj.get(key) as? Boolean) ?: error("Invalid boolean")
         private fun range(obj: JSONObject, key: String, min: Int, max: Int): Int {

@@ -58,6 +58,7 @@ For Android Analytics DebugView, use `adb shell setprop debug.firebase.analytics
 ## Limits that need explicit release decisions
 
 - General-audience configuration does not establish a viewer's age. Optional native ad/analytics operation is blocked for unknown/Kids contexts; the web asks for an explicit adult affirmation before enabling the supported adult path. No birth date is logged to Analytics. Owner must still declare the app's real audience and complete store age-rating questionnaires.
+- Web GPT/IMA inventory is disabled in the new mobile hosts. Native banner/interstitial do not provide content preroll/midroll. Enabling native content ads requires a separately validated IMA/player implementation and potentially a new binary. Web/PWA IMA remains available under its existing controls.
 - Rich image notifications are disabled (`richMedia:false`). A Notification Service Extension is not claimed shipped; enabling rich images later needs a tested extension and signed build.
 - Rewarded, App Open, in-feed native ad templates, extra mediation adapters, camera/microphone capture, Cast, incoming Share Extension and guaranteed background uploads are not implemented preemptively. No unused camera/microphone permission is requested. Each new native capability can require a new binary.
 - Browser uploads use sliced files. Recovery after process termination requires source-file reselection; there is no promise of unlimited background execution or persisted file access.

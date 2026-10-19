@@ -5,12 +5,12 @@ import CryptoKit
 enum MobileBridgeError: String, Error { case invalidRequest, invalidConfig, unavailable, disabled, consentRequired, busy, rateLimited, timeout, unsupported }
 
 struct MobileRuntimeConfig: Decodable {
-    struct Versions: Decodable { let ios: String }
+    struct Versions: Decodable { let android: String; let ios: String }
     struct Ads: Decodable {
         struct Toggle: Decodable { let enabled: Bool }
         struct Interstitial: Decodable { let enabled: Bool; let cooldownSeconds: Int; let maxPerSession: Int }
         struct Units: Decodable { let enabled: Bool; let bannerUnitId: String; let interstitialUnitId: String }
-        struct Platforms: Decodable { let ios: Units }
+        struct Platforms: Decodable { let android: Units; let ios: Units }
         let enabled: Bool; let testMode: Bool; let audience: String
         let banner: Toggle; let interstitial: Interstitial; let platforms: Platforms
         let requestTimeoutMs: Int; let retryCount: Int; let retryBackoffMs: Int
@@ -25,14 +25,47 @@ struct MobileRuntimeConfig: Decodable {
     let minimumAppVersion: Versions; let latestAppVersion: Versions
     let ads: Ads; let analytics: Analytics; let notifications: Notifications; let web: Web
 
+    private indirect enum Shape { case scalar, object([String: Shape]) }
+    private static var shape: Shape {
+        let units: Shape = .object(["enabled": .scalar, "bannerUnitId": .scalar, "interstitialUnitId": .scalar])
+        let versions: Shape = .object(["android": .scalar, "ios": .scalar])
+        return .object([
+            "schemaVersion": .scalar, "bridgeVersion": .scalar,
+            "minimumAppVersion": versions, "latestAppVersion": versions,
+            "ads": .object([
+                "enabled": .scalar, "testMode": .scalar, "audience": .scalar,
+                "banner": .object(["enabled": .scalar]),
+                "interstitial": .object(["enabled": .scalar, "cooldownSeconds": .scalar, "maxPerSession": .scalar]),
+                "platforms": .object(["android": units, "ios": units]),
+                "requestTimeoutMs": .scalar, "retryCount": .scalar, "retryBackoffMs": .scalar
+            ]),
+            "analytics": .object(["enabled": .scalar]),
+            "notifications": .object(["enabled": .scalar, "types": .scalar, "richMedia": .scalar]),
+            "web": .object(["mode": .scalar, "origin": .scalar, "minimumBridgeVersion": .scalar,
+                            "rolloutPercent": .scalar, "bundleUpdatesEnabled": .scalar])
+        ])
+    }
+
+    private static func validateShape(_ value: Any, against shape: Shape, depth: Int = 0) throws {
+        guard depth <= 6 else { throw MobileBridgeError.invalidConfig }
+        if case let .object(expected) = shape {
+            guard let object = value as? [String: Any], Set(object.keys) == Set(expected.keys) else { throw MobileBridgeError.invalidConfig }
+            for (key, child) in expected {
+                guard let raw = object[key] else { throw MobileBridgeError.invalidConfig }
+                try validateShape(raw, against: child, depth: depth + 1)
+            }
+        }
+    }
+
     static func parse(_ raw: Any) throws -> Self {
         guard JSONSerialization.isValidJSONObject(raw) else { throw MobileBridgeError.invalidConfig }
         let bytes = try JSONSerialization.data(withJSONObject: raw)
         guard bytes.count <= 32_768 else { throw MobileBridgeError.invalidConfig }
+        try validateShape(raw, against: shape)
         let value = try JSONDecoder().decode(Self.self, from: bytes)
         guard value.schemaVersion == 1, value.bridgeVersion == 1,
               value.web.mode == "hosted", value.web.origin == "https://ayin.stream",
-              value.web.minimumBridgeVersion <= 1, !value.web.bundleUpdatesEnabled,
+              value.web.minimumBridgeVersion == 1, !value.web.bundleUpdatesEnabled,
               (0...100).contains(value.web.rolloutPercent),
               (60...3600).contains(value.ads.interstitial.cooldownSeconds),
               (0...20).contains(value.ads.interstitial.maxPerSession),
@@ -40,19 +73,25 @@ struct MobileRuntimeConfig: Decodable {
               (0...3).contains(value.ads.retryCount), (500...30000).contains(value.ads.retryBackoffMs),
               ["unknown", "general", "children"].contains(value.ads.audience),
               validUnit(value.ads.platforms.ios.bannerUnitId), validUnit(value.ads.platforms.ios.interstitialUnitId),
+              validUnit(value.ads.platforms.android.bannerUnitId), validUnit(value.ads.platforms.android.interstitialUnitId),
               validVersion(value.minimumAppVersion.ios), validVersion(value.latestAppVersion.ios),
+              validVersion(value.minimumAppVersion.android), validVersion(value.latestAppVersion.android),
               value.notifications.types.count <= 7,
               Set(value.notifications.types).isSubset(of: ["system", "channel", "video", "comment", "subscription", "moderation", "monetization"]),
               Set(value.notifications.types).count == value.notifications.types.count, !value.notifications.richMedia
         else { throw MobileBridgeError.invalidConfig }
-        let minimum = value.minimumAppVersion.ios.split(separator: ".").compactMap { Int($0) }
-        let latest = value.latestAppVersion.ios.split(separator: ".").compactMap { Int($0) }
-        guard !latest.lexicographicallyPrecedes(minimum),
-              !value.ads.enabled || value.ads.audience == "general" else { throw MobileBridgeError.invalidConfig }
-        if value.ads.enabled && value.ads.platforms.ios.enabled && !value.ads.testMode {
-            guard !value.ads.banner.enabled || !value.ads.platforms.ios.bannerUnitId.isEmpty,
-                  !value.ads.interstitial.enabled || !value.ads.platforms.ios.interstitialUnitId.isEmpty
-            else { throw MobileBridgeError.invalidConfig }
+        for (minimumValue, latestValue) in [(value.minimumAppVersion.ios, value.latestAppVersion.ios), (value.minimumAppVersion.android, value.latestAppVersion.android)] {
+            let minimum = minimumValue.split(separator: ".").compactMap { Int($0) }
+            let latest = latestValue.split(separator: ".").compactMap { Int($0) }
+            guard !latest.lexicographicallyPrecedes(minimum) else { throw MobileBridgeError.invalidConfig }
+        }
+        guard !value.ads.enabled || value.ads.audience == "general" else { throw MobileBridgeError.invalidConfig }
+        for units in [value.ads.platforms.ios, value.ads.platforms.android] {
+            if value.ads.enabled && units.enabled && !value.ads.testMode {
+                guard !value.ads.banner.enabled || !units.bannerUnitId.isEmpty,
+                      !value.ads.interstitial.enabled || !units.interstitialUnitId.isEmpty
+                else { throw MobileBridgeError.invalidConfig }
+            }
         }
         return value
     }

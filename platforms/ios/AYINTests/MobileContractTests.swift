@@ -26,7 +26,7 @@ final class MobileContractTests: XCTestCase {
     }
 
     func testRemoteConfigCannotChangeTrustedOriginOrInstallBundles() throws {
-        for mutation: [String: Any] in [["origin": "https://evil.example"], ["bundleUpdatesEnabled": true], ["minimumBridgeVersion": 2], ["mode": "bundle"]] {
+        for mutation: [String: Any] in [["origin": "https://evil.example"], ["bundleUpdatesEnabled": true], ["minimumBridgeVersion": 2], ["minimumBridgeVersion": 0], ["minimumBridgeVersion": -1], ["mode": "bundle"]] {
             var raw = try fixture()
             var web = try XCTUnwrap(raw["web"] as? [String: Any])
             mutation.forEach { web[$0.key] = $0.value }
@@ -35,15 +35,36 @@ final class MobileContractTests: XCTestCase {
         }
     }
 
+    func testConfigRejectsUnknownAndMissingKeysAtEveryObjectDepth() throws {
+        let paths = [[], ["minimumAppVersion"], ["latestAppVersion"], ["ads"], ["ads", "banner"],
+                     ["ads", "interstitial"], ["ads", "platforms"], ["ads", "platforms", "ios"],
+                     ["ads", "platforms", "android"], ["analytics"], ["notifications"], ["web"]]
+        func changing(_ value: [String: Any], path: [String], remove: Bool) -> [String: Any] {
+            var output = value
+            if let first = path.first, let child = output[first] as? [String: Any] {
+                output[first] = changing(child, path: Array(path.dropFirst()), remove: remove)
+            } else if remove {
+                if let key = output.keys.sorted().first { output.removeValue(forKey: key) }
+            } else { output["unexpected"] = "reject" }
+            return output
+        }
+        for path in paths {
+            XCTAssertThrowsError(try MobileRuntimeConfig.parse(changing(fixture(), path: path, remove: false)), path.joined(separator: "."))
+            XCTAssertThrowsError(try MobileRuntimeConfig.parse(changing(fixture(), path: path, remove: true)), path.joined(separator: "."))
+        }
+    }
+
     func testRejectsFutureSchemaAndStringBooleans() throws {
         var raw = try fixture(); raw["schemaVersion"] = 2
         XCTAssertThrowsError(try MobileRuntimeConfig.parse(raw))
         raw = try fixture(); raw["analytics"] = ["enabled": "true"]
         XCTAssertThrowsError(try MobileRuntimeConfig.parse(raw))
+        raw = try fixture(); raw["latestAppVersion"] = ["ios": "1.1.0", "android": 123]
+        XCTAssertThrowsError(try MobileRuntimeConfig.parse(raw))
     }
 
     func testRejectsUnsafeAdLimitsAndWebInventory() throws {
-        for mutation: [String: Any] in [["requestTimeoutMs": 0], ["retryCount": 50], ["retryBackoffMs": -1], ["audience": "guess"], ["platforms": ["ios": ["enabled": false, "bannerUnitId": "/1234/web", "interstitialUnitId": ""]]]] {
+        for mutation: [String: Any] in [["requestTimeoutMs": 0], ["retryCount": 50], ["retryBackoffMs": -1], ["audience": "guess"], ["platforms": ["ios": ["enabled": false, "bannerUnitId": "/1234/web", "interstitialUnitId": ""], "android": ["enabled": false, "bannerUnitId": "", "interstitialUnitId": ""]]]] {
             var raw = try fixture()
             var ads = try XCTUnwrap(raw["ads"] as? [String: Any])
             mutation.forEach { ads[$0.key] = $0.value }; raw["ads"] = ads

@@ -27,7 +27,7 @@ AYIN admin is the single source for schema-versioned runtime settings. Firebase 
 
 ## Ad format scope
 
-The native SDK surface supports adaptive banners and explicit interstitials at a natural transition. Neither may cover a playing content video or interrupt upload. App Open is not enabled. Rewarded is not enabled because AYIN has no agreed reward. In-feed native rendering and additional mediation adapters are not implemented preemptively; adding those requires implementation, review and usually a new binary. Existing GAM/VAST/IMA content advertising remains a separate pathway and requires its own consent, inventory and real-device validation. Native display inventory must never silently reuse web GAM identifiers as AdMob units.
+The native SDK surface supports adaptive banners and explicit interstitials at a natural transition. Neither may cover a playing content video or interrupt upload. App Open is not enabled. Rewarded is not enabled because AYIN has no agreed reward. In-feed native rendering and additional mediation adapters are not implemented preemptively; adding those requires implementation, review and usually a new binary. Existing GAM/VAST/IMA content advertising remains a separate Web/PWA pathway. New AyinMobile hosts explicitly suppress Web GPT/IMA inventory before loading/requesting it: native UMP is not automatically a consent bridge for browser IMA. Native pre/mid-roll content advertising is not implemented by Google Mobile Ads and remains disabled until a separately reviewed IMA/player integration is implemented and tested. Native display inventory must never silently reuse web GAM identifiers as AdMob units.
 
 ## Store-policy interpretation
 

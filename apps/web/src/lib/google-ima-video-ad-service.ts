@@ -1,3 +1,4 @@
+import { isMobileHost } from "./mobile-bridge";
 import {
   getAdvertisingConsentSnapshot,
   normalizeAdvertisingConsent,
@@ -121,6 +122,7 @@ export function applyGoogleImaConsent(tagUrl: string, consent: AdvertisingConsen
 }
 
 async function loadImaSdk(): Promise<ImaNamespace> {
+  if (isMobileHost()) throw new ImaRuntimeError("IMA_NATIVE_INVENTORY_DISABLED");
   const existing = (window as ImaWindow).google?.ima;
   if (existing) return existing;
   if (!sdkPromise) {
@@ -189,6 +191,7 @@ export class GoogleImaVideoAdService implements VideoAdService {
     contentVideo: HTMLVideoElement,
     signal?: AbortSignal,
   ): Promise<void> {
+    if (isMobileHost()) throw new ImaRuntimeError("IMA_NATIVE_INVENTORY_DISABLED");
     if (signal?.aborted) throw new ImaRuntimeError("IMA_INITIALIZATION_CANCELLED");
     if (this.container === container && this.contentVideo === contentVideo && this.adsLoader) {
       if (!this.initialized) {
@@ -242,6 +245,7 @@ export class GoogleImaVideoAdService implements VideoAdService {
     consent?: AdvertisingConsentSnapshot,
     signal?: AbortSignal,
   ): Promise<void> {
+    if (isMobileHost()) throw new ImaRuntimeError("IMA_NATIVE_INVENTORY_DISABLED");
     if (signal?.aborted) return;
     const ima = this.ima;
     const loader = this.adsLoader;

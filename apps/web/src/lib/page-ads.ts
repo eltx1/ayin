@@ -1,3 +1,4 @@
+import { isMobileHost } from "./mobile-bridge";
 import { apiBaseUrl } from "./api";
 
 export type PageAdDevice = "MOBILE" | "DESKTOP" | "TV";
@@ -51,6 +52,7 @@ export async function fetchPageAdDecision(
   device: PageAdDevice,
   signal?: AbortSignal,
 ) {
+  if (isMobileHost()) return { enabled: false, reason: "NATIVE_INVENTORY_ONLY" } as const;
   const search = new URLSearchParams({ route, device });
   const response = await fetch(
     `${apiBaseUrl}/ads/page/decision/${encodeURIComponent(key)}?${search.toString()}`,

@@ -195,6 +195,7 @@ class ShellBaselineInstrumentedTest {
     }
 
     private fun loadHarness(scenario: ActivityScenario<MainActivity>) {
+        val harnessId = System.nanoTime().toString()
         scenario.onActivity {
             it.loadTestHtmlForTests(
                 """
@@ -222,13 +223,14 @@ class ShellBaselineInstrumentedTest {
                         window.__lastKeyCode = event.keyCode;
                       });
                       document.getElementById('first').focus();
+                      window.__ayinHarnessId = '$harnessId';
                     </script>
                   </body>
                 </html>
                 """.trimIndent(),
             )
         }
-        assertTrue(awaitJsBoolean(scenario, "document.readyState === 'complete'"))
+        assertTrue(awaitJsBoolean(scenario, "document.readyState === 'complete' && window.__ayinHarnessId === '$harnessId'"))
         scenario.onActivity { it.webView.requestFocus() }
     }
 
@@ -242,7 +244,7 @@ class ShellBaselineInstrumentedTest {
             if (evaluateJavascript(scenario, expression) == "true") return true
             Thread.sleep(50)
         }
-        return false
+        throw AssertionError("WebView condition failed: $expression; location=" + evaluateJavascript(scenario, "location.href"))
     }
 
     private fun evaluateJavascript(

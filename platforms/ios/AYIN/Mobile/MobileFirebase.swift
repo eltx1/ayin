@@ -135,8 +135,8 @@ final class MobileFirebase: NSObject, MessagingDelegate, UNUserNotificationCente
         }
     }
 
-    func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
-        receivedToken(fcmToken)
+    nonisolated func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
+        Task { @MainActor [weak self] in self?.receivedToken(fcmToken) }
     }
 
     private func receivedToken(_ value: String?) {
@@ -204,15 +204,27 @@ final class MobileFirebase: NSObject, MessagingDelegate, UNUserNotificationCente
         }
     }
 
-    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        let recipient = notification.request.content.userInfo["recipientAccountId"] as? String
-        guard notificationsRemoteEnabled, let accountId, recipient == accountId else { completionHandler([]); return }
-        self.notification(notification.request.content.userInfo, opened: false)
-        completionHandler([.banner, .sound, .badge])
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        let info = Self.safeNotificationInfo(notification.request.content.userInfo)
+        Task { @MainActor [weak self] in
+            guard let self, self.notificationsRemoteEnabled, let accountId = self.accountId, info["recipientAccountId"] == accountId else { completionHandler([]); return }
+            self.notification(info, opened: false)
+            completionHandler([.banner, .sound, .badge])
+        }
     }
-    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
-        notification(response.notification.request.content.userInfo, opened: true)
-        completionHandler()
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        let info = Self.safeNotificationInfo(response.notification.request.content.userInfo)
+        Task { @MainActor [weak self] in
+            self?.notification(info, opened: true)
+            completionHandler()
+        }
+    }
+    nonisolated private static func safeNotificationInfo(_ info: [AnyHashable: Any]) -> [String: String] {
+        var output: [String: String] = [:]
+        for key in ["notificationId", "recipientAccountId"] {
+            if let value = info[key] as? String, value.count <= 128 { output[key] = value }
+        }
+        return output
     }
 }
 

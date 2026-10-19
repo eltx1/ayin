@@ -257,6 +257,22 @@ jobs:
           path: ${{ runner.temp }}/ayin-android-diagnostic/
           if-no-files-found: error
           retention-days: 14
+      - name: Preserve connected test diagnostics
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/ayin-android-test-diagnostics"
+          adb logcat -d -s TestRunner:V AndroidJUnitRunner:V AndroidRuntime:E AyinShell:I '*:S' > "$RUNNER_TEMP/ayin-android-test-diagnostics/instrumentation-logcat.txt" 2>/dev/null || true
+      - name: Upload connected test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ayin-android-connected-tests-${{ matrix.flavor }}-${{ github.sha }}
+          path: |
+            platforms/android/app/build/reports/androidTests/connected/
+            platforms/android/app/build/outputs/androidTest-results/connected/
+            ${{ runner.temp }}/ayin-android-test-diagnostics/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Upload emulator log on failure
         if: failure()
         uses: actions/upload-artifact@v4
