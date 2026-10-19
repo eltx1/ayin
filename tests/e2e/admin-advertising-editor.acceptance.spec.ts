@@ -238,10 +238,16 @@ test("A committed creative with a lost response stays uncertain through current 
   const data = await seed(page),
     copy = advertisingEditorEn;
   await page.goto("/admin/video-ads?lang=en");
+  // The SSR read button starts enabled before hydration begins the initial read.
+  // This group exists only after that authenticated read has completed.
+  await expect(
+    page.getByRole("group", { name: "Find stored overrides", exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: adminAdvertisingEn.refresh, exact: true }),
   ).toBeEnabled();
   await page.getByRole("link", { name: adminAdvertisingEn.pageArea, exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/advertising$/);
   await expect(
     page.getByRole("button", { name: adminAdvertisingEn.refresh, exact: true }),
   ).toBeEnabled();

@@ -6,6 +6,7 @@ on:
       - "apps/**"
       - "packages/**"
       - "tests/e2e/admin-mobile.acceptance.spec.ts"
+      - "tests/e2e/admin-advertising-editor.acceptance.spec.ts"
       - "tests/e2e/public-channel-playlist-policy.acceptance.spec.ts"
       - "tests/e2e/db-helper.mjs"
       - "tests/e2e/mfa-helper.ts"
@@ -79,6 +80,8 @@ jobs:
           pnpm exec playwright test \
             tests/e2e/admin-mobile.acceptance.spec.ts \
             tests/e2e/public-channel-playlist-policy.acceptance.spec.ts \
+            tests/e2e/admin-advertising-editor.acceptance.spec.ts \
+            --grep 'mobile administration keeps delivery off|real channel and playlist preserve eligible Kids destinations and localized cards|real same-URL channel and playlist change territory|A committed creative with a lost response stays uncertain through current reads and newer history' \
             --project=chromium --workers=1 --output=test-results-mobile
       - name: Record source provenance
         if: always()
@@ -94,7 +97,7 @@ jobs:
               "workflowRun": os.environ["GITHUB_RUN_ID"],
               "node": subprocess.check_output(["node", "--version"], text=True).strip(),
               "pnpm": subprocess.check_output(["pnpm", "--version"], text=True).strip(),
-              "scope": "Existing mobile-admin and Kids journeys with local PostgreSQL; no Ads, Analytics or FCM delivery proof."
+              "scope": "Existing mobile-admin, Kids and advertising regression journeys with local PostgreSQL; no Ads, Analytics or FCM delivery proof."
           }, indent=2) + "\n")
           PY
       - name: Retain browser report and failure diagnostics
