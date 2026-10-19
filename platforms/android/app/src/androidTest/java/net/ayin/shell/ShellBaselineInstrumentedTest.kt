@@ -247,7 +247,7 @@ class ShellBaselineInstrumentedTest {
             assertEquals("Harness must have a trusted native URL", BuildConfig.AYIN_ORIGIN.trimEnd('/'), it.webView.url?.trimEnd('/'))
             it.webView.requestFocus()
         }
-        assertEquals(JSONObjectQuote(BuildConfig.AYIN_ORIGIN), evaluateJavascript(scenario, "location.origin"))
+        assertTrue(awaitJsBoolean(scenario, "location.origin === ${JSONObject.quote(BuildConfig.AYIN_ORIGIN)}"))
     }
 
     private fun awaitJsBoolean(
