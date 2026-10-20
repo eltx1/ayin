@@ -32,14 +32,36 @@ Also configure Firebase Console → Project settings → Cloud Messaging → App
 
 Configure UMP privacy messages in AdMob for each registered app. Ad unit IDs are separate Android/iOS app inventory and are set in AYIN mobile admin. Do not paste GAM web ad unit paths into these fields. Configure the true Google publisher/seller record through the existing AYIN authorized-seller editor; verify `https://ayin.stream/app-ads.txt` and the developer website listed in each store agree. The implementation does not invent a publisher ID.
 
+## Owner setup for the first signed build
+
+Start with non-secret account facts: whether Google Play Console and an active Apple Developer membership/App Store Connect team are available, whether AYIN already has a listing on either store, and the highest build number already uploaded. Repository inspection does not verify these accounts or the existence/configuration of the `mobile-production` environment.
+
+### Android
+
+1. Confirm the Play app's package is `net.ayin.app.mobile`. For an existing listing, use its registered upload key; generating an unrelated key will not authorize an update. If the key is lost, complete the Play upload-key reset through the authorized owner before building. For a new listing, prepare a dedicated upload key in a secure local environment and retain an encrypted owner-controlled backup; enroll the app in Play App Signing.
+2. In GitHub repository **Settings → Environments → mobile-production**, set the four `AYIN_ANDROID_KEYSTORE_*` / `AYIN_ANDROID_KEY_*` secrets listed above, plus the Android Firebase and AdMob configuration. Do not send the keystore, passwords or base64 values in chat. Base64 is transport encoding, not encryption.
+3. Run the signed production build after validated changes reach `main`. Check the AAB's signer fingerprint against the upload certificate registered in Play Console. `jarsigner -verify` checks signature integrity; it does not establish that the account accepts that identity. Upload the AAB to **internal testing**, then install the Play-delivered app on the test device.
+4. Use the **Play app signing certificate**, which can differ from the upload certificate, when configuring Android App Links and any Firebase/OAuth certificate restrictions. Validate links against the Play-installed build.
+
+### iOS
+
+1. Confirm active Apple Developer membership, the correct team, an explicit App ID `net.ayin.app.ios`, and the matching App Store Connect app record. Enable **Push Notifications** and **Associated Domains** on the App ID before generating its distribution provisioning profile.
+2. Prepare an **Apple Distribution signing identity** exported as password-protected `.p12` containing both certificate and private key, and its matching **App Store Connect distribution provisioning profile**. A downloaded `.cer` alone is insufficient. Populate `AYIN_IOS_TEAM_ID`, `AYIN_IOS_CERTIFICATE_BASE64`, `AYIN_IOS_CERTIFICATE_PASSWORD`, and `AYIN_IOS_PROFILE_BASE64` through the GitHub environment settings, together with the iOS Firebase and AdMob configuration.
+3. Configure the **APNs authentication key `.p8` in Firebase Console** separately. It authorizes push delivery; it is not the `.p12` signing identity and does not sign the IPA. Confirm the Firebase app, Apple team and bundle ID agree.
+4. The GitHub macOS job builds the signed archive and exports an App Store IPA. Upload using authorized Xcode/Transporter access, then distribute through **TestFlight**. An App Store IPA is not a direct sideload package. Ad hoc distribution would require a different profile with registered device UDIDs and an additional export path; the current workflow does not implement it.
+
+The workflow creates artifacts only; automatic Play/App Store uploads and their API credentials are not configured. Manual authorized upload is the initial path, so store-upload service-account/API keys are not prerequisites for building these artifacts. No membership purchase or account permission change is performed by the workflow. Rebuild with the real production configuration; merely signing a prior debug/test artifact does not convert its SDK configuration into a production release. Signed builds and real-device SDK acceptance remain unverified until these steps actually run.
+
+Official references: [Android app signing](https://developer.android.com/studio/publish/app-signing), [Apple App Store provisioning profiles](https://developer.apple.com/help/account/provisioning-profiles/create-an-app-store-provisioning-profile/), [Apple signing identity export](https://developer.apple.com/documentation/xcode/sharing-your-teams-signing-certificates), [App Store Connect uploads](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/), and [Firebase APNs setup](https://firebase.google.com/docs/cloud-messaging/ios/get-started#upload_your_apns_authentication_key).
+
 ## Build and promote
 
 1. Run PR validation. It creates a debug APK, minified unsigned AAB, simulator app, unsigned iOS archive, test results, dependency locks and metadata where jobs succeed. Debug builds use official Google test inventory. Missing Firebase project config must leave core content available.
 2. Review and commit the actual generated Gradle lock and SPM Package.resolved. Repeat exact-head validation after a lock changes. A workflow refusing a missing lock is a release safeguard, not a successful release.
 3. After review/merge, run **Mobile release artifacts (no store publication)** on `main`, choose Android or iOS, supply a new monotonically increasing build number and marketing version. Set signing only after the secure environment is configured. The workflow does not purchase accounts or submit to stores.
 4. Verify signing identity, minified startup, mapping/dSYMs, Android 16 KB ELF/ZIP checks, package/bundle IDs and SHA metadata. Successful static alignment is not a substitute for a real 16 KB device/emulator run.
-5. Install on dedicated Android/iPhone test devices. Use only test ads and specific test-device registrations. Capture evidence below. Never send a test campaign to all users.
-6. Upload signed AAB to Google Play internal testing and IPA/archive through App Store Connect/TestFlight using authorized account access. Developer membership, certificates and store account readiness must be checked in the actual consoles.
+5. Upload signed AAB to Google Play internal testing and IPA/archive through App Store Connect/TestFlight using authorized account access. Developer membership, certificates and store account readiness must be checked in the actual consoles.
+6. Install the distributed builds on dedicated Android/iPhone test devices. Use only test ads and specific test-device registrations. Capture evidence below. Never send a test campaign to all users.
 7. Public rollout requires a separate owner decision based on the release evidence, populated reviewer-visible content, privacy disclosures and reviewer access.
 
 ## Provider acceptance evidence to collect

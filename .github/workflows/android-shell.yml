@@ -36,7 +36,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Validate mobile release security gates
-        run: python3 scripts/mobile-validation-test.py
+        run: |
+          python3 scripts/mobile-validation-test.py
+          python3 scripts/mobile-android-screenshot-test.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -127,7 +129,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Validate mobile release security gates
-        run: python3 scripts/mobile-validation-test.py
+        run: |
+          python3 scripts/mobile-validation-test.py
+          python3 scripts/mobile-android-screenshot-test.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -256,14 +260,15 @@ jobs:
             grep -q "remote=PLAY_PAUSE" <<<"$logs"
           fi
       - name: Capture actual emulator startup diagnostic
+        timeout-minutes: 4
         run: |
           set -euo pipefail
           package="${{ matrix.package }}"
-          adb shell am force-stop "$package"
-          adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n "$package/net.ayin.shell.MainActivity"
+          timeout --kill-after=5s 20s adb shell am force-stop "$package"
+          timeout --kill-after=5s 30s adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n "$package/net.ayin.shell.MainActivity"
           sleep 10
           mkdir -p "$RUNNER_TEMP/ayin-android-diagnostic"
-          adb exec-out screencap -p > "$RUNNER_TEMP/ayin-android-diagnostic/startup.png"
+          python3 scripts/mobile-android-screenshot.py --output "$RUNNER_TEMP/ayin-android-diagnostic/startup.png"
           python3 scripts/mobile-build-metadata.py --platform android --signing debug \
             --output "$RUNNER_TEMP/ayin-android-diagnostic/build-metadata.json" \
             --artifact "$RUNNER_TEMP/ayin-android-diagnostic/startup.png"
