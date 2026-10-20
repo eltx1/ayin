@@ -173,8 +173,11 @@ jobs:
           printf '%s  %s\n' '95771e0ae431897b2a4bd2d97fa095f29a8b0624a7b216baf529f9306161c266' "$archive" | sha256sum --check --strict -
           unzip -q "$archive" -d "$install_dir"
           rm "$archive"
-          version="$(ANDROID_SDK_ROOT="$sdk_root" timeout --kill-after=2s 15s "$install_dir/emulator/emulator" -version 2>&1)"
+          # Match the headless launch; a GUI version probe requires unrelated X11 libraries.
+          version_status=0
+          version="$(ANDROID_SDK_ROOT="$sdk_root" timeout --kill-after=2s 15s "$install_dir/emulator/emulator" -no-window -version 2>&1)" || version_status=$?
           printf '%s\n' "$version"
+          if [ "$version_status" -ne 0 ]; then exit "$version_status"; fi
           grep -Eq '^Android emulator version 37\.1\.11(\.0)? \(build_id 15917651\)' <<< "$version"
           echo "ANDROID_SDK_ROOT=$sdk_root" >> "$GITHUB_ENV"
           echo "$install_dir/emulator" >> "$GITHUB_PATH"
