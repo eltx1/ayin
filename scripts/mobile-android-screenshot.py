@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Capture a real emulator PNG through a device file, with bounded ADB recovery."""
+"""Capture a real PNG through the emulator console, with bounded ADB recovery."""
 import argparse
 from pathlib import Path
 import struct
 import subprocess
 import sys
+import tempfile
 import time
-import uuid
 import zlib
 
 
 def validate_png(path):
     """Check screenshot bytes, including chunk CRCs and complete pixel scanlines.
 
-    Android screencap emits non-interlaced, 8-bit PNGs. Reject unsupported encodings
+    Emulator screenshots are non-interlaced, 8-bit PNGs. Reject unsupported encodings
     rather than accepting a signature-only, truncated or textual ADB response.
     """
     if not 57 <= path.stat().st_size <= 64 * 1024 * 1024:
@@ -70,15 +70,12 @@ def validate_png(path):
 
 def capture(output, serial='emulator-5554'):
     output.parent.mkdir(parents=True, exist_ok=True)
-    # Never allow an old or partially transferred image to count as this run.
+    # Never allow an old or incomplete image to count as this run.
     output.unlink(missing_ok=True)
-    nonce = uuid.uuid4().hex
-    partial = output.with_name(f'.{output.name}.{nonce}.part')
-    remote = f'/data/local/tmp/ayin-startup-{nonce}.png'
     deadline = time.monotonic() + 100
 
-    def adb(*args, timeout=20, cleanup=False):
-        remaining = timeout if cleanup else min(timeout, deadline - time.monotonic())
+    def adb(*args, timeout=20):
+        remaining = min(timeout, deadline - time.monotonic())
         if remaining <= 0:
             raise TimeoutError('Screenshot capture budget exhausted')
         return subprocess.run(['adb', '-s', serial, *args], check=True,
@@ -90,21 +87,26 @@ def capture(output, serial='emulator-5554'):
                 # Reconnect only this emulator; never restart the app or its tests.
                 adb('reconnect', timeout=5)
             adb('wait-for-device')
-            adb('shell', 'screencap', '-p', remote)
-            adb('pull', remote, str(partial))
-            width, height = validate_png(partial)
-            partial.replace(output)
+            # Official emulator console command writes to the HOST directory.
+            # Do not fall back to guest screencap: that path lost the emulator
+            # on this runner. Each attempt owns a new private, empty directory.
+            # https://developer.android.com/studio/run/emulator-take-screenshots
+            with tempfile.TemporaryDirectory(prefix='.ayin-screenshot-', dir=output.parent) as directory:
+                result = adb('emu', 'screenrecord', 'screenshot', directory)
+                if any(line.lstrip().startswith('KO') for line in (result.stdout + result.stderr).splitlines()):
+                    raise ValueError('Emulator console rejected screenshot (KO response)')
+                images = list(Path(directory).glob('*.png'))
+                if len(images) != 1 or images[0].is_symlink() or not images[0].is_file():
+                    raise ValueError('Emulator must create exactly one new PNG')
+                width, height = validate_png(images[0])
+                if adb('get-state', timeout=5).stdout.strip() != 'device':
+                    raise ValueError('Emulator disconnected after screenshot capture')
+                images[0].replace(output)
             print(f'Captured verified {width}x{height} emulator PNG on attempt {attempt}')
             return
         except (OSError, ValueError, zlib.error, subprocess.SubprocessError) as error:
             detail = (error.stderr or '').strip()[:240] if isinstance(error, subprocess.CalledProcessError) else str(error)
             print(f'Screenshot attempt {attempt}/3 failed: {detail}', file=sys.stderr)
-        finally:
-            partial.unlink(missing_ok=True)
-            try:
-                adb('shell', 'rm', '-f', remote, timeout=3, cleanup=True)
-            except (OSError, subprocess.SubprocessError):
-                print('Device screenshot cleanup unavailable (bounded to 3 seconds)', file=sys.stderr)
         if time.monotonic() >= deadline:
             break
     raise RuntimeError('No verified emulator screenshot captured; diagnostic failed')

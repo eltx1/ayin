@@ -29,9 +29,11 @@ class ScreenshotTests(unittest.TestCase):
         self.output = Path(self.directory.name) / 'startup.png'
         self.calls = []
 
-    def fake_adb(self, failures=None, transferred=None, cleanup_failure=False):
+    def fake_adb(self, failures=None, images=None, replies=None, states=None):
         failures = list(failures or [])
-        transferred = list(transferred or [png()])
+        images = list(images if images is not None else [png()] * 3)
+        replies = list(replies or ['OK'] * 3)
+        states = list(states or ['device'] * 3)
 
         def run(command, **kwargs):
             self.calls.append((command, kwargs))
@@ -39,26 +41,35 @@ class ScreenshotTests(unittest.TestCase):
             self.assertLessEqual(kwargs['timeout'], 20)
             self.assertTrue(kwargs['check'])
             self.assertEqual(command[:3], ['adb', '-s', 'emulator-5554'])
-            if command[3:5] == ['shell', 'screencap'] and failures:
-                raise failures.pop(0)
-            if command[3] == 'pull':
+            if command[3:6] == ['emu', 'screenrecord', 'screenshot']:
                 self.assertFalse(self.output.exists(), 'Unverified output must not be published')
-                Path(command[-1]).write_bytes(transferred.pop(0))
-            if command[3:5] == ['shell', 'rm'] and cleanup_failure:
-                raise subprocess.TimeoutExpired(command, kwargs['timeout'])
+                destination = Path(command[-1])
+                self.assertEqual(destination.stat().st_mode & 0o777, 0o700)
+                self.assertEqual(list(destination.iterdir()), [])
+                if failures:
+                    raise failures.pop(0)
+                image = images.pop(0)
+                if image is not None:
+                    (destination / 'Screenshot_20261020-120000.png').write_bytes(image)
+                return subprocess.CompletedProcess(command, 0, replies.pop(0), '')
+            if command[3] == 'get-state':
+                return subprocess.CompletedProcess(command, 0, states.pop(0), '')
             return subprocess.CompletedProcess(command, 0, '', '')
         return run
 
-    def test_success_uses_device_file_and_atomic_verified_output(self):
+    def assert_clean(self):
+        self.assertEqual(list(self.output.parent.glob('.ayin-screenshot-*')), [])
+
+    def test_success_uses_private_host_directory_and_postcapture_health_check(self):
         self.output.write_bytes(b'stale artifact')
         with patch.object(screenshot.subprocess, 'run', side_effect=self.fake_adb()):
             screenshot.capture(self.output)
         self.assertEqual(self.output.read_bytes(), png())
         commands = [command for command, _ in self.calls]
-        self.assertTrue(any(command[3:6] == ['shell', 'screencap', '-p'] for command in commands))
-        self.assertFalse(any('exec-out' in command or 'am' in command for command in commands))
-        self.assertEqual(list(self.output.parent.glob('*.part')), [])
-        self.assertEqual(commands[-1][3:6], ['shell', 'rm', '-f'])
+        self.assertTrue(any(command[3:6] == ['emu', 'screenrecord', 'screenshot'] for command in commands))
+        self.assertFalse(any(arg in command for command in commands for arg in ('exec-out', 'shell', 'pull', 'am')))
+        self.assertEqual(commands[-1][3:], ['get-state'])
+        self.assert_clean()
 
     def test_closed_transport_reconnects_once_then_captures(self):
         closed = subprocess.CalledProcessError(255, 'adb', stderr='error: closed')
@@ -66,12 +77,15 @@ class ScreenshotTests(unittest.TestCase):
             screenshot.capture(self.output)
         self.assertEqual(sum(command[3] == 'reconnect' for command, _ in self.calls), 1)
         self.assertEqual(screenshot.validate_png(self.output), (1, 1))
+        self.assert_clean()
 
-    def test_truncated_pull_is_rejected_then_recaptured(self):
-        with patch.object(screenshot.subprocess, 'run', side_effect=self.fake_adb(transferred=[png()[:-5], png()])):
+    def test_truncated_image_is_rejected_then_recaptured_in_new_directory(self):
+        with patch.object(screenshot.subprocess, 'run', side_effect=self.fake_adb(images=[png()[:-5], png()])):
             screenshot.capture(self.output)
-        self.assertEqual(sum(command[3] == 'pull' for command, _ in self.calls), 2)
+        directories = [command[-1] for command, _ in self.calls if command[3] == 'emu']
+        self.assertEqual(len(set(directories)), 2)
         self.assertEqual(self.output.read_bytes(), png())
+        self.assert_clean()
 
     def test_persistent_failure_is_finite_and_leaves_no_stale_output(self):
         self.output.write_bytes(png())
@@ -79,23 +93,40 @@ class ScreenshotTests(unittest.TestCase):
         with patch.object(screenshot.subprocess, 'run', side_effect=self.fake_adb(failures=[closed] * 3)), self.assertRaisesRegex(RuntimeError, 'No verified'):
             screenshot.capture(self.output)
         self.assertFalse(self.output.exists())
-        self.assertEqual(sum(command[3:5] == ['shell', 'screencap'] for command, _ in self.calls), 3)
-        self.assertEqual(sum(command[3:5] == ['shell', 'rm'] for command, _ in self.calls), 3)
+        self.assertEqual(sum(command[3] == 'emu' for command, _ in self.calls), 3)
+        self.assert_clean()
 
-    def test_timeouts_and_failed_cleanup_do_not_create_success(self):
+    def test_timeouts_are_bounded_and_remove_private_capture_directories(self):
         timeout = subprocess.TimeoutExpired('adb', 20)
-        with patch.object(screenshot.subprocess, 'run', side_effect=self.fake_adb(failures=[timeout] * 3, cleanup_failure=True)), self.assertRaises(RuntimeError):
+        with patch.object(screenshot.subprocess, 'run', side_effect=self.fake_adb(failures=[timeout] * 3)), self.assertRaises(RuntimeError):
             screenshot.capture(self.output)
         self.assertFalse(self.output.exists())
-        cleanup = [options['timeout'] for command, options in self.calls if command[3:5] == ['shell', 'rm']]
-        self.assertEqual(cleanup, [3, 3, 3])
+        self.assert_clean()
+
+    def test_zero_exit_ko_response_cannot_publish_even_a_valid_png(self):
+        with patch.object(screenshot.subprocess, 'run', side_effect=self.fake_adb(replies=['KO: capture failed'] * 3)), self.assertRaises(RuntimeError):
+            screenshot.capture(self.output)
+        self.assertFalse(self.output.exists())
+        self.assert_clean()
+
+    def test_valid_png_cannot_hide_disconnected_emulator(self):
+        with patch.object(screenshot.subprocess, 'run', side_effect=self.fake_adb(states=['offline'] * 3)), self.assertRaises(RuntimeError):
+            screenshot.capture(self.output)
+        self.assertFalse(self.output.exists())
+        self.assert_clean()
+
+    def test_success_reply_without_new_png_fails(self):
+        with patch.object(screenshot.subprocess, 'run', side_effect=self.fake_adb(images=[None] * 3)), self.assertRaises(RuntimeError):
+            screenshot.capture(self.output)
+        self.assertFalse(self.output.exists())
+        self.assert_clean()
 
     def test_expired_total_budget_stops_without_another_capture(self):
         with patch.object(screenshot.time, 'monotonic', side_effect=[0, 101, 101]), patch.object(screenshot.subprocess, 'run', side_effect=self.fake_adb()), self.assertRaises(RuntimeError):
             screenshot.capture(self.output)
         self.assertFalse(self.output.exists())
-        self.assertEqual(len(self.calls), 1)
-        self.assertEqual(self.calls[0][0][3:6], ['shell', 'rm', '-f'])
+        self.assertEqual(self.calls, [])
+        self.assert_clean()
 
     def test_rejects_invalid_or_incomplete_pixel_payloads(self):
         corrupt = bytearray(png()); corrupt[29] ^= 1
