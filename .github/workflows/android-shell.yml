@@ -171,9 +171,10 @@ jobs:
           adb kill-server || true
           adb start-server
           sudo chmod 666 /dev/kvm || true
-          # Use the supported software backend selector; swiftshader_indirect was
-          # deprecated in 36.4.9. Keep guest Vulkan and API coverage unchanged.
-          nohup env ADB_VENDOR_KEYS="$ADB_VENDOR_KEYS" emulator -avd "$avd_name"             -no-window             -no-audio             -no-boot-anim             -no-snapshot             -gpu software             -no-metrics >"$RUNNER_TEMP/ayin-emulator.log" 2>&1 &
+          # CI covers API 36 with software GLES, not Vulkan or physical-device graphics.
+          # Disable guest Vulkan after capture context failures; official workaround:
+          # https://developer.android.com/studio/run/emulator-troubleshooting#cannot-open-webpage
+          nohup env ADB_VENDOR_KEYS="$ADB_VENDOR_KEYS" emulator -avd "$avd_name"             -no-window             -no-audio             -no-boot-anim             -no-snapshot             -gpu software             -feature -Vulkan             -no-metrics >"$RUNNER_TEMP/ayin-emulator.log" 2>&1 &
           emulator_pid=$!
           if ! timeout 120 adb wait-for-device; then
             cat "$RUNNER_TEMP/ayin-emulator.log"
