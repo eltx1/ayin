@@ -171,7 +171,9 @@ jobs:
           adb kill-server || true
           adb start-server
           sudo chmod 666 /dev/kvm || true
-          nohup env ADB_VENDOR_KEYS="$ADB_VENDOR_KEYS" emulator -avd "$avd_name"             -no-window             -no-audio             -no-boot-anim             -no-snapshot             -gpu swiftshader_indirect             -no-metrics >"$RUNNER_TEMP/ayin-emulator.log" 2>&1 &
+          # Use the supported software backend selector; swiftshader_indirect was
+          # deprecated in 36.4.9. Keep guest Vulkan and API coverage unchanged.
+          nohup env ADB_VENDOR_KEYS="$ADB_VENDOR_KEYS" emulator -avd "$avd_name"             -no-window             -no-audio             -no-boot-anim             -no-snapshot             -gpu software             -no-metrics >"$RUNNER_TEMP/ayin-emulator.log" 2>&1 &
           emulator_pid=$!
           if ! timeout 120 adb wait-for-device; then
             cat "$RUNNER_TEMP/ayin-emulator.log"
@@ -280,10 +282,40 @@ jobs:
           path: ${{ runner.temp }}/ayin-android-diagnostic/
           if-no-files-found: error
           retention-days: 14
+      - name: Preserve host diagnostics on emulator failure
+        if: failure()
+        timeout-minutes: 1
+        run: |
+          python3 - <<'PY'
+          import datetime, json, os, pathlib, subprocess
+          def read(args):
+              try:
+                  result = subprocess.run(args, capture_output=True, text=True, timeout=5)
+                  return {"exitCode": result.returncode, "stdout": result.stdout, "stderr": result.stderr}
+              except (OSError, subprocess.TimeoutExpired) as error:
+                  return {"unavailable": str(error)}
+          processes = read(["ps", "-eo", "pid,ppid,stat,rss,comm"])
+          if "stdout" in processes:
+              processes["stdout"] = "\n".join(line for index, line in enumerate(processes["stdout"].splitlines())
+                  if index == 0 or any(name in line.lower() for name in ("qemu", "emulator", "adb")))
+          kernel = read(["dmesg", "--level=err,warn"])
+          if "stdout" in kernel:
+              kernel["stdout"] = "\n".join(line for line in kernel["stdout"].splitlines()
+                  if any(term in line.lower() for term in ("oom", "out of memory", "killed process", "qemu", "emulator")))
+          output = pathlib.Path(os.environ["RUNNER_TEMP"]) / "ayin-emulator-host.json"
+          output.write_text(json.dumps({
+              "capturedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              "processes": processes, "memory": read(["free", "-m"]),
+              "disk": read(["df", "-h", os.environ["RUNNER_TEMP"]]), "kernel": kernel,
+              "note": "Host diagnostics only. Missing kernel access or matching messages does not exclude OOM or a crash."
+          }, indent=2) + "\n")
+          PY
       - name: Upload emulator log on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: task77-emulator-${{ matrix.flavor }}-${{ matrix.api }}
-          path: ${{ runner.temp }}/ayin-emulator.log
+          path: |
+            ${{ runner.temp }}/ayin-emulator.log
+            ${{ runner.temp }}/ayin-emulator-host.json
           retention-days: 7
