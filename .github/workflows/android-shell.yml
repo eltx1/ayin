@@ -154,6 +154,30 @@ jobs:
           set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "emulator" "platforms;android-${{ matrix.api }}" "system-images;android-${{ matrix.api }};${{ matrix.tag }};${{ matrix.arch }}"
+      - name: Install verified stable emulator for capture comparison
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          # Official 37.1.11 Stable (2026-07-30), build 15917651 and published SHA256:
+          # https://developer.android.com/studio/emulator_archive
+          # Isolate this engine comparison; keep the runner SDK metadata and API 36 image.
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          test -d "$sdk_root/system-images/android-${{ matrix.api }}/${{ matrix.tag }}/${{ matrix.arch }}"
+          install_dir="$(mktemp -d "$RUNNER_TEMP/ayin-emulator-37.1.11.XXXXXX")"
+          archive="$install_dir/emulator.zip"
+          timeout --kill-after=5s 200s curl --fail --show-error --location \
+            --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 180 \
+            --retry 1 --retry-max-time 180 \
+            'https://redirector.gvt1.com/edgedl/android/repository/emulator-linux_x64-15917651.zip' \
+            --output "$archive"
+          printf '%s  %s\n' '95771e0ae431897b2a4bd2d97fa095f29a8b0624a7b216baf529f9306161c266' "$archive" | sha256sum --check --strict -
+          unzip -q "$archive" -d "$install_dir"
+          rm "$archive"
+          version="$(ANDROID_SDK_ROOT="$sdk_root" timeout --kill-after=2s 15s "$install_dir/emulator/emulator" -version 2>&1)"
+          printf '%s\n' "$version"
+          grep -Eq '^Android emulator version 37\.1\.11(\.0)? \(build_id 15917651\)' <<< "$version"
+          echo "ANDROID_SDK_ROOT=$sdk_root" >> "$GITHUB_ENV"
+          echo "$install_dir/emulator" >> "$GITHUB_PATH"
       - name: Start emulator
         run: |
           set -euo pipefail
