@@ -15,7 +15,15 @@ export const mobileVersionSchema = z.string().regex(/^\d{1,4}\.\d{1,4}\.\d{1,4}$
 const platformVersions = z
   .object({ android: mobileVersionSchema, ios: mobileVersionSchema })
   .strict();
-const adUnit = z.string().regex(/^(?:|ca-app-pub-\d{16}\/\d{10})$/);
+const adUnit = z
+  .string()
+  .max(256)
+  .refine(
+    (value) =>
+      !/\s/.test(value) &&
+      /^(?:|ca-app-pub-\d{16}\/\d{10}|\/[0-9]{1,20}(?:\/[A-Za-z0-9_.-]+)+)$/.test(value),
+    "Expected an AdMob unit ID or Google Ad Manager /network/unit path",
+  );
 const unitIds = z
   .object({ enabled: z.boolean(), bannerUnitId: adUnit, interstitialUnitId: adUnit })
   .strict();

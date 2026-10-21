@@ -21,6 +21,31 @@ describe("native mobile runtime boundary", () => {
     expect(defaultMobileRuntimeConfig.analytics.enabled).toBe(false);
     expect(defaultMobileRuntimeConfig.notifications.enabled).toBe(false);
   });
+  it("accepts mixed GAM/AdMob inventory and rejects malformed or oversized paths", () => {
+    for (const unit of [
+      "/21775744923/example/adaptive-banner",
+      "ca-app-pub-3940256099942544/6300978111",
+      "/1/" + "a".repeat(253),
+    ]) {
+      const config = structuredClone(defaultMobileRuntimeConfig);
+      config.ads.platforms.android.bannerUnitId = unit;
+      expect(mobileRuntimeConfigSchema.safeParse(config).success).toBe(true);
+    }
+    for (const unit of [
+      "/1/" + "a".repeat(254),
+      "/123456789012345678901/a",
+      "/1/a\n",
+      "ca-app-pub-3940256099942544/6300978111\n",
+      "/1//a",
+      "/1/a?x=1",
+      "https://example.com/ad",
+      "/network/unit",
+    ]) {
+      const config = structuredClone(defaultMobileRuntimeConfig);
+      config.ads.platforms.ios.interstitialUnitId = unit;
+      expect(mobileRuntimeConfigSchema.safeParse(config).success).toBe(false);
+    }
+  });
   it("rejects unknown/child audiences before any ads can be enabled", () => {
     for (const audience of ["unknown", "children"] as const)
       expect(

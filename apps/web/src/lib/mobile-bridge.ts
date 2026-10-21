@@ -1,6 +1,12 @@
 /** Versioned, deliberately finite native API. Native hosts independently enforce origin and schema. */
 export type MobileCapability =
-  "privacy" | "analytics" | "ads.banner" | "ads.interstitial" | "notifications" | "session.reset";
+  | "privacy"
+  | "analytics"
+  | "ads.gam"
+  | "ads.banner"
+  | "ads.interstitial"
+  | "notifications"
+  | "session.reset";
 export type MobileMethod =
   | "runtime.configure"
   | "privacy.request"

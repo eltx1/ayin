@@ -22,7 +22,6 @@ internal data class MobileConfig(
     val rolloutPercent: Int = 100,
 ) {
     companion object {
-        private val unit = Regex("ca-app-pub-[0-9]{16}/[0-9]{10}")
         private val types = setOf("system", "channel", "video", "comment", "subscription", "moderation", "monetization")
         private val version = Regex("[0-9]{1,4}\\.[0-9]{1,4}\\.[0-9]{1,4}")
         private fun fields(obj: JSONObject, vararg expected: String) = require(obj.keys().asSequence().toSet() == expected.toSet())
@@ -65,7 +64,7 @@ internal data class MobileConfig(
                 bool(inventory, "enabled")
                 for (format in listOf("bannerUnitId", "interstitialUnitId")) {
                     val id = inventory.opt(format) as? String ?: error("Invalid unit")
-                    require(id.isEmpty() || unit.matches(id))
+                    require(MobileAdInventory.isValid(id))
                 }
                 if (bool(ads, "enabled") && bool(inventory, "enabled") && !bool(ads, "testMode")) {
                     require(!bool(banner, "enabled") || inventory.getString("bannerUnitId").isNotEmpty())

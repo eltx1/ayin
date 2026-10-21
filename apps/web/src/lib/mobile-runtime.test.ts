@@ -2,7 +2,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 const native = vi.hoisted(() => ({
   request: vi.fn(),
-  supports: vi.fn(() => true),
+  supports: vi.fn<(capability: string) => boolean>(() => true),
   host: vi.fn(() => true),
 }));
 vi.mock("./mobile-bridge", async (original) => ({
@@ -67,6 +67,64 @@ const boot = async () => {
   return runtime;
 };
 describe("mobile identity, consent and notification orchestration (bridge mocks, not device evidence)", () => {
+  it("projects GAM from the other platform before configuring an older shell", async () => {
+    optIn(a);
+    const ads = config.ads as {
+      enabled: boolean;
+      platforms: { android: { bannerUnitId: string } };
+    };
+    ads.enabled = true;
+    ads.platforms.android.bannerUnitId = "/1/banner";
+    native.supports.mockImplementation((capability) => capability !== "ads.gam");
+    const runtime = await boot();
+    expect(runtime.getMobileState().config?.ads.enabled).toBe(false);
+    expect(runtime.getMobileState().analyticsConsent).toBe(true);
+    expect(
+      native.request.mock.calls.find(([method]) => method === "runtime.configure")?.[1].config.ads
+        .platforms.android.bannerUnitId,
+    ).toBe("");
+    expect(native.request.mock.calls.some(([method]) => method === "privacy.request")).toBe(false);
+    expect(runtime.nativeBannerEnabled()).toBe(false);
+  });
+  it("offers interstitials only for distinct browse transitions with all gates satisfied", async () => {
+    optIn(a);
+    const ads = config.ads as {
+      enabled: boolean;
+      interstitial: { enabled: boolean };
+      platforms: { ios: { enabled: boolean } };
+    };
+    ads.enabled = true;
+    ads.interstitial.enabled = true;
+    ads.platforms.ios.enabled = true;
+    nativeInfo.configured = { firebase: true, ads: true };
+    const runtime = await boot();
+    runtime.updateMobilePrivacy(true);
+    native.request.mockClear();
+    for (const [previous, next] of [
+      [null, "/"],
+      ["/", "/"],
+      ["/watch/a", "/"],
+      ["/", "/clips"],
+      ["/upload", "/search"],
+    ])
+      runtime.requestBrowseInterstitial(previous ?? null, next!);
+    expect(native.request).not.toHaveBeenCalled();
+    runtime.requestBrowseInterstitial("/", "/search");
+    expect(native.request).toHaveBeenCalledExactlyOnceWith("ads.interstitial", {
+      placement: "browse_transition",
+      naturalTransition: true,
+    });
+    native.request.mockClear();
+    runtime.updateMobilePrivacy(false);
+    runtime.requestBrowseInterstitial("/search", "/");
+    expect(native.request).not.toHaveBeenCalled();
+    runtime.updateMobilePrivacy(true);
+    identity = { account: { id: a }, profile: { isKids: true } };
+    await runtime.refreshMobileAccount();
+    native.request.mockClear();
+    runtime.requestBrowseInterstitial("/search", "/");
+    expect(native.request).not.toHaveBeenCalled();
+  });
   it("keeps Firebase collection off until identity, adult choice and profile are verified", async () => {
     optIn(a);
     const runtime = await boot();

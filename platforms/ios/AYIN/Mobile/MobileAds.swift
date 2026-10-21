@@ -122,8 +122,7 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
         initialized = true
     }
 
-    private func request() -> Request {
-        let value = Request()
+    private func request<T: Request>(_ value: T) -> T {
         let extras = Extras()
         extras.additionalParameters = ["npa": "1"]
         value.register(extras)
@@ -136,9 +135,8 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
         #else
         let test = config.ads.testMode
         #endif
-        if test { return banner ? "ca-app-pub-3940256099942544/2435281174" : "ca-app-pub-3940256099942544/4411468910" }
         let value = banner ? config.ads.platforms.ios.bannerUnitId : config.ads.platforms.ios.interstitialUnitId
-        return value.isEmpty ? nil : value
+        return MobileAdInventory.unit(configured: value, banner: banner, testMode: test)
     }
 
     func showBanner() async throws -> [String: Any] {
@@ -155,7 +153,8 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
         try await initialize()
         guard generation == bannerGeneration, bannerDesired else { throw MobileBridgeError.disabled }
         _ = try permitted()
-        let view = BannerView(adSize: largeAnchoredAdaptiveBanner(width: max(1, owner.view.safeAreaLayoutGuide.layoutFrame.width)))
+        let view: BannerView = unit.hasPrefix("/") ? AdManagerBannerView() : BannerView()
+        view.adSize = largeAnchoredAdaptiveBanner(width: max(1, owner.view.safeAreaLayoutGuide.layoutFrame.width))
         banner = view
         view.adUnitID = unit
         view.rootViewController = owner
@@ -171,7 +170,11 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
             }
         }
         emit(["type": "ad.request", "format": "banner"])
-        view.load(request())
+        if unit.hasPrefix("/") {
+            view.load(request(AdManagerRequest()))
+        } else {
+            view.load(request(Request()))
+        }
         bannerTimeout?.cancel()
         bannerTimeout = Task { [weak self, weak view] in
             try? await Task.sleep(nanoseconds: UInt64(value.ads.requestTimeoutMs) * 1_000_000)
@@ -239,7 +242,7 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
     private func loadInterstitial(unit: String, config value: MobileRuntimeConfig, generation: UUID, attempt: Int) {
         guard loadGeneration == generation, (try? permitted()) != nil else { return }
         emit(["type": "ad.request", "format": "interstitial"])
-        InterstitialAd.load(with: unit, request: request()) { [weak self] ad, error in
+        let completion: (InterstitialAd?, Error?) -> Void = { [weak self] ad, error in
             Task { @MainActor in
                 guard let self, self.loadGeneration == generation else { return }
                 self.loadTimeout?.cancel()
@@ -257,6 +260,11 @@ final class AyinMobileAds: NSObject, BannerViewDelegate, FullScreenContentDelega
                 self.emit(["type": "ad.loaded", "format": "interstitial"])
                 // Never auto-present a late load over content. A subsequent natural transition must request it.
             }
+        }
+        if unit.hasPrefix("/") {
+            AdManagerInterstitialAd.load(with: unit, request: request(AdManagerRequest())) { ad, error in completion(ad, error) }
+        } else {
+            InterstitialAd.load(with: unit, request: request(Request())) { ad, error in completion(ad, error) }
         }
         loadTimeout = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(value.ads.requestTimeoutMs) * 1_000_000)

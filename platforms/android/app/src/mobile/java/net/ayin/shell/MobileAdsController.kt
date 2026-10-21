@@ -10,6 +10,11 @@ import com.google.android.gms.ads.AdListener
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.AdValue
+import com.google.android.gms.ads.BaseAdView
+import com.google.android.gms.ads.admanager.AdManagerAdRequest
+import com.google.android.gms.ads.admanager.AdManagerAdView
+import com.google.android.gms.ads.admanager.AdManagerInterstitialAd
+import com.google.android.gms.ads.admanager.AdManagerInterstitialAdLoadCallback
 import com.google.android.gms.ads.AdView
 import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
@@ -45,7 +50,7 @@ internal class MobileAdsController(
     private var playing = false
     private var sensitive = false
     val isPresenting: Boolean get() = interstitialShowing || consentBusy
-    private var banner: AdView? = null
+    private var banner: BaseAdView? = null
     private var bannerLoading = false
     private var bannerPlacement = ""
     private var bannerGeneration = 0
@@ -188,11 +193,12 @@ internal class MobileAdsController(
             }
         }
     }
-    private fun adUnit(format: String): String {
-        if (BuildConfig.DEBUG || config.testMode) return if (format == "banner") "ca-app-pub-3940256099942544/6300978111" else "ca-app-pub-3940256099942544/1033173712"
-        return if (format == "banner") config.bannerUnitId else config.interstitialUnitId
-    }
+    private fun adUnit(format: String) = MobileAdInventory.resolve(
+        if (format == "banner") config.bannerUnitId else config.interstitialUnitId,
+        format, BuildConfig.DEBUG, config.testMode,
+    )
     private fun request() = AdRequest.Builder().setHttpTimeoutMillis(config.requestTimeoutMs).build()
+    private fun gamRequest() = AdManagerAdRequest.Builder().setHttpTimeoutMillis(config.requestTimeoutMs).build()
     private fun loadBanner(placement: String, attempt: Int) {
         if (!canRequest() || interstitialShowing) return
         val id = adUnit("banner")
@@ -201,7 +207,7 @@ internal class MobileAdsController(
         val generation = ++bannerGeneration
         bannerLoading = true
         bannerPlacement = placement
-        val view = AdView(activity)
+        val view: BaseAdView = if (MobileAdInventory.isAdManager(id)) AdManagerAdView(activity) else AdView(activity)
         banner = view
         view.adUnitId = id
         val width = ((host.width.takeIf { it > 0 } ?: activity.resources.displayMetrics.widthPixels) / activity.resources.displayMetrics.density).toInt().coerceAtLeast(1)
@@ -230,7 +236,7 @@ internal class MobileAdsController(
         host.addView(view, FrameLayout.LayoutParams(-1, -2))
         host.visibility = View.VISIBLE
         event("ad.request", "banner", placement)
-        view.loadAd(request())
+        if (view is AdManagerAdView) view.loadAd(gamRequest()) else view.loadAd(request())
         handler.postDelayed({ if (generation == bannerGeneration && bannerLoading) { hideBanner(); event("ad.failed", "banner", placement, -1) } }, config.requestTimeoutMs.toLong() + 1000)
     }
     private fun loadInterstitial(placement: String, attempt: Int) {
@@ -241,25 +247,34 @@ internal class MobileAdsController(
         interstitialLoading = true
         lastInterstitialRequestAt = SystemClock.elapsedRealtime()
         event("ad.request", "interstitial", placement)
-        InterstitialAd.load(activity, id, request(), object : InterstitialAdLoadCallback() {
-            override fun onAdLoaded(ad: InterstitialAd) {
-                if (generation != interstitialGeneration || !canRequest()) return
-                interstitialLoading = false
-                interstitial = ad
-                interstitialLoadedAt = SystemClock.elapsedRealtime()
-                val paidKey = UUID.randomUUID().toString()
-                ad.setOnPaidEventListener { value -> revenue("interstitial", placement, paidKey, value) }
-                event("ad.loaded", "interstitial", placement)
-            }
-            override fun onAdFailedToLoad(error: LoadAdError) {
-                if (generation != interstitialGeneration) return
-                interstitialLoading = false
-                event("ad.failed", "interstitial", placement, error.code)
-                if (error.code != 3 && attempt < config.retryCount) handler.postDelayed({
-                    if (generation == interstitialGeneration && canRequest()) loadInterstitial(placement, attempt + 1)
-                }, config.retryBackoffMs * (1L shl attempt))
-            }
-        })
+        fun loaded(ad: InterstitialAd) {
+            if (generation != interstitialGeneration || !canRequest()) return
+            interstitialLoading = false
+            interstitial = ad
+            interstitialLoadedAt = SystemClock.elapsedRealtime()
+            val paidKey = UUID.randomUUID().toString()
+            ad.setOnPaidEventListener { value -> revenue("interstitial", placement, paidKey, value) }
+            event("ad.loaded", "interstitial", placement)
+        }
+        fun failed(error: LoadAdError) {
+            if (generation != interstitialGeneration) return
+            interstitialLoading = false
+            event("ad.failed", "interstitial", placement, error.code)
+            if (error.code != 3 && attempt < config.retryCount) handler.postDelayed({
+                if (generation == interstitialGeneration && canRequest()) loadInterstitial(placement, attempt + 1)
+            }, config.retryBackoffMs * (1L shl attempt))
+        }
+        if (MobileAdInventory.isAdManager(id)) {
+            AdManagerInterstitialAd.load(activity, id, gamRequest(), object : AdManagerInterstitialAdLoadCallback() {
+                override fun onAdLoaded(ad: AdManagerInterstitialAd) = loaded(ad)
+                override fun onAdFailedToLoad(error: LoadAdError) = failed(error)
+            })
+        } else {
+            InterstitialAd.load(activity, id, request(), object : InterstitialAdLoadCallback() {
+                override fun onAdLoaded(ad: InterstitialAd) = loaded(ad)
+                override fun onAdFailedToLoad(error: LoadAdError) = failed(error)
+            })
+        }
         handler.postDelayed({ if (generation == interstitialGeneration && interstitialLoading) { clearInterstitial(); event("ad.failed", "interstitial", placement, -1) } }, config.requestTimeoutMs.toLong() + 1000)
     }
     private fun event(type: String, format: String, placement: String, code: Int? = null) {

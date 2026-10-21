@@ -63,13 +63,44 @@ final class MobileContractTests: XCTestCase {
         XCTAssertThrowsError(try MobileRuntimeConfig.parse(raw))
     }
 
-    func testRejectsUnsafeAdLimitsAndWebInventory() throws {
-        for mutation: [String: Any] in [["requestTimeoutMs": 0], ["retryCount": 50], ["retryBackoffMs": -1], ["audience": "guess"], ["platforms": ["ios": ["enabled": false, "bannerUnitId": "/1234/web", "interstitialUnitId": ""], "android": ["enabled": false, "bannerUnitId": "", "interstitialUnitId": ""]]]] {
+    func testRejectsUnsafeAdLimits() throws {
+        for mutation: [String: Any] in [["requestTimeoutMs": 0], ["retryCount": 50], ["retryBackoffMs": -1], ["audience": "guess"]] {
             var raw = try fixture()
             var ads = try XCTUnwrap(raw["ads"] as? [String: Any])
             mutation.forEach { ads[$0.key] = $0.value }; raw["ads"] = ads
             XCTAssertThrowsError(try MobileRuntimeConfig.parse(raw))
         }
+    }
+
+    func testAdManagerPathsAndAdMobUnitsAreAcceptedByConfig() throws {
+        for unit in ["/21775744923/example/adaptive-banner", "/123/ayin/ios.interstitial-1", "ca-app-pub-3940256099942544/2435281174", ""] {
+            var raw = try fixture()
+            var ads = try XCTUnwrap(raw["ads"] as? [String: Any])
+            let placement: [String: Any] = ["enabled": false, "bannerUnitId": unit, "interstitialUnitId": unit]
+            ads["platforms"] = ["ios": placement, "android": placement]; raw["ads"] = ads
+            XCTAssertNoThrow(try MobileRuntimeConfig.parse(raw), unit)
+        }
+        XCTAssertTrue(MobileContract.capabilities.contains("ads.gam"))
+    }
+
+    func testAdUnitsRejectMalformedPathsAndUnboundedInput() {
+        for unit in ["/123", "/123/", "/123//banner", "/abc/banner", "/123/banner?x=1", "/123/banner#x", "https://ads.example/unit", "/123/banner\n", "/123/my banner", "/123/%2Fbanner", "/123/<banner>", "/123456789012345678901/banner", "/123/" + String(repeating: "x", count: 252), "ca-app-pub-3940256099942544/2435281174\n"] {
+            XCTAssertFalse(MobileAdInventory.validUnit(unit), unit)
+        }
+        XCTAssertTrue(MobileAdInventory.validUnit("/123/" + String(repeating: "x", count: 251)))
+    }
+
+    func testTestInventoryFollowsEachPlacementsProvider() {
+        let gam = "/123/ayin/banner"
+        let admob = "ca-app-pub-1234567890123456/1234567890"
+        XCTAssertEqual(MobileAdInventory.unit(configured: gam, banner: true, testMode: true), "/21775744923/example/adaptive-banner")
+        XCTAssertEqual(MobileAdInventory.unit(configured: gam, banner: false, testMode: true), "/21775744923/example/interstitial")
+        XCTAssertEqual(MobileAdInventory.unit(configured: admob, banner: true, testMode: true), "ca-app-pub-3940256099942544/2435281174")
+        XCTAssertEqual(MobileAdInventory.unit(configured: admob, banner: false, testMode: true), "ca-app-pub-3940256099942544/4411468910")
+        XCTAssertEqual(MobileAdInventory.unit(configured: gam, banner: true, testMode: false), gam)
+        XCTAssertEqual(MobileAdInventory.unit(configured: admob, banner: false, testMode: false), admob)
+        XCTAssertNil(MobileAdInventory.unit(configured: "", banner: true, testMode: false))
+        XCTAssertNil(MobileAdInventory.unit(configured: "/bad", banner: true, testMode: true))
     }
 
     func testRejectsRichNotificationsWithoutNativeExtension() throws {

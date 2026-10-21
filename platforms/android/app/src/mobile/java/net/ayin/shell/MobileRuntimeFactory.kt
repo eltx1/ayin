@@ -57,7 +57,7 @@ internal class GoogleMobileRuntime(
 
     override val capabilities: List<String> = buildList {
         add("session.reset")
-        if (adsReady) { add("privacy"); add("ads.banner"); add("ads.interstitial") }
+        if (adsReady) { add("privacy"); add("ads.banner"); add("ads.interstitial"); add("ads.gam") }
         if (firebaseReady) { add("analytics"); add("notifications") }
     }
 

@@ -2,6 +2,7 @@
 import { apiBaseUrl } from "./api";
 import {
   isMobileHost,
+  mobileScreenName,
   requestMobile,
   supportsMobile,
   validMobileAnalytics,
@@ -11,6 +12,7 @@ import {
 import {
   emptyNotificationPreferences,
   parseMobileConfig,
+  mobileConfigForCapabilities,
   type MobileConfig,
   type NotificationPreferences,
 } from "./mobile-config";
@@ -100,7 +102,10 @@ export async function initializeMobile(signal: AbortSignal): Promise<void> {
   try {
     const response = await fetch(apiBaseUrl + "/mobile/config", { cache: "no-store", signal });
     if (!response.ok) throw new Error("MOBILE_CONFIG_UNAVAILABLE");
-    const config = parseMobileConfig(await response.json());
+    const config = mobileConfigForCapabilities(
+      parseMobileConfig(await response.json()),
+      supportsMobile("ads.gam") ? ["ads.gam"] : [],
+    );
     signal.throwIfAborted();
     const info = await requestMobile<MobileInfo>("runtime.configure", { config });
     signal.throwIfAborted();
@@ -357,6 +362,32 @@ export function nativeBannerEnabled() {
     state.config?.ads.banner.enabled === true &&
     !mobileRestricted()
   );
+}
+/** Called synchronously at navigation, never after asynchronous loading/consent completes. */
+export function requestBrowseInterstitial(previous: string | null, next: string): void {
+  const browse = (path: string) => ["home", "search", "channel"].includes(mobileScreenName(path));
+  if (
+    !previous ||
+    previous === next ||
+    !browse(previous) ||
+    !browse(next) ||
+    !state.ready ||
+    !isMobileHost() ||
+    !state.canRequestAds ||
+    mobileRestricted() ||
+    !supportsMobile("ads.interstitial") ||
+    !state.info?.configured.ads ||
+    !state.config?.ads.enabled ||
+    !state.config.ads.interstitial.enabled ||
+    !state.config.ads.platforms[state.info.platform].enabled ||
+    (typeof document !== "undefined" && document.visibilityState !== "visible")
+  )
+    return;
+  // The native service loads on the first transition and shows only on a later transition.
+  void requestMobile("ads.interstitial", {
+    placement: "browse_transition",
+    naturalTransition: true,
+  }).catch(() => undefined);
 }
 export async function registerMobileToken(
   token: string,

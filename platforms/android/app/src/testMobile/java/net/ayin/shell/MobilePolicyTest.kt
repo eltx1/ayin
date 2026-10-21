@@ -37,6 +37,44 @@ class MobilePolicyTest {
         ads.getJSONObject("platforms").getJSONObject("android").put("enabled", true)
         assertThrows(IllegalArgumentException::class.java) { MobileConfig.parse(data) }
     }
+    @Test fun acceptsMixedNativeInventoryWithoutChangingSchema() {
+        val data = fixture()
+        val platforms = data.getJSONObject("ads").getJSONObject("platforms")
+        platforms.getJSONObject("android").put("bannerUnitId", "/123456/ayin/browse-bottom")
+            .put("interstitialUnitId", "ca-app-pub-1234567890123456/1234567890")
+        platforms.getJSONObject("ios").put("bannerUnitId", "/123456/ayin_ios.v1/banner")
+        val result = MobileConfig.parse(data)
+        assertEquals("/123456/ayin/browse-bottom", result.bannerUnitId)
+        assertFalse(MobileAdInventory.isAdManager(result.interstitialUnitId))
+        assertTrue(MobileAdInventory.isAdManager(result.bannerUnitId))
+    }
+    @Test fun rejectsMalformedOrUnboundedGamUnitsOnBothPlatforms() {
+        for (platform in listOf("android", "ios")) {
+            for (unit in listOf("/network/banner", "/123", "/123/", "/123//banner", "/123/banner?x=1",
+                "/123/banner#x", "https://example.com/tag", "/123/banner name", "/123/%2F", "/123/banner\n",
+                "/123456789012345678901/banner", "/123/" + "a".repeat(252))) {
+                val data = fixture()
+                data.getJSONObject("ads").getJSONObject("platforms").getJSONObject(platform).put("bannerUnitId", unit)
+                assertThrows(IllegalArgumentException::class.java) { MobileConfig.parse(data) }
+            }
+        }
+        assertTrue(MobileAdInventory.isValid("/123/" + "a".repeat(251)))
+    }
+    @Test fun debugAndTestModeNeverRequestConfiguredProductionInventory() {
+        val gam = "/123456/ayin/banner"
+        val admob = "ca-app-pub-1234567890123456/1234567890"
+        for ((debug, testMode) in listOf(true to false, false to true, true to true)) {
+            assertEquals("/21775744923/example/adaptive-banner", MobileAdInventory.resolve(gam, "banner", debug, testMode))
+            assertEquals("/21775744923/example/interstitial", MobileAdInventory.resolve(gam, "interstitial", debug, testMode))
+            assertEquals("ca-app-pub-3940256099942544/6300978111", MobileAdInventory.resolve(admob, "banner", debug, testMode))
+            assertEquals("ca-app-pub-3940256099942544/1033173712", MobileAdInventory.resolve(admob, "interstitial", debug, testMode))
+        }
+        assertEquals(gam, MobileAdInventory.resolve(gam, "banner", false, false))
+        assertEquals(admob, MobileAdInventory.resolve(admob, "interstitial", false, false))
+        assertEquals("", MobileAdInventory.resolve("", "banner", false, false))
+        assertThrows(IllegalArgumentException::class.java) { MobileAdInventory.resolve("/invalid", "banner", true, true) }
+        assertThrows(IllegalArgumentException::class.java) { MobileAdInventory.resolve(gam, "rewarded", true, true) }
+    }
     @Test fun versionComparisonIsNumericAndRolloutStable() {
         for (invalid in listOf("1.1.0-beta", "10000.1.0", "1.10000.0", "1.0.10000")) {
             val data = fixture()

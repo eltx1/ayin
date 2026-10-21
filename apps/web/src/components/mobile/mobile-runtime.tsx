@@ -14,6 +14,7 @@ import {
   getMobileState,
   initializeMobile,
   nativeBannerEnabled,
+  requestBrowseInterstitial,
   refreshMobileAccount,
   registerMobileTokenEvent,
   currentMobileRecipient,
@@ -26,6 +27,7 @@ export function MobileRuntime() {
     router = useRouter();
   const state = useSyncExternalStore(subscribeMobile, getMobileState, getMobileServerState);
   const lastScreen = useRef<string | null>(null);
+  const previousBrowseRoute = useRef<string | null>(null);
   const initialized = useRef(false);
   const bootstrap = useRef<Promise<void> | null>(null);
   useEffect(() => {
@@ -124,5 +126,12 @@ export function MobileRuntime() {
       void requestMobile("ads.hideBanner").catch(() => undefined);
     };
   }, [pathname, state.ready, state.canRequestAds, state.config]);
+  useEffect(() => {
+    if (!pathname) return;
+    const previous = previousBrowseRoute.current;
+    previousBrowseRoute.current = pathname;
+    requestBrowseInterstitial(previous, pathname);
+    // Only a new navigation can offer an interstitial: readiness/consent changes cannot.
+  }, [pathname]);
   return null;
 }

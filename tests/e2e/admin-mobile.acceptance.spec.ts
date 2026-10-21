@@ -105,9 +105,25 @@ test("mobile administration keeps delivery off, verifies safe persisted settings
     android: { enabled: false },
     ios: { enabled: false },
   });
+  await page.getByRole("link", { name: "App ads", exact: true }).click();
+  await page.getByRole("button", { name: "Read settings and readiness", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Use Google Ad Manager test units (android)", exact: true })
+    .click();
+  await expect(page.getByLabel("android bannerUnitId", { exact: true })).toHaveValue(
+    "/21775744923/example/adaptive-banner",
+  );
+  await expect(page.getByLabel("Enable app ads", { exact: true })).not.toBeChecked();
   const reason = "Local mobile release acceptance; all delivery remains disabled";
   await page.getByLabel("requestTimeoutMs", { exact: true }).fill("12000");
   await page.getByLabel("Reason for the change / notification", { exact: true }).fill(reason);
+  await page.getByLabel("android bannerUnitId", { exact: true }).fill("https://example.com/vast");
+  await expect(
+    page.getByRole("button", { name: "Save configuration", exact: true }),
+  ).toBeDisabled();
+  await page
+    .getByLabel("android bannerUnitId", { exact: true })
+    .fill("/21775744923/example/adaptive-banner");
   const saveResponse = page.waitForResponse(
     (response) =>
       response.url() === API + "/admin/mobile/config" && response.request().method() === "PUT",
@@ -118,11 +134,29 @@ test("mobile administration keeps delivery off, verifies safe persisted settings
     page.getByRole("status").filter({ hasText: "Configuration saved and read back." }),
   ).toBeVisible();
   const after = await (await page.request.get(API + "/admin/mobile/config")).json();
-  expect(after).toEqual({ ...before, ads: { ...before.ads, requestTimeoutMs: 12000 } });
+  expect(after).toEqual({
+    ...before,
+    ads: {
+      ...before.ads,
+      requestTimeoutMs: 12000,
+      platforms: {
+        ...before.ads.platforms,
+        android: {
+          ...before.ads.platforms.android,
+          bannerUnitId: "/21775744923/example/adaptive-banner",
+          interstitialUnitId: "/21775744923/example/interstitial",
+        },
+      },
+    },
+  });
   await page.reload();
   await expect(page.getByRole("button", { name: "Verify session", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Read settings and readiness", exact: true }).click();
   await expect(page.getByLabel("requestTimeoutMs", { exact: true })).toHaveValue("12000");
+
+  await expect(page.getByLabel("android bannerUnitId", { exact: true })).toHaveValue(
+    "/21775744923/example/adaptive-banner",
+  );
 
   // Exercise the real local send endpoint with global delivery OFF. No provider request or
   // fabricated FCM success is involved, and only this controlled account is targeted.

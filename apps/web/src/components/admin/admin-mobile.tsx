@@ -5,7 +5,13 @@ import { useI18n } from "@/components/i18n/i18n-provider";
 import { ActionButton, PageHeader, StatusNotice } from "@/components/ui/design-system";
 import { readAdminApiError } from "@/lib/admin-reauthentication";
 import { apiBaseUrl } from "@/lib/api";
-import { parseMobileConfig, notificationTypes, type MobileConfig } from "@/lib/mobile-config";
+import {
+  parseMobileConfig,
+  mobileAdUnitProvider,
+  notificationTypes,
+  type MobileConfig,
+} from "@/lib/mobile-config";
+import { AdminAdvertisingNavigation } from "./admin-advertising-navigation";
 import styles from "./admin-mobile.module.css";
 export function AdminMobile() {
   const { locale } = useI18n(),
@@ -106,6 +112,13 @@ export function AdminMobile() {
       setConfig(next);
       setStatus(await request("/admin/mobile/status"));
     });
+  const invalidAdUnits = config
+    ? Object.values(config.ads.platforms).some((platform) =>
+        [platform.bannerUnitId, platform.interstitialUnitId].some(
+          (unit) => unit !== "" && !mobileAdUnitProvider(unit),
+        ),
+      )
+    : false;
   const save = () =>
     run(async (request) => {
       if (!config || reason.trim().length < 4) throw new Error("REASON_REQUIRED");
@@ -155,6 +168,7 @@ export function AdminMobile() {
           "إدارة قدرات التطبيق الموجودة وإرسال إشعار لحساب محدد. تحديث مكتبات التطبيق الأصلية يحتاج إصدار متجر.",
         )}
       />
+      <AdminAdvertisingNavigation current="mobile" />
       <ActionButton disabled={busy} onClick={() => void load()}>
         {copy("Read settings and readiness", "قراءة الإعدادات والجاهزية")}
       </ActionButton>
@@ -164,6 +178,34 @@ export function AdminMobile() {
           <>
             <section>
               <h2>{copy("Advertising and analytics", "الإعلانات والتحليلات")}</h2>
+              <p>
+                {copy(
+                  "Google Ad Manager app inventory uses /network_code/ad_unit. AdMob uses ca-app-pub-…/…. Paste the complete app unit below; the provider is detected automatically. Web GPT tags and VAST URLs are not supported here.",
+                  "وحدات تطبيقات Google Ad Manager تُكتب /network_code/ad_unit. وحدات AdMob تُكتب ca-app-pub-…/…. أدخل مسار وحدة التطبيق كاملًا؛ يُحدَّد المزود تلقائيًا. هذه الحقول لا تقبل أكواد GPT أو روابط VAST الخاصة بالويب.",
+                )}
+              </p>
+              <p>
+                {copy(
+                  "Banner: bottom of home, search and channel browsing pages. Interstitial: optional between browsing pages only; never during video, Clips or upload. Google Ad Manager requires an updated native app. Saving settings cannot add this SDK capability to an older build.",
+                  "البانر: أسفل صفحات الرئيسية والبحث والقنوات. الإعلان البيني: اختياري عند التنقل بين صفحات التصفح فقط، وليس أثناء الفيديو أو Clips أو الرفع. Google Ad Manager يحتاج نسخة تطبيق أصلية محدثة؛ حفظ الإعدادات لا يضيف هذه القدرة لنسخة قديمة.",
+                )}
+              </p>
+              <p role="status">
+                {!config.ads.enabled
+                  ? copy(
+                      "App ads are OFF. Enable the global switch, the platform and a format to begin testing.",
+                      "إعلانات التطبيق متوقفة. لبدء الاختبار فعّل المفتاح العام والمنصة ونوع الإعلان.",
+                    )
+                  : config.ads.audience !== "general"
+                    ? copy(
+                        "Ads are blocked until a supported audience is declared.",
+                        "الإعلانات محجوبة حتى تحديد جمهور مدعوم.",
+                      )
+                    : copy(
+                        "Delivery still requires app configuration, adult affirmation and privacy consent on the device. A saved unit does not prove ad delivery.",
+                        "ظهور الإعلان يحتاج أيضًا إعداد التطبيق وإقرار العمر وموافقة الخصوصية على الجهاز. حفظ الوحدة لا يثبت وصول إعلان.",
+                      )}
+              </p>
               <label>
                 <input
                   type="checkbox"
@@ -238,13 +280,13 @@ export function AdminMobile() {
                   }
                 />{" "}
                 {copy(
-                  "Interstitial capability (no automatic placements)",
-                  "قدرة الإعلان البيني (دون مواضع تلقائية)",
+                  "Interstitial between browsing pages",
+                  "إعلان بيني عند التنقل بين صفحات التصفح",
                 )}
               </label>
               {(["android", "ios"] as const).map((platform) => (
                 <fieldset key={platform} disabled={busy}>
-                  <legend>{platform}</legend>
+                  <legend>{platform === "android" ? "Android" : "iOS"}</legend>
                   <label>
                     <input
                       type="checkbox"
@@ -268,8 +310,12 @@ export function AdminMobile() {
                   </label>
                   {(["bannerUnitId", "interstitialUnitId"] as const).map((key) => (
                     <label key={key} style={{ display: "block" }}>
-                      {key}{" "}
+                      {key === "bannerUnitId"
+                        ? copy("Banner ad unit", "وحدة إعلان البانر")
+                        : copy("Interstitial ad unit", "وحدة الإعلان البيني")}{" "}
                       <input
+                        aria-label={`${platform} ${key}`}
+                        maxLength={256}
                         dir="ltr"
                         value={config.ads.platforms[platform][key]}
                         onChange={(e) =>
@@ -286,10 +332,50 @@ export function AdminMobile() {
                             },
                           })
                         }
-                        placeholder="ca-app-pub-…/…"
+                        placeholder="/network_code/app_ad_unit أو ca-app-pub-…/…"
                       />
+                      <span>
+                        {mobileAdUnitProvider(config.ads.platforms[platform][key]) === "gam"
+                          ? "Google Ad Manager"
+                          : mobileAdUnitProvider(config.ads.platforms[platform][key]) === "admob"
+                            ? "AdMob"
+                            : config.ads.platforms[platform][key]
+                              ? copy("Invalid unit format", "صيغة الوحدة غير صحيحة")
+                              : copy("No unit set", "لم تُضبط وحدة")}
+                      </span>
                     </label>
                   ))}
+                  <ActionButton
+                    type="button"
+                    tone="secondary"
+                    onClick={() =>
+                      patch({
+                        ads: {
+                          ...config.ads,
+                          testMode: true,
+                          platforms: {
+                            ...config.ads.platforms,
+                            [platform]: {
+                              ...config.ads.platforms[platform],
+                              bannerUnitId: "/21775744923/example/adaptive-banner",
+                              interstitialUnitId: "/21775744923/example/interstitial",
+                            },
+                          },
+                        },
+                      })
+                    }
+                  >
+                    {copy(
+                      `Use Google Ad Manager test units (${platform})`,
+                      `استخدام وحدات Google Ad Manager التجريبية (${platform})`,
+                    )}
+                  </ActionButton>
+                  <p>
+                    {copy(
+                      "This fills test units and switches test mode on. It does not enable ads or save until you submit the form.",
+                      "يملأ الزر وحدات الاختبار ويفعّل وضع الاختبار. لا يفعّل الإعلانات ولا يحفظ التغييرات قبل الضغط على حفظ.",
+                    )}
+                  </p>
                 </fieldset>
               ))}
               {(["cooldownSeconds", "maxPerSession"] as const).map((key) => (
@@ -360,7 +446,7 @@ export function AdminMobile() {
               </label>
               {(["android", "ios"] as const).map((platform) => (
                 <fieldset key={platform} disabled={busy}>
-                  <legend>{platform}</legend>
+                  <legend>{platform === "android" ? "Android" : "iOS"}</legend>
                   {(["minimumAppVersion", "latestAppVersion"] as const).map((key) => (
                     <label key={key}>
                       {key}{" "}
@@ -392,7 +478,10 @@ export function AdminMobile() {
                 onChange={(e) => setReason(e.target.value)}
               />
             </label>{" "}
-            <ActionButton disabled={busy || reason.trim().length < 4} onClick={() => void save()}>
+            <ActionButton
+              disabled={busy || invalidAdUnits || reason.trim().length < 4}
+              onClick={() => void save()}
+            >
               {copy("Save configuration", "حفظ الإعدادات")}
             </ActionButton>
             <details>

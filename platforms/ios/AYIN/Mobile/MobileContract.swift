@@ -115,7 +115,7 @@ struct MobileRuntimeConfig: Decodable {
     }
 
     private static func validUnit(_ value: String) -> Bool {
-        value.isEmpty || value.range(of: #"^ca-app-pub-[0-9]{16}/[0-9]{10}$"#, options: .regularExpression) != nil
+        MobileAdInventory.validUnit(value)
     }
     private static func validVersion(_ value: String) -> Bool {
         value.range(of: #"^[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}$"#, options: .regularExpression) != nil
@@ -123,7 +123,7 @@ struct MobileRuntimeConfig: Decodable {
 }
 
 enum MobileContract {
-    static let capabilities = ["privacy", "analytics", "ads.banner", "ads.interstitial", "notifications", "session.reset"]
+    static let capabilities = ["privacy", "analytics", "ads.banner", "ads.interstitial", "ads.gam", "notifications", "session.reset"]
     static let methods: Set<String> = ["runtime.configure", "privacy.request", "privacy.options", "analytics.consent", "analytics.event", "analytics.user", "ads.banner", "ads.hideBanner", "ads.interstitial", "notifications.request", "notifications.token", "session.reset"]
 
     static func boolean(_ value: Any?) -> Bool? {
@@ -171,5 +171,24 @@ enum MobileContract {
             }
         }
         return params
+    }
+}
+
+// Provider is selected per placement; this preserves the version-1 wire schema.
+enum MobileAdInventory {
+    static func validUnit(_ value: String) -> Bool {
+        guard value.utf8.count <= 256 else { return false }
+        return value.isEmpty || value.range(of: #"\A(?:ca-app-pub-[0-9]{16}/[0-9]{10}|/[0-9]{1,20}(?:/[A-Za-z0-9_.-]+)+)\z"#, options: .regularExpression) != nil
+    }
+
+    static func unit(configured: String, banner: Bool, testMode: Bool) -> String? {
+        guard validUnit(configured) else { return nil }
+        if testMode {
+            if configured.hasPrefix("/") {
+                return banner ? "/21775744923/example/adaptive-banner" : "/21775744923/example/interstitial"
+            }
+            return banner ? "ca-app-pub-3940256099942544/2435281174" : "ca-app-pub-3940256099942544/4411468910"
+        }
+        return configured.isEmpty ? nil : configured
     }
 }

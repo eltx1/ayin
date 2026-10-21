@@ -40,6 +40,33 @@ export interface MobileConfig {
     bundleUpdatesEnabled: false;
   };
 }
+/** Provider is inferred only from validated native inventory, never a web ad tag URL. */
+export function mobileAdUnitProvider(value: unknown): "gam" | "admob" | null {
+  if (typeof value !== "string" || value.length > 256 || /\s/.test(value)) return null;
+  if (/^ca-app-pub-\d{16}\/\d{10}$/.test(value)) return "admob";
+  if (/^\/[0-9]{1,20}(?:\/[A-Za-z0-9_.-]+)+$/.test(value)) return "gam";
+  return null;
+}
+export function isMobileAdUnitId(value: unknown): value is string {
+  return value === "" || mobileAdUnitProvider(value) !== null;
+}
+/** Old shells validate both platforms. Project a copy so GAM cannot disable push/analytics. */
+export function mobileConfigForCapabilities(
+  config: MobileConfig,
+  capabilities: readonly string[],
+): MobileConfig {
+  const projected = JSON.parse(JSON.stringify(config)) as MobileConfig;
+  if (capabilities.includes("ads.gam")) return projected;
+  for (const platform of ["android", "ios"] as const) {
+    for (const field of ["bannerUnitId", "interstitialUnitId"] as const) {
+      if (mobileAdUnitProvider(projected.ads.platforms[platform][field]) === "gam") {
+        projected.ads.platforms[platform][field] = "";
+        projected.ads.enabled = false;
+      }
+    }
+  }
+  return projected;
+}
 export function parseMobileConfig(input: unknown): MobileConfig {
   if (!input || typeof input !== "object") throw new Error("INVALID_MOBILE_CONFIG");
   const value = input as MobileConfig;
@@ -47,8 +74,7 @@ export function parseMobileConfig(input: unknown): MobileConfig {
   const range = (v: unknown, min: number, max: number) =>
     typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
   const version = (v: unknown) => typeof v === "string" && /^\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(v);
-  const unit = (v: unknown) =>
-    typeof v === "string" && (v === "" || /^ca-app-pub-\d{16}\/\d{10}$/.test(v));
+  const unit = isMobileAdUnitId;
   if (
     value.schemaVersion !== 1 ||
     value.bridgeVersion !== 1 ||
