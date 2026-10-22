@@ -2131,15 +2131,83 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
   it("serializes rollout admission across different creators and permits existing sources to drain at capacity", async () => {
     enableCreatorRollout();
     const actors = await Promise.all([register(), register(), register()]);
-    const attempts = await Promise.all(actors.map((actor) => create(actor)));
-    expect(attempts.map((r) => r.statusCode).sort()).toEqual([201, 201, 429]);
+    const requests = actors.map(draft);
+    // A pending provider ACK intentionally blocks all new admission, even with
+    // spare slots. Start this capacity race after the first CREATE is settled.
+    const session = success(await create(actors[0]!, requests[0]!)).session;
+    expect(session.state).toBe("OPEN");
+    const attempts = await Promise.all(
+      actors.slice(1).map((actor, index) => create(actor, requests[index + 1]!)),
+    );
+    expect(
+      attempts.map((r) => r.statusCode).sort(),
+      attempts.map((r) => `${r.statusCode}: ${r.body}`).join("\n"),
+    ).toEqual([201, 429]);
+    const admitted = attempts.find((r) => r.statusCode === 201)!;
+    expect(success(admitted).session.state).toBe("OPEN");
+    const rejectedIndex = attempts.findIndex((r) => r.statusCode === 429);
+    expect(attempts[rejectedIndex]!.json()).toMatchObject({
+      error: { code: "UPLOAD_CANARY_BUSY" },
+    });
+    expect(
+      await db.mediaUploadOperation.count({
+        where: { kind: "CREATE", providerOutcome: "UNKNOWN" },
+      }),
+    ).toBe(0);
+    // With both ACKs committed, this retry proves the full-capacity rejection
+    // independently from the transient global uncertainty barrier.
+    const retry = await create(actors[rejectedIndex + 1]!, requests[rejectedIndex + 1]!);
+    expect(retry.statusCode, retry.body).toBe(429);
+    expect(retry.json()).toMatchObject({ error: { code: "UPLOAD_CANARY_BUSY" } });
     expect(storage.createMultipartUpload).toHaveBeenCalledTimes(2);
-    const index = attempts.findIndex((r) => r.statusCode === 201);
-    const session = success(attempts[index]!).session;
-    const grant = success(await command(actors[index]!, session, "authorize", { partNumber: 1 }));
+    const grant = success(await command(actors[0]!, session, "authorize", { partNumber: 1 }));
     expect(grant.grant).toBeDefined();
     expect(await db.mediaUploadSession.count()).toBe(2);
     expect(await db.mediaProcessingOutputReservation.count()).toBe(1);
+  });
+  it("blocks new rollout admission during an in-flight successful CREATE until its acknowledgement", async () => {
+    enableCreatorRollout();
+    const actors = await Promise.all([register(), register(), register()]);
+    const requests = actors.map(draft);
+    const entered = deferred(),
+      release = deferred();
+    const allocate = vi.mocked(storage.createMultipartUpload).getMockImplementation()!;
+    vi.mocked(storage.createMultipartUpload).mockImplementationOnce(async (input) => {
+      const result = await allocate(input);
+      entered.resolve();
+      await release.promise;
+      return result;
+    });
+    const pending = Promise.resolve(create(actors[0]!, requests[0]!));
+    await entered.promise;
+    try {
+      expect(
+        await db.mediaUploadOperation.count({
+          where: { kind: "CREATE", providerOutcome: "UNKNOWN" },
+        }),
+      ).toBe(1);
+      const blocked = await Promise.all(
+        actors.slice(1).map((actor, index) => create(actor, requests[index + 1]!)),
+      );
+      for (const attempt of blocked) {
+        expect(attempt.statusCode, attempt.body).toBe(429);
+        expect(attempt.json()).toMatchObject({ error: { code: "UPLOAD_CANARY_BUSY" } });
+      }
+      expect(storage.createMultipartUpload).toHaveBeenCalledTimes(1);
+      expect(await db.mediaUploadSession.count()).toBe(1);
+    } finally {
+      release.resolve();
+      await pending;
+    }
+    expect(success(await pending).session.state).toBe("OPEN");
+    expect(
+      await db.mediaUploadOperation.count({
+        where: { kind: "CREATE", providerOutcome: "UNKNOWN" },
+      }),
+    ).toBe(0);
+    expect(success(await create(actors[1]!, requests[1]!)).session.state).toBe("OPEN");
+    expect(storage.createMultipartUpload).toHaveBeenCalledTimes(2);
+    expect(await db.mediaUploadSession.count()).toBe(2);
   });
   it("keeps current channel authority and visible source size limits under the all-creators audience", async () => {
     enableCreatorRollout();
