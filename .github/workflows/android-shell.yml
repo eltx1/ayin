@@ -201,10 +201,13 @@ jobs:
           adb kill-server || true
           adb start-server
           sudo chmod 666 /dev/kvm || true
-          # CI covers API 36 with software GLES, not Vulkan or physical-device graphics.
+          # API 36 console capture exited SIGSEGV with auto-selected swangle/SwiftShader.
+          # Select the documented Mesa backend explicitly; keep the engine/image/capture gates.
+          # https://developer.android.com/studio/run/emulator-acceleration
+          # CI covers software GLES, not Vulkan or physical-device graphics.
           # Disable guest Vulkan after capture context failures; official workaround:
           # https://developer.android.com/studio/run/emulator-troubleshooting#cannot-open-webpage
-          nohup env ADB_VENDOR_KEYS="$ADB_VENDOR_KEYS" python3 scripts/android-emulator-supervisor.py --report "$RUNNER_TEMP/ayin-emulator-exit.json" -- emulator -avd "$avd_name"             -no-window             -no-audio             -no-boot-anim             -no-snapshot             -gpu software             -feature -Vulkan             -no-metrics >"$RUNNER_TEMP/ayin-emulator.log" 2>&1 &
+          nohup env ADB_VENDOR_KEYS="$ADB_VENDOR_KEYS" python3 scripts/android-emulator-supervisor.py --report "$RUNNER_TEMP/ayin-emulator-exit.json" -- emulator -avd "$avd_name"             -no-window             -no-audio             -no-boot-anim             -no-snapshot             -gpu lavapipe             -feature -Vulkan             -no-metrics >"$RUNNER_TEMP/ayin-emulator.log" 2>&1 &
           emulator_pid=$!
           if ! timeout 120 adb wait-for-device; then
             cat "$RUNNER_TEMP/ayin-emulator.log"
