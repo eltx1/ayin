@@ -472,6 +472,13 @@
   transition: width 240ms var(--ease-out);
 }
 
+.processingStage {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
 .advanced {
   background: rgb(255 255 255 / 2%);
   border: 1px solid var(--border);

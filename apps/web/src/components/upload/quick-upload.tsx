@@ -7,6 +7,7 @@ import Link from "next/link";
 import { ActionButton, ActionLink, PageHeader } from "@/components/ui/design-system";
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { scheduleTimestamp, uploadId, uploadRecord } from "@/lib/quick-upload-contract";
+import { describeQuickProcessing } from "@/lib/quick-upload-processing";
 import { UploadProtocolError } from "@/lib/upload-session";
 
 import { trackAnalyticsEvent } from "@/lib/analytics";
@@ -64,6 +65,7 @@ export function QuickUpload() {
   const [uploadComplete, setUploadComplete] = useState(false);
   const [processingReady, setProcessingReady] = useState(false);
   const [processingLabel, setProcessingLabel] = useState<string | null>(null);
+  const [processingStageLabel, setProcessingStageLabel] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [mutationKind, setMutationKind] = useState<
     "upload" | "save" | "thumbnail" | "publish" | null
@@ -81,7 +83,7 @@ export function QuickUpload() {
   const [identityFailed, setIdentityFailed] = useState(false);
   const [identityAttempt, setIdentityAttempt] = useState(0);
   const [processingAttempt, setProcessingAttempt] = useState(0);
-  const [processingFailed, setProcessingFailed] = useState(false);
+  const [processingCheckNeeded, setProcessingCheckNeeded] = useState(false);
   const [savedSignature, setSavedSignature] = useState("");
   const signature = JSON.stringify([
     title,
@@ -199,6 +201,8 @@ export function QuickUpload() {
     setUploadComplete(false);
     setProcessingReady(false);
     setProcessingLabel(null);
+    setProcessingStageLabel(null);
+    setProcessingCheckNeeded(false);
     setPublished(false);
     setMetadataDraft({ ...EMPTY_METADATA_DRAFT });
     setMessage(null);
@@ -324,35 +328,27 @@ export function QuickUpload() {
         const status = await getQuickProcessingStatus(videoId, controller.signal);
         reads++;
         if (!active) return;
-        setProcessingFailed(false);
-        const processing = status.processing;
+        const update = describeQuickProcessing(status, reads);
+        setProcessingCheckNeeded(update.checkNeeded);
         setProcessingReady(status.ready);
-        setProcessingLabel(
-          status.ready
-            ? copy("Ready")
-            : processing?.status === "FAILED"
-              ? copy("Failed")
-              : processing?.status === "QUEUED"
-                ? copy("Queued")
-                : copy("Processing"),
-        );
-        if (status.ready) {
-          setMessage(copy("Processing complete. This video is ready to publish."));
-          return;
-        }
-        if (processing?.status === "FAILED" || processing?.status === "CANCELLED" || reads >= 30) {
-          setProcessingFailed(true);
-          setMessage(
-            copy(
-              "Playback is not ready. The video remains saved in Studio; check its status before publishing.",
-            ),
+        setProcessingLabel(copy(update.label));
+        setProcessingStageLabel(update.stageLabel ? copy(update.stageLabel) : null);
+        if (update.message) {
+          setMessage(copy(update.message));
+        } else if (reads === 1) {
+          setMessage((current) =>
+            current === copy("Checking processing status…")
+              ? copy(
+                  "Upload complete. AYIN is preparing a reliable playback version in the background.",
+                )
+              : current,
           );
-          return;
         }
+        if (status.ready || update.checkNeeded) return;
         timeout = setTimeout(() => void poll(), 2000);
       } catch {
         if (!active || controller.signal.aborted) return;
-        setProcessingFailed(true);
+        setProcessingCheckNeeded(true);
         setMessage(
           copy("Processing status is temporarily unavailable. Retry checking its status."),
         );
@@ -771,7 +767,7 @@ export function QuickUpload() {
                         {uploadComplete
                           ? processingReady
                             ? copy("Ready to publish")
-                            : copy("Preparing playback")
+                            : copy("Upload complete")
                           : copy("Uploading video")}
                       </strong>
                     </span>
@@ -789,6 +785,11 @@ export function QuickUpload() {
                   >
                     <span style={{ width: `${Math.max(2, progress)}%` }} />
                   </div>
+                  {processingStageLabel ? (
+                    <p className={styles.processingStage} aria-live="polite">
+                      {copy("Last checked stage")}: {processingStageLabel}
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
@@ -958,11 +959,12 @@ export function QuickUpload() {
           {uncertain ? copy(" · The last response is uncertain; further writes are paused.") : null}
         </p>
       ) : null}
-      {processingFailed && !uncertain ? (
+      {processingCheckNeeded && !uncertain ? (
         <button
           type="button"
           onClick={() => {
-            setProcessingFailed(false);
+            setProcessingCheckNeeded(false);
+            setMessage(copy("Checking processing status…"));
             setProcessingAttempt((value) => value + 1);
           }}
         >
