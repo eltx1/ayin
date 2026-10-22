@@ -428,6 +428,8 @@ test("ordinary VIDEO_NOT_PLAYABLE capability409 stays unavailable without an ide
   const catalog = fixture<Catalog>("seed");
   let capabilityReads = 0;
   let identityReads = 0;
+  let releaseCapability!: () => void;
+  const capabilityGate = new Promise<void>((resolve) => (releaseCapability = resolve));
   try {
     page.on("request", (request) => {
       if (request.url() === `${API}/auth/me`) identityReads++;
@@ -436,6 +438,7 @@ test("ordinary VIDEO_NOT_PLAYABLE capability409 stays unavailable without an ide
       `${API}/public/videos/${catalog.videos[0]!.slug}/playback?*`,
       async (route) => {
         capabilityReads++;
+        await capabilityGate;
         await route.fulfill({
           status: 409,
           contentType: "application/json",
@@ -449,8 +452,14 @@ test("ordinary VIDEO_NOT_PLAYABLE capability409 stays unavailable without an ide
       },
     );
     await open(page, catalog);
-    const identityBefore = identityReads;
+    await expect.poll(() => capabilityReads).toBe(1);
+    // A decoded frame does not imply that social ownership checks have finished.
+    // Like becomes enabled only after both scoped reads and their /auth/me
+    // post-checks complete. Isolate the capability failure from those legitimate reads.
+    await expect(active(page).getByRole("button", { name: /^Like ·/ })).toBeEnabled();
     const retained = await video(page).elementHandle();
+    const identityBefore = identityReads;
+    releaseCapability();
     await active(page).getByRole("button", { name: "Details", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Details", exact: true });
     await expect(dialog.getByRole("button", { name: "Try again", exact: true })).toBeVisible();
@@ -466,6 +475,7 @@ test("ordinary VIDEO_NOT_PLAYABLE capability409 stays unavailable without an ide
     await playing(page, true);
     await retained!.dispose();
   } finally {
+    releaseCapability();
     fixture("cleanup", { fixtureId: catalog.fixtureId });
   }
 });

@@ -10,6 +10,7 @@ on:
       - "apps/web/src/components/player/ayin-player.tsx"
       - "apps/web/src/components/player/live-ayin-player.tsx"
       - "scripts/mobile-*"
+      - "scripts/android-emulator-*"
       - ".github/workflows/android-shell.yml"
   workflow_dispatch:
     inputs:
@@ -39,6 +40,7 @@ jobs:
         run: |
           python3 scripts/mobile-validation-test.py
           python3 scripts/mobile-android-screenshot-test.py
+          python3 scripts/android-emulator-supervisor-test.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -132,6 +134,7 @@ jobs:
         run: |
           python3 scripts/mobile-validation-test.py
           python3 scripts/mobile-android-screenshot-test.py
+          python3 scripts/android-emulator-supervisor-test.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -201,7 +204,7 @@ jobs:
           # CI covers API 36 with software GLES, not Vulkan or physical-device graphics.
           # Disable guest Vulkan after capture context failures; official workaround:
           # https://developer.android.com/studio/run/emulator-troubleshooting#cannot-open-webpage
-          nohup env ADB_VENDOR_KEYS="$ADB_VENDOR_KEYS" emulator -avd "$avd_name"             -no-window             -no-audio             -no-boot-anim             -no-snapshot             -gpu software             -feature -Vulkan             -no-metrics >"$RUNNER_TEMP/ayin-emulator.log" 2>&1 &
+          nohup env ADB_VENDOR_KEYS="$ADB_VENDOR_KEYS" python3 scripts/android-emulator-supervisor.py --report "$RUNNER_TEMP/ayin-emulator-exit.json" -- emulator -avd "$avd_name"             -no-window             -no-audio             -no-boot-anim             -no-snapshot             -gpu software             -feature -Vulkan             -no-metrics >"$RUNNER_TEMP/ayin-emulator.log" 2>&1 &
           emulator_pid=$!
           if ! timeout 120 adb wait-for-device; then
             cat "$RUNNER_TEMP/ayin-emulator.log"
@@ -298,6 +301,9 @@ jobs:
           timeout --kill-after=5s 30s adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n "$package/net.ayin.shell.MainActivity"
           sleep 10
           mkdir -p "$RUNNER_TEMP/ayin-android-diagnostic"
+          # Persist process state before the operation that previously lost the emulator.
+          ps -eo pid,ppid,stat,rss,comm | awk 'NR == 1 || /qemu|emulator|adb|python3/' > "$RUNNER_TEMP/ayin-emulator-before-capture.txt"
+          free -m >> "$RUNNER_TEMP/ayin-emulator-before-capture.txt"
           python3 scripts/mobile-android-screenshot.py --output "$RUNNER_TEMP/ayin-android-diagnostic/startup.png"
           python3 scripts/mobile-build-metadata.py --platform android --signing debug \
             --output "$RUNNER_TEMP/ayin-android-diagnostic/build-metadata.json" \
@@ -326,15 +332,24 @@ jobs:
           if "stdout" in processes:
               processes["stdout"] = "\n".join(line for index, line in enumerate(processes["stdout"].splitlines())
                   if index == 0 or any(name in line.lower() for name in ("qemu", "emulator", "adb")))
-          kernel = read(["dmesg", "--level=err,warn"])
+          # This isolated CI runner grants non-interactive sudo. Record refusal if unavailable.
+          # Filter before serializing; never dump the entire kernel log into an artifact.
+          kernel = read(["sudo", "-n", "dmesg", "--level=err,warn"])
           if "stdout" in kernel:
               kernel["stdout"] = "\n".join(line for line in kernel["stdout"].splitlines()
                   if any(term in line.lower() for term in ("oom", "out of memory", "killed process", "qemu", "emulator")))
+          crashpad = []
+          for root in pathlib.Path("/tmp/android-runner").glob("emu-crash-*.db"):
+              for candidate in list(root.rglob("*"))[:100]:
+                  if candidate.is_file() and not candidate.is_symlink():
+                      info = candidate.stat()
+                      # Metadata only: raw process dumps may include in-memory credentials.
+                      crashpad.append({"path": str(candidate.relative_to(root)), "bytes": info.st_size, "mtime": info.st_mtime})
           output = pathlib.Path(os.environ["RUNNER_TEMP"]) / "ayin-emulator-host.json"
           output.write_text(json.dumps({
               "capturedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
               "processes": processes, "memory": read(["free", "-m"]),
-              "disk": read(["df", "-h", os.environ["RUNNER_TEMP"]]), "kernel": kernel,
+              "disk": read(["df", "-h", os.environ["RUNNER_TEMP"]]), "kernel": kernel, "crashpadFiles": crashpad,
               "note": "Host diagnostics only. Missing kernel access or matching messages does not exclude OOM or a crash."
           }, indent=2) + "\n")
           PY
@@ -346,4 +361,6 @@ jobs:
           path: |
             ${{ runner.temp }}/ayin-emulator.log
             ${{ runner.temp }}/ayin-emulator-host.json
+            ${{ runner.temp }}/ayin-emulator-exit.json
+            ${{ runner.temp }}/ayin-emulator-before-capture.txt
           retention-days: 7
