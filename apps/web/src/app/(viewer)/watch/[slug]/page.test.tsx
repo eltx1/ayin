@@ -273,4 +273,31 @@ describe("Watch catalog episode navigation", () => {
       chapters: data.video.chapters,
     });
   });
+
+  it("uses same-origin owned captions while retaining video and advertising ownership", () => {
+    const videoId = "11111111-1111-4111-8111-111111111111";
+    const assetId = "22222222-2222-4222-8222-222222222222";
+    const data = playback(null);
+    data.video.captions = [
+      {
+        id: "caption",
+        objectKey: `captions/videos/${videoId}/${assetId}/track.vtt`,
+        mimeType: "text/vtt",
+        label: "العربية",
+        language: "ar",
+        kind: "SUBTITLES",
+        default: true,
+      },
+    ];
+    renderToStaticMarkup(
+      <I18nProvider locale="ar">
+        <WatchContent data={data} explicitKids={false} />
+      </I18nProvider>,
+    );
+    expect(state.player.mock.calls[0]![0]).toMatchObject({
+      sourceUrl: "http://127.0.0.1:3001/media/video.mp4",
+      advertisingEnabled: true,
+      captions: [{ id: "caption", src: `/api/captions/${videoId}/${assetId}`, default: true }],
+    });
+  });
 });
