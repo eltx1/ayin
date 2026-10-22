@@ -1,6 +1,6 @@
 "use client";
 
-import { type KeyboardEvent, type ReactNode, useId, useRef } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 
 import { useI18n } from "@/components/i18n/i18n-provider";
 
@@ -12,12 +12,33 @@ interface ContentRowProperties {
   eyebrow?: string;
   rowId: string;
   title: string;
+  variant?: "poster" | "landscape";
 }
 
-export function ContentRow({ anchorId, children, eyebrow, rowId, title }: ContentRowProperties) {
+export function ContentRow({
+  anchorId,
+  children,
+  eyebrow,
+  rowId,
+  title,
+  variant = "poster",
+}: ContentRowProperties) {
   const headingId = useId();
   const scrollerReference = useRef<HTMLDivElement>(null);
   const { direction, t } = useI18n();
+  const [overflowing, setOverflowing] = useState(false);
+  useEffect(() => {
+    const scroller = scrollerReference.current;
+    if (!scroller) return;
+    const measure = () => setOverflowing(scroller.scrollWidth > scroller.clientWidth + 1);
+    const frame = window.requestAnimationFrame(measure);
+    const observer = new ResizeObserver(measure);
+    observer.observe(scroller);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [children]);
 
   function scroll(logicalDirection: -1 | 1) {
     const scroller = scrollerReference.current;
@@ -50,7 +71,11 @@ export function ContentRow({ anchorId, children, eyebrow, rowId, title }: Conten
             {title}
           </h2>
         </div>
-        <div aria-label={t("carousel.controls", { title })} className={styles.controls}>
+        <div
+          aria-label={t("carousel.controls", { title })}
+          className={styles.controls}
+          hidden={!overflowing}
+        >
           <button
             aria-label={t("carousel.previous", { title })}
             data-tv-focus-id={`${rowId}-previous`}
@@ -73,12 +98,12 @@ export function ContentRow({ anchorId, children, eyebrow, rowId, title }: Conten
       </div>
       <div
         aria-label={t("carousel.content", { title })}
-        className={styles.scroller}
+        className={`${styles.scroller} ${variant === "landscape" ? styles.landscape : ""}`}
         dir={direction}
         onKeyDown={onScrollerKeyDown}
         ref={scrollerReference}
         role="region"
-        tabIndex={0}
+        tabIndex={overflowing ? 0 : undefined}
       >
         {children}
       </div>

@@ -1,4 +1,5 @@
 import { apiBaseUrl, type AyinIdentity, readApiError } from "./api";
+import { parseDiscoveryHome } from "./discovery-contracts";
 import { parseDiscoveryRow, parseMyAyinResponse } from "./my-ayin-contracts";
 import { readViewerIdentity, withViewerReadDeadline } from "./viewer-bootstrap";
 
@@ -28,6 +29,9 @@ export interface DiscoveryRowData {
 }
 
 export interface DiscoveryHomeResponse {
+  mode: "AUTO" | "MANAGED";
+  status: "READY" | "EMPTY" | "DISABLED";
+  spotlight: DiscoverySpotlight | null;
   rows: DiscoveryRowData[];
   policy?: {
     mode: "KIDS";
@@ -36,6 +40,12 @@ export interface DiscoveryHomeResponse {
     socialCommunity: { enabled: false };
     legalReview: { required: true; complianceClaimed: false };
   };
+}
+
+export interface DiscoverySpotlight extends DiscoveryItem {
+  description: string | null;
+  durationMs: number | null;
+  channelName: string | null;
 }
 
 export interface MyAyinResponse {
@@ -57,7 +67,7 @@ export async function fetchDiscoveryHome(
       { cache: "no-store", credentials: "include", signal: readSignal },
     );
     if (!response.ok) throw new Error(await readApiError(response));
-    return (await response.json()) as DiscoveryHomeResponse;
+    return parseDiscoveryHome(await response.json());
   }, signal);
 }
 
@@ -69,35 +79,37 @@ export async function fetchKidsDiscoveryHome(signal?: AbortSignal): Promise<Disc
       signal: readSignal,
     });
     if (!response.ok) throw new Error(await readApiError(response));
-    return (await response.json()) as DiscoveryHomeResponse;
+    return parseDiscoveryHome(await response.json());
   }, signal);
 }
 
 export async function fetchKidsDiscoveryRow(
   key: string,
   cursor: string,
+  signal?: AbortSignal,
 ): Promise<DiscoveryRowData> {
   const parameters = new URLSearchParams({ cursor, limit: "8" });
   const response = await fetch(
     `${apiBaseUrl}/public/discovery/kids/rows/${encodeURIComponent(key)}?${parameters}`,
-    { cache: "no-store", credentials: "include" },
+    { cache: "no-store", credentials: "include", signal: signal ?? null },
   );
   if (!response.ok) throw new Error(await readApiError(response));
-  return (await response.json()) as DiscoveryRowData;
+  return parseDiscoveryRow(await response.json());
 }
 
 export async function fetchDiscoveryRow(
   key: string,
   cursor: string,
   authenticated: boolean,
+  signal?: AbortSignal,
 ): Promise<DiscoveryRowData> {
   const parameters = new URLSearchParams({ cursor, limit: "8" });
   const response = await fetch(
     `${apiBaseUrl}/${authenticated ? "discovery" : "public/discovery"}/rows/${encodeURIComponent(key)}?${parameters}`,
-    { cache: "no-store", credentials: "include" },
+    { cache: "no-store", credentials: "include", signal: signal ?? null },
   );
   if (!response.ok) throw new Error(await readApiError(response));
-  return (await response.json()) as DiscoveryRowData;
+  return parseDiscoveryRow(await response.json());
 }
 
 export async function fetchMyAyin(signal?: AbortSignal): Promise<MyAyinResponse> {
@@ -113,11 +125,12 @@ export async function fetchMyAyin(signal?: AbortSignal): Promise<MyAyinResponse>
 export async function fetchMyAyinSection(
   section: string,
   cursor: string,
+  signal?: AbortSignal,
 ): Promise<DiscoveryRowData> {
   const parameters = new URLSearchParams({ cursor, limit: "8" });
   const response = await fetch(
     `${apiBaseUrl}/discovery/my-ayin/${encodeURIComponent(section)}?${parameters}`,
-    { cache: "no-store", credentials: "include" },
+    { cache: "no-store", credentials: "include", signal: signal ?? null },
   );
   if (!response.ok) throw new Error(await readApiError(response));
   const page = (await response.json()) as Omit<DiscoveryRowData, "key" | "title">;

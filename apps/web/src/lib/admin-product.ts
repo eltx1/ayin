@@ -1,6 +1,47 @@
 import { merchandisingScopeHeaders, type MerchandisingTarget } from "./admin-merchandising";
 import type { DirectAdminSession } from "./admin-session-scope";
-import { AdminWorkspaceError, adminWorkspaceRequest } from "./verified-admin-transport";
+import {
+  AdminWorkspaceError,
+  adminCount,
+  adminId,
+  adminKnown,
+  adminObject,
+  adminRows,
+  adminText,
+  adminWorkspaceRequest,
+} from "./verified-admin-transport";
+
+export const homeRowSources = [
+  "CONTINUE_WATCHING",
+  "TRENDING_WORLDWIDE",
+  "POPULAR_NOW",
+  "NEW_ON_AYIN",
+  "BECAUSE_YOU_WATCHED",
+  "POPULAR_REGION",
+  "MOVIES",
+  "SERIES",
+  "CREATOR_TV",
+  "CREATORS_YOU_FOLLOW",
+  "RECENTLY_ADDED",
+  "EDITOR_PICKS",
+] as const;
+export const homeDiscoveryModes = ["INHERIT", "AUTO", "MANAGED"] as const;
+export type HomeDiscoveryMode = (typeof homeDiscoveryModes)[number];
+
+export interface CreateAdminHomeRow {
+  requestId: string;
+  expectedRowsRevision: string;
+  key: string;
+  title: string;
+  source: (typeof homeRowSources)[number];
+  audience: "ALL" | "AUTHENTICATED" | "ANONYMOUS";
+  enabled: boolean;
+  maxItems: number;
+  regionPersonalizationRequired: boolean;
+  targetRegions: string[];
+  confirmManagedTransition: boolean;
+  reason: string;
+}
 
 export interface AdminHomeRow {
   id: string;
@@ -37,6 +78,8 @@ export interface AdminProductSnapshot {
   selectedTargets: MerchandisingTarget[];
   rows: AdminHomeRow[];
   controls: ProductControls;
+  homeDiscoveryMode: HomeDiscoveryMode;
+  homeRowsRevision: string;
 }
 
 async function request<T>(
@@ -54,8 +97,137 @@ async function request<T>(
   })) as T;
 }
 
-export const getAdminProductControls = (signal?: AbortSignal, actor?: DirectAdminSession) =>
-  request<AdminProductSnapshot>("/admin/product-controls", signal ? { signal } : undefined, actor);
+function readHomeRowsRevision(value: unknown): string {
+  const revision = adminText(value, 64, 64);
+  if (!/^[a-f0-9]{64}$/.test(revision)) throw new AdminWorkspaceError();
+  return revision;
+}
+
+export const getAdminProductControls = async (signal?: AbortSignal, actor?: DirectAdminSession) => {
+  const snapshot = await request<AdminProductSnapshot>(
+    "/admin/product-controls",
+    signal ? { signal } : undefined,
+    actor,
+  );
+  return {
+    ...snapshot,
+    homeDiscoveryMode: adminKnown(snapshot.homeDiscoveryMode, homeDiscoveryModes),
+    homeRowsRevision: readHomeRowsRevision(snapshot.homeRowsRevision),
+  };
+};
+
+export async function updateAdminHomeDiscoveryMode(
+  value: HomeDiscoveryMode,
+  reason: string,
+  confirmHighImpact: boolean,
+  signal?: AbortSignal,
+  actor?: DirectAdminSession,
+) {
+  if (!confirmHighImpact || reason.trim().length < 3 || reason.trim().length > 500)
+    throw new AdminWorkspaceError();
+  adminKnown(value, homeDiscoveryModes);
+  const result = await request<unknown>(
+    "/admin/settings/homeDiscoveryMode",
+    {
+      signal: signal ?? null,
+      method: "PATCH",
+      body: JSON.stringify({ value, reason: reason.trim(), confirmHighImpact }),
+    },
+    actor,
+  );
+  try {
+    const acknowledgment = adminObject(result);
+    if (
+      acknowledgment.key !== "homeDiscoveryMode" ||
+      acknowledgment.value !== value ||
+      acknowledgment.highImpact !== true ||
+      typeof acknowledgment.changed !== "boolean"
+    )
+      throw new AdminWorkspaceError();
+    const saved = await getAdminProductControls(signal, actor);
+    if (saved.homeDiscoveryMode !== value) throw new AdminWorkspaceError();
+    return saved.homeDiscoveryMode;
+  } catch (error) {
+    if (
+      error instanceof AdminWorkspaceError &&
+      ([401, 403].includes(error.status) ||
+        (error.status === 409 && ["ACCOUNT_CHANGED", "SESSION_CHANGED"].includes(error.code)))
+    )
+      throw error;
+    throw new AdminWorkspaceError(0, true);
+  }
+}
+
+export async function createAdminHomeRow(
+  input: CreateAdminHomeRow,
+  signal?: AbortSignal,
+  actor?: DirectAdminSession,
+) {
+  const submitted = {
+    ...input,
+    key: input.key.trim(),
+    title: input.title.trim(),
+    targetRegions: parseRegionTargets(input.targetRegions.join(",")).sort(),
+    reason: input.reason.trim(),
+  };
+  adminId(submitted.requestId);
+  readHomeRowsRevision(submitted.expectedRowsRevision);
+  const result = await request<unknown>(
+    "/admin/product-controls/home-rows",
+    { signal: signal ?? null, method: "POST", body: JSON.stringify(submitted) },
+    actor,
+  );
+  try {
+    const acknowledgment = adminObject(result);
+    const value = adminObject(acknowledgment.row);
+    if (
+      typeof value.enabled !== "boolean" ||
+      typeof value.regionPersonalizationRequired !== "boolean"
+    )
+      throw new AdminWorkspaceError();
+    const row: AdminHomeRow = {
+      id: adminId(value.id),
+      key: adminText(value.key, 80, 1),
+      title: adminText(value.title, 120, 1),
+      source: adminKnown(value.source, homeRowSources),
+      audience: adminKnown(value.audience, ["ALL", "AUTHENTICATED", "ANONYMOUS"]),
+      enabled: value.enabled,
+      position: adminCount(value.position),
+      maxItems: adminCount(value.maxItems, 40),
+      regionPersonalizationRequired: value.regionPersonalizationRequired,
+      targetRegions: adminRows(value.targetRegions, 64, (region) => adminText(region, 2, 2)),
+      manualItems: adminRows(value.manualItems, 100, (entry) => {
+        const item = adminObject(entry);
+        return {
+          id: adminId(item.id),
+          entityType: adminKnown(item.entityType, ["VIDEO", "CREATOR_TV", "CHANNEL", "PLAYLIST"]),
+          entityId: adminId(item.entityId),
+          position: adminCount(item.position),
+        };
+      }),
+    };
+    if (
+      row.id !== submitted.requestId ||
+      row.key !== submitted.key ||
+      row.title !== submitted.title ||
+      row.source !== submitted.source ||
+      row.audience !== submitted.audience ||
+      row.enabled !== submitted.enabled ||
+      row.maxItems !== submitted.maxItems ||
+      row.regionPersonalizationRequired !== submitted.regionPersonalizationRequired ||
+      JSON.stringify([...row.targetRegions].sort()) !== JSON.stringify(submitted.targetRegions) ||
+      typeof acknowledgment.replayed !== "boolean"
+    )
+      throw new AdminWorkspaceError();
+    return {
+      row,
+      replayed: acknowledgment.replayed,
+      homeRowsRevision: readHomeRowsRevision(acknowledgment.homeRowsRevision),
+    };
+  } catch {
+    throw new AdminWorkspaceError(0, true);
+  }
+}
 
 export const patchAdminHomeRow = (
   rowId: string,
@@ -63,7 +235,7 @@ export const patchAdminHomeRow = (
   signal?: AbortSignal,
   actor?: DirectAdminSession,
 ) =>
-  request<Omit<AdminHomeRow, "manualItems">>(
+  request<Omit<AdminHomeRow, "manualItems"> & { homeRowsRevision: string }>(
     `/admin/product-controls/home-rows/${rowId}`,
     {
       signal: signal ?? null,
@@ -79,7 +251,7 @@ export const reorderAdminHomeRows = (
   signal?: AbortSignal,
   actor?: DirectAdminSession,
 ) =>
-  request<{ rowIds: string[] }>(
+  request<{ rowIds: string[]; homeRowsRevision: string }>(
     "/admin/product-controls/home-rows/order",
     {
       signal: signal ?? null,

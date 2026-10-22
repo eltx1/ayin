@@ -14,7 +14,7 @@ const myAyin = readFileSync(
 
 describe("Task 12 consumer discovery surfaces", () => {
   it("uses the real discovery browser instead of placeholder catalog cards", () => {
-    expect(homePage).toContain("<DiscoveryHome />");
+    expect(homePage).toContain("<DiscoveryHome showHero");
     expect(homePage).not.toContain("Preview 01");
     expect(homePage).not.toContain("Preview 06");
   });

@@ -16,6 +16,7 @@ interface HeroProperties {
   primaryAction?: HeroAction;
   secondaryAction?: HeroAction;
   title: string;
+  compact?: boolean;
 }
 
 export function Hero({
@@ -26,11 +27,12 @@ export function Hero({
   primaryAction,
   secondaryAction,
   title,
+  compact = false,
 }: HeroProperties) {
   return (
     <section
       aria-labelledby="ayin-hero-title"
-      className={styles.hero}
+      className={`${styles.hero} ${compact ? styles.compact : ""}`}
       onFocusCapture={onFocusCapture}
     >
       <div aria-hidden="true" className={styles.visual}>

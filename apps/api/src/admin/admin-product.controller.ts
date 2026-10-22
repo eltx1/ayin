@@ -7,6 +7,7 @@ import {
   Inject,
   Param,
   Patch,
+  Post,
   Put,
   Query,
   Req,
@@ -18,6 +19,7 @@ import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { OptionalAuthGuard } from "../auth/optional-auth.guard.js";
 import { TrustedRegionService, type HeaderBag } from "../video-policy/trusted-region.service.js";
 import {
+  createHomeRowSchema,
   homeRowPatchSchema,
   manualItemsSchema,
   reorderHomeRowsSchema,
@@ -44,6 +46,19 @@ export class AdminProductController {
   @Header("Cache-Control", "private, no-store")
   getSnapshot() {
     return this.product.getAdminSnapshot();
+  }
+
+  @Post("home-rows")
+  @Header("Cache-Control", "private, no-store")
+  @RequireAdminStepUp()
+  createRow(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
+    const input = this.parse(
+      createHomeRowSchema,
+      body,
+      "INVALID_HOME_ROW",
+      "Check the section key, source, limits and creation review.",
+    );
+    return this.product.createRow(request.ayinAuth.accountId, input);
   }
 
   @Patch("home-rows/:rowId")

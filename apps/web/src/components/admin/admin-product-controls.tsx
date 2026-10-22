@@ -33,31 +33,45 @@ import { useI18n } from "@/components/i18n/i18n-provider";
 import { AdminRegionalMerchandising } from "./admin-regional-merchandising";
 import styles from "@/app/admin/admin.module.css";
 import {
+  createAdminHomeRow,
   getAdminProductControls,
+  homeRowSources,
   mergeHomeRowFields,
   parseRegionTargets,
   patchAdminHomeRow,
   reorderAdminHomeRows,
   replaceAdminHomeRowManualItems,
   updateAdminProductControls,
+  updateAdminHomeDiscoveryMode,
   type AdminHomeRow,
+  type CreateAdminHomeRow,
+  type HomeDiscoveryMode,
   type ProductControls,
 } from "@/lib/admin-product";
 
-const homeRowSources = [
-  "CONTINUE_WATCHING",
-  "TRENDING_WORLDWIDE",
-  "POPULAR_NOW",
-  "NEW_ON_AYIN",
-  "BECAUSE_YOU_WATCHED",
-  "POPULAR_REGION",
-  "MOVIES",
-  "SERIES",
-  "CREATOR_TV",
-  "CREATORS_YOU_FOLLOW",
-  "RECENTLY_ADDED",
-  "EDITOR_PICKS",
-] as const;
+const homeSourceLabels = {
+  CONTINUE_WATCHING: ["Continue watching", "متابعة المشاهدة"],
+  TRENDING_WORLDWIDE: ["Trending worldwide", "الرائج عالميًا"],
+  POPULAR_NOW: ["Popular now", "الأكثر مشاهدة الآن"],
+  NEW_ON_AYIN: ["New on AYIN", "جديد AYIN"],
+  BECAUSE_YOU_WATCHED: ["Because you watched", "بناءً على مشاهداتك"],
+  POPULAR_REGION: ["Popular in the viewer's region", "الرائج في منطقة المشاهد"],
+  MOVIES: ["Movies", "أفلام"],
+  SERIES: ["Series", "مسلسلات"],
+  CREATOR_TV: ["Creator TV", "تلفزيون المنشئين"],
+  CREATORS_YOU_FOLLOW: ["Followed creators", "المنشئون الذين تتابعهم"],
+  RECENTLY_ADDED: ["Recently added", "المضاف حديثًا"],
+  EDITOR_PICKS: ["Editor's picks", "اختيارات المحررين"],
+} satisfies Record<(typeof homeRowSources)[number], [string, string]>;
+
+const emptySectionDraft = {
+  key: "",
+  title: "",
+  source: "RECENTLY_ADDED" as CreateAdminHomeRow["source"],
+  audience: "ALL" as CreateAdminHomeRow["audience"],
+  enabled: true,
+  maxItems: 24,
+};
 
 export function AdminProductControls() {
   const { t } = useI18n();
@@ -135,6 +149,13 @@ function ProductControlsEditor({
   const [error, setError] = useState<string | null>(null);
   const [regionDrafts, setRegionDrafts] = useState<Record<string, string>>({});
   const [rows, setRows] = useState<AdminHomeRow[]>([]);
+  const [rowsRevision, setRowsRevision] = useState("");
+  const [savedHomeMode, setSavedHomeMode] = useState<HomeDiscoveryMode>("INHERIT");
+  const [homeMode, setHomeMode] = useState<HomeDiscoveryMode>("INHERIT");
+  const [modeConfirmed, setModeConfirmed] = useState(false);
+  const [sectionDraft, setSectionDraft] = useState({ ...emptySectionDraft });
+  const [managedTransitionConfirmed, setManagedTransitionConfirmed] = useState(false);
+  const creationRequest = useRef<string | null>(null);
   const [manualDrafts, setManualDrafts] = useState<Record<string, MerchandisingSelection[]>>({});
   const [targets, setTargets] = useState<Record<string, MerchandisingTarget>>({});
   const activeWrite = useRef<AbortController | null>(null);
@@ -156,6 +177,10 @@ function ProductControlsEditor({
       .then((snapshot) => {
         if (controller.signal.aborted || !isCurrent()) return;
         setRows(snapshot.rows);
+        setRowsRevision(snapshot.homeRowsRevision);
+        setSavedHomeMode(snapshot.homeDiscoveryMode);
+        setHomeMode(snapshot.homeDiscoveryMode);
+        setModeConfirmed(false);
         setControls(snapshot.controls);
         setManualDrafts(
           Object.fromEntries(
@@ -218,12 +243,33 @@ function ProductControlsEditor({
       );
       if (mounted.current && !controller.signal.aborted && isCurrent()) {
         apply(result);
+        if (
+          result &&
+          typeof result === "object" &&
+          "homeRowsRevision" in result &&
+          typeof result.homeRowsRevision === "string" &&
+          /^[a-f0-9]{64}$/.test(result.homeRowsRevision)
+        )
+          setRowsRevision(result.homeRowsRevision);
         setMessage(success);
       }
     } catch (cause) {
       if (!mounted.current || controller.signal.aborted || !isCurrent()) return;
       if (merchandisingIdentityFailure(cause)) {
         onDenied();
+        return;
+      }
+      if (cause instanceof AdminWorkspaceError && cause.status === 409) {
+        setError(
+          cause.code === "HOME_ROW_KEY_EXISTS"
+            ? copy("A saved section already uses this key.", "يوجد قسم محفوظ يستخدم هذا المعرّف.")
+            : cause.code === "HOME_ROW_LIMIT_REACHED"
+              ? copy("Use up to 100 home sections.", "يمكن إضافة 100 قسم للصفحة الرئيسية كحد أقصى.")
+              : copy(
+                  "The saved sections changed or this creation request was already used. Reload the saved settings and review them before retrying.",
+                  "تغيّرت الأقسام المحفوظة أو استُخدم طلب الإنشاء بالفعل. أعد تحميل الإعدادات المحفوظة وراجعها قبل المحاولة مجددًا.",
+                ),
+        );
         return;
       }
       setError(
@@ -245,6 +291,59 @@ function ProductControlsEditor({
         setPendingAction(null);
       }
     }
+  }
+
+  function createSection() {
+    const firstInheritedSection = savedHomeMode === "INHERIT" && rows.length === 0;
+    if (firstInheritedSection && !managedTransitionConfirmed) return;
+    creationRequest.current ??= crypto.randomUUID();
+    void mutate(
+      (signal) =>
+        createAdminHomeRow(
+          {
+            ...sectionDraft,
+            requestId: creationRequest.current!,
+            expectedRowsRevision: rowsRevision,
+            regionPersonalizationRequired: false,
+            targetRegions: [],
+            confirmManagedTransition: managedTransitionConfirmed,
+            reason,
+          },
+          signal,
+          lease.session,
+        ),
+      copy(
+        "Section saved. Review its content and visibility below.",
+        "حُفظ القسم. راجع محتواه وإتاحته أدناه.",
+      ),
+      ({ row }) => {
+        setRows((current) =>
+          current.some((item) => item.id === row.id) ? current : [...current, row],
+        );
+        setManualDrafts((current) => ({
+          ...current,
+          [row.id]: row.manualItems.map((item) => ({
+            entityType: item.entityType as MerchandisingSelection["entityType"],
+            entityId: item.entityId,
+          })),
+        }));
+        setRegionDrafts((current) => ({ ...current, [row.id]: row.targetRegions.join(", ") }));
+        setSectionDraft({ ...emptySectionDraft });
+        setManagedTransitionConfirmed(false);
+        creationRequest.current = null;
+      },
+      "create",
+    );
+  }
+
+  function reloadSavedSettings() {
+    setMessage(null);
+    setError(null);
+    setLoading(true);
+    setSectionDraft({ ...emptySectionDraft });
+    setManagedTransitionConfirmed(false);
+    creationRequest.current = null;
+    setRevision((current) => current + 1);
   }
 
   function saveRegions(row: AdminHomeRow) {
@@ -365,6 +464,12 @@ function ProductControlsEditor({
             )}
           </p>
         </div>
+        <button type="button" className={styles.button} onClick={reloadSavedSettings}>
+          {copy(
+            "Discard drafts and reload saved settings",
+            "إلغاء المسودات وإعادة تحميل الإعدادات المحفوظة",
+          )}
+        </button>
       </header>
 
       {error ? <p role="alert">{error}</p> : null}
@@ -395,6 +500,237 @@ function ProductControlsEditor({
             "اضبط الصفوف والجمهور والحدود واختيارات المحررين لاستكشاف المحتوى العام.",
           )}
         </p>
+        <form
+          className={fields.panel}
+          aria-label={copy("Home composition", "تكوين الصفحة الرئيسية")}
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (homeMode === savedHomeMode || !modeConfirmed) return;
+            void mutate(
+              (signal) =>
+                updateAdminHomeDiscoveryMode(
+                  homeMode,
+                  reason,
+                  modeConfirmed,
+                  signal,
+                  lease.session,
+                ),
+              copy(
+                "Home composition saved and verified.",
+                "حُفظ تكوين الصفحة الرئيسية وتم التحقق منه.",
+              ),
+              (saved) => {
+                setSavedHomeMode(saved);
+                setHomeMode(saved);
+                setModeConfirmed(false);
+                setManagedTransitionConfirmed(false);
+              },
+              "home-mode",
+            );
+          }}
+        >
+          <label htmlFor={`${editorId}-home-mode`}>
+            {copy("Home composition", "تكوين الصفحة الرئيسية")}
+          </label>
+          <select
+            id={`${editorId}-home-mode`}
+            value={homeMode}
+            aria-describedby={`${editorId}-home-mode-help`}
+            onChange={(event) => {
+              setHomeMode(event.target.value as HomeDiscoveryMode);
+              setModeConfirmed(false);
+            }}
+          >
+            <option value="INHERIT">
+              {copy("Inherit existing setup", "اتباع الإعداد الحالي")}
+            </option>
+            <option value="AUTO">{copy("Automatic catalog", "كتالوج تلقائي")}</option>
+            <option value="MANAGED">{copy("Managed sections", "أقسام مُدارة")}</option>
+          </select>
+          <p id={`${editorId}-home-mode-help`} className={styles.muted}>
+            {homeMode === "AUTO"
+              ? copy(
+                  "Build the home from eligible published catalog content. Saved sections remain available for Managed mode.",
+                  "أنشئ الصفحة الرئيسية تلقائيًا من محتوى الكتالوج المنشور والمؤهل للمشاهدة. تظل الأقسام المحفوظة متاحة للوضع المُدار.",
+                )
+              : homeMode === "MANAGED"
+                ? copy(
+                    "Use configured sections and the editorial hero. Disabled sections stay disabled; an empty setup stays empty.",
+                    "استخدم الأقسام المُعدّة والمحتوى الرئيسي المختار تحريريًا. تبقى الأقسام المعطّلة كما هي، وتبقى الإعدادات الفارغة بلا أقسام.",
+                  )
+                : copy(
+                    "Use automatic catalog composition only when no sections have been saved. Any saved section, including a disabled one, selects Managed mode.",
+                    "استخدم الكتالوج التلقائي فقط عند عدم وجود أقسام محفوظة. وجود أي قسم محفوظ، حتى لو كان معطّلًا، يختار الوضع المُدار.",
+                  )}
+          </p>
+          <label className={fields.check}>
+            <input
+              type="checkbox"
+              checked={modeConfirmed}
+              onChange={(event) => setModeConfirmed(event.target.checked)}
+            />
+            {copy(
+              "I reviewed how this changes the public home.",
+              "راجعت تأثير هذا التغيير على الصفحة الرئيسية العامة.",
+            )}
+          </label>
+          <ActionButton
+            type="submit"
+            disabled={
+              busy || !modeConfirmed || homeMode === savedHomeMode || reason.trim().length < 3
+            }
+          >
+            {pendingAction === "home-mode"
+              ? copy("Saving home composition…", "جارٍ حفظ تكوين الصفحة الرئيسية…")
+              : copy("Save home composition", "حفظ تكوين الصفحة الرئيسية")}
+          </ActionButton>
+        </form>
+
+        <details className={fields.panel}>
+          <summary>{copy("Create section", "إنشاء قسم")}</summary>
+          <form
+            className={fields.panel}
+            aria-label={copy("Create section", "إنشاء قسم")}
+            onSubmit={(event) => {
+              event.preventDefault();
+              createSection();
+            }}
+          >
+            <TextField
+              id={`${editorId}-section-title`}
+              label={copy("Section title", "عنوان القسم")}
+              required
+              maxLength={120}
+              value={sectionDraft.title}
+              dir="auto"
+              onChange={(event) =>
+                setSectionDraft((current) => ({ ...current, title: event.target.value }))
+              }
+            />
+            <TextField
+              id={`${editorId}-section-key`}
+              label={copy("Section key", "معرّف القسم")}
+              hint={copy(
+                "A unique key using lowercase English letters, numbers, - or _. The auto- prefix is reserved.",
+                "معرّف فريد بحروف إنجليزية صغيرة أو أرقام أو - أو _. البادئة auto- محجوزة.",
+              )}
+              required
+              maxLength={80}
+              value={sectionDraft.key}
+              dir="ltr"
+              onChange={(event) =>
+                setSectionDraft((current) => ({ ...current, key: event.target.value }))
+              }
+            />
+            <label htmlFor={`${editorId}-section-source`}>
+              {copy("Content source", "مصدر المحتوى")}
+            </label>
+            <select
+              id={`${editorId}-section-source`}
+              value={sectionDraft.source}
+              onChange={(event) =>
+                setSectionDraft((current) => ({
+                  ...current,
+                  source: event.target.value as CreateAdminHomeRow["source"],
+                }))
+              }
+            >
+              {homeRowSources.map((source) => (
+                <option key={source} value={source}>
+                  {homeSourceLabels[source][locale === "ar" ? 1 : 0]}
+                </option>
+              ))}
+            </select>
+            <label htmlFor={`${editorId}-section-audience`}>{copy("Audience", "الجمهور")}</label>
+            <select
+              id={`${editorId}-section-audience`}
+              value={sectionDraft.audience}
+              onChange={(event) =>
+                setSectionDraft((current) => ({
+                  ...current,
+                  audience: event.target.value as CreateAdminHomeRow["audience"],
+                }))
+              }
+            >
+              <option value="ALL">{copy("All viewers", "كل المشاهدين")}</option>
+              <option value="AUTHENTICATED">
+                {copy("Signed-in viewers", "المشاهدون المسجّلون")}
+              </option>
+              <option value="ANONYMOUS">{copy("Visitors", "الزوار")}</option>
+            </select>
+            <TextField
+              id={`${editorId}-section-limit`}
+              label={copy("Maximum items", "الحد الأقصى للعناصر")}
+              type="number"
+              min={1}
+              max={40}
+              required
+              value={sectionDraft.maxItems}
+              onChange={(event) =>
+                setSectionDraft((current) => ({ ...current, maxItems: Number(event.target.value) }))
+              }
+            />
+            <label className={fields.check}>
+              <input
+                type="checkbox"
+                checked={sectionDraft.enabled}
+                onChange={(event) =>
+                  setSectionDraft((current) => ({ ...current, enabled: event.target.checked }))
+                }
+              />
+              {copy("Enable this section in Managed mode", "تفعيل هذا القسم في الوضع المُدار")}
+            </label>
+            {sectionDraft.source === "EDITOR_PICKS" ? (
+              <p className={styles.muted}>
+                {copy(
+                  "Editor's picks starts empty. Select featured items after creating the section.",
+                  "يبدأ قسم اختيارات المحررين فارغًا. اختر المحتوى المميز بعد إنشاء القسم.",
+                )}
+              </p>
+            ) : null}
+            {savedHomeMode === "AUTO" ? (
+              <p className={styles.muted}>
+                {copy(
+                  "This section is saved for Managed mode. Automatic catalog composition continues until you change the home composition.",
+                  "يُحفظ هذا القسم للوضع المُدار. يستمر تكوين الكتالوج التلقائي حتى تغيّر تكوين الصفحة الرئيسية.",
+                )}
+              </p>
+            ) : null}
+            {savedHomeMode === "INHERIT" && rows.length === 0 ? (
+              <label className={fields.check}>
+                <input
+                  type="checkbox"
+                  checked={managedTransitionConfirmed}
+                  onChange={(event) => setManagedTransitionConfirmed(event.target.checked)}
+                />
+                {copy(
+                  "I understand that creating the first section switches the inherited home to Managed. Disabled or empty sections may leave the home without visible content.",
+                  "أفهم أن إنشاء أول قسم يحوّل الصفحة الرئيسية المتّبعة للإعداد الحالي إلى الوضع المُدار. قد تترك الأقسام المعطّلة أو الفارغة الصفحة بلا محتوى ظاهر.",
+                )}
+              </label>
+            ) : null}
+            <ActionButton
+              type="submit"
+              disabled={
+                busy ||
+                !rowsRevision ||
+                rows.length >= 100 ||
+                reason.trim().length < 3 ||
+                !sectionDraft.title.trim() ||
+                !/^[a-z0-9][a-z0-9_-]{0,79}$/.test(sectionDraft.key.trim()) ||
+                sectionDraft.key.trim().startsWith("auto-") ||
+                !Number.isInteger(sectionDraft.maxItems) ||
+                sectionDraft.maxItems < 1 ||
+                sectionDraft.maxItems > 40 ||
+                (savedHomeMode === "INHERIT" && rows.length === 0 && !managedTransitionConfirmed)
+              }
+            >
+              {pendingAction === "create"
+                ? copy("Creating section…", "جارٍ إنشاء القسم…")
+                : copy("Create section", "إنشاء قسم")}
+            </ActionButton>
+          </form>
+        </details>
         {rows.length === 0 ? <p role="status">{t("merch.empty")}</p> : null}
         <div className={styles.tableWrap}>
           <table className={styles.table}>
@@ -442,7 +778,7 @@ function ProductControlsEditor({
                     >
                       {homeRowSources.map((source) => (
                         <option key={source} value={source}>
-                          {source}
+                          {homeSourceLabels[source][locale === "ar" ? 1 : 0]}
                         </option>
                       ))}
                     </select>

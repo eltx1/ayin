@@ -85,8 +85,8 @@ function isDocumentNavigation(request: NextRequest): boolean {
   if (request.headers.get("rsc") === "1") return false;
   if (request.headers.get("next-router-prefetch") === "1") return false;
   const destination = request.headers.get("sec-fetch-dest");
-  // Next strips internal Flight/prefetch headers before Proxy. Fetch metadata
-  // survives normalization, so an `empty` destination is never a document.
+  // Fetch metadata also distinguishes data and iframe requests from documents.
+  // They must not persist a preference even when their Accept includes HTML.
   // Older clients without fetch metadata must explicitly request HTML; a
   // generic */* or absent Accept header cannot mutate a language preference.
   if (destination) return destination === "document";
@@ -98,7 +98,10 @@ function isDocumentNavigation(request: NextRequest): boolean {
 export function proxy(request: NextRequest) {
   const requestId = safeTraceId(request.headers.get("x-request-id")) ?? crypto.randomUUID();
   const correlationId = safeTraceId(request.headers.get("x-correlation-id")) ?? requestId;
-  const { pathname } = request.nextUrl;
+  // Paired with skipProxyUrlNormalize: use the original URL, not NextURL's
+  // normalized hostname, so every locale rewrite stays on the request origin.
+  const url = new URL(request.url);
+  const { pathname } = url;
 
   if (isLocaleBypassedPath(pathname)) {
     return decorateResponse(
@@ -110,9 +113,9 @@ export function proxy(request: NextRequest) {
     );
   }
 
-  const requestedLocale = request.nextUrl.searchParams.get("lang");
+  const requestedLocale = url.searchParams.get("lang");
   if (isLocale(requestedLocale) && isDocumentNavigation(request)) {
-    const target = request.nextUrl.clone();
+    const target = new URL(url);
     target.pathname = localizePath(stripLocalePrefix(pathname), requestedLocale);
     target.searchParams.delete("lang");
     return decorateResponse(
@@ -128,7 +131,7 @@ export function proxy(request: NextRequest) {
   });
   const canonicalPath = canonicalPublicPath(pathname, routeLocale);
   if (canonicalPath !== pathname) {
-    const target = request.nextUrl.clone();
+    const target = new URL(url);
     target.pathname = canonicalPath;
     // Locale preferences vary by request; do not let a CDN reuse this redirect.
     const response = persistLocale(NextResponse.redirect(target, 308), routeLocale, request);
@@ -138,7 +141,7 @@ export function proxy(request: NextRequest) {
 
   const pathLocale = localeFromPath(pathname);
   if (pathLocale === defaultLocale) {
-    const target = request.nextUrl.clone();
+    const target = new URL(url);
     target.pathname = stripLocalePrefix(pathname);
     return decorateResponse(
       persistLocale(NextResponse.redirect(target), defaultLocale, request),
@@ -148,7 +151,7 @@ export function proxy(request: NextRequest) {
   }
 
   if (pathLocale) {
-    const rewrite = request.nextUrl.clone();
+    const rewrite = new URL(url);
     rewrite.pathname = stripLocalePrefix(pathname);
     const response = NextResponse.rewrite(rewrite, {
       request: { headers: requestHeaders(request, requestId, correlationId, pathLocale) },
@@ -165,7 +168,7 @@ export function proxy(request: NextRequest) {
   });
 
   if (locale !== defaultLocale && isDocumentNavigation(request)) {
-    const target = request.nextUrl.clone();
+    const target = new URL(url);
     target.pathname = localizePath(pathname, locale);
     return decorateResponse(
       persistLocale(NextResponse.redirect(target), locale, request),

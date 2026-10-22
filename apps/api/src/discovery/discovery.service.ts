@@ -7,6 +7,7 @@ import {
   isKidsDiscoverySourceAllowed,
   kidsSafeHref,
 } from "../kids/kids-policy.js";
+import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
 import { SeriesCatalogService } from "../series-catalog/series-catalog.service.js";
 import {
   availableVideoPolicySql,
@@ -14,6 +15,13 @@ import {
 } from "../video-policy/video-policy-query.js";
 import { VideoPolicyService } from "../video-policy/video-policy.service.js";
 import { directoryPage } from "../video-policy/catalog-directory-query.js";
+import {
+  AUTO_HOME_CANDIDATE_LIMIT,
+  AUTO_HOME_ROW_LIMIT,
+  composeAutomaticHome,
+  resolveHomeMode,
+  type HomeResponse,
+} from "./home-composition.js";
 
 const playableAssetStates = ["VALIDATED"] as const;
 const completedThumbnailAssetStates = ["UPLOADED", "VALIDATED"] as const;
@@ -102,6 +110,19 @@ export class DiscoveryError extends Error {
 export class HomeRowConfigService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
+  async hasConfiguredRows() {
+    return Boolean(await this.database.client.homeRowConfig.findFirst({ select: { id: true } }));
+  }
+
+  async hasEnabledRows() {
+    return Boolean(
+      await this.database.client.homeRowConfig.findFirst({
+        where: { enabled: true },
+        select: { id: true },
+      }),
+    );
+  }
+
   async listEnabled(authenticated: boolean) {
     return this.database.client.homeRowConfig.findMany({
       where: {
@@ -137,10 +158,18 @@ export class DiscoveryService {
     @Inject(HomeRowConfigService) private readonly rows: HomeRowConfigService,
     @Inject(SeriesCatalogService) private readonly seriesCatalog: SeriesCatalogService,
     @Inject(VideoPolicyService) private readonly videoPolicy: VideoPolicyService,
+    @Inject(PlatformSettingsService) private readonly settings: PlatformSettingsService,
   ) {}
 
-  async getHome(context: DiscoveryContext = {}) {
+  async getHome(context: DiscoveryContext = {}): Promise<HomeResponse> {
     const normalized = await this.normalizeContext(context);
+    const choice = await this.settings.get("homeDiscoveryMode");
+    const mode = resolveHomeMode(
+      choice,
+      choice === "AUTO" || choice === "MANAGED" ? false : await this.rows.hasConfiguredRows(),
+    );
+    if (mode === "AUTO") return this.loadAutomaticHome(normalized);
+
     const rows = await this.rows.listEnabled(Boolean(normalized.profileId));
     const visibleRows = rows.filter(
       (row) =>
@@ -160,22 +189,31 @@ export class DiscoveryService {
       normalized,
     );
 
+    const homeRows = loadedRows.map(({ row }, index) => ({
+      key: row.key,
+      title: row.title,
+      source: row.source,
+      maxItems: row.maxItems,
+      ...enforcedPages[index]!,
+    }));
+    const hasEnabledRows = rows.length > 0 || (await this.rows.hasEnabledRows());
     return {
-      rows: loadedRows.map(({ row }, index) => ({
-        key: row.key,
-        title: row.title,
-        source: row.source,
-        maxItems: row.maxItems,
-        ...enforcedPages[index]!,
-      })),
+      mode: "MANAGED",
+      status: homeRows.some((row) => row.items.length > 0)
+        ? "READY"
+        : hasEnabledRows
+          ? "EMPTY"
+          : "DISABLED",
+      spotlight: null,
+      rows: homeRows,
     };
   }
 
   async getKidsHome(context: DiscoveryContext = {}) {
     const home = await this.getHome({ ...context, isKidsProfile: true });
     return {
+      ...home,
       policy: KIDS_SURFACE_POLICY,
-      rows: home.rows,
     };
   }
 
@@ -427,6 +465,71 @@ export class DiscoveryService {
               : "EMPTY",
       };
     });
+  }
+
+  private async loadAutomaticHome(context: DiscoveryContext): Promise<HomeResponse> {
+    // Publication, validated media, territory, expiry, overrides and Kids policy
+    // all constrain the pool BEFORE its bound. Blocked uploads cannot crowd out
+    // older eligible titles, and a GET never creates or re-enables configuration.
+    const [candidates, continueWatching] = await Promise.all([
+      this.database.client.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT v.id FROM "Video" v
+        WHERE ${eligibleVideoSql(context)}
+        ORDER BY v."publishedAt" DESC NULLS LAST, v.id DESC
+        LIMIT ${AUTO_HOME_CANDIDATE_LIMIT}
+      `),
+      context.profileId && !context.isKidsProfile
+        ? this.loadContinueWatching(context.profileId, 0, AUTO_HOME_ROW_LIMIT, context)
+        : Promise.resolve(emptyPage("No unfinished videos are available.")),
+    ]);
+    const records = candidates.length
+      ? await this.database.client.video.findMany({
+          where: {
+            AND: [publicVideoWhere, { id: { in: candidates.map((candidate) => candidate.id) } }],
+          },
+          select: { ...videoCardSelect, description: true, contentType: true, videoForm: true },
+        })
+      : [];
+    const byId = new Map(records.map((record) => [record.id, record]));
+    const ordered = candidates.flatMap(({ id }) => {
+      const video = byId.get(id);
+      return video ? [video] : [];
+    });
+    // Recheck in one batch at the serving boundary, including progress entries.
+    // This also supplies the existing safe Kids watch links before composition.
+    const [eligiblePage, resumePage] = await this.enforcePages(
+      [
+        {
+          items: ordered.map((video) => toVideoItem(video, "Recently added")),
+          nextCursor: null,
+          availability: ordered.length ? "AVAILABLE" : "EMPTY",
+          emptyMessage: "No eligible videos are available right now.",
+        },
+        continueWatching,
+      ],
+      context,
+    );
+    const allowedItems = new Map(eligiblePage!.items.map((item) => [item.id, item]));
+    return composeAutomaticHome(
+      ordered.flatMap((video) => {
+        const item = allowedItems.get(video.id);
+        return item
+          ? [
+              {
+                item,
+                creatorId: video.channelId,
+                contentType: video.contentType,
+                videoForm: video.videoForm,
+                description: video.description,
+                durationMs: video.durationMs,
+                channelName: video.channel.name,
+              },
+            ]
+          : [];
+      }),
+      resumePage!.items,
+      { isKidsProfile: context.isKidsProfile === true },
+    );
   }
 
   private async loadRowPage(

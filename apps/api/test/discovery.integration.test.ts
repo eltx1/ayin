@@ -9,6 +9,7 @@ import { availableVideoPolicySql } from "../src/video-policy/video-policy-query.
 import { evaluatePolicy } from "../src/video-policy/video-policy.service.js";
 import { DatabaseService } from "../src/database/database.service.js";
 import { AppModule } from "../src/app.module.js";
+import type { HomeResponse } from "../src/discovery/home-composition.js";
 import {
   MEDIA_STORAGE_ADAPTER,
   type MediaStorageAdapter,
@@ -170,6 +171,255 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
     });
     return { id, slug };
   }
+
+  function homeIds(home: HomeResponse) {
+    return [
+      ...(home.spotlight ? [home.spotlight.id] : []),
+      ...home.rows.flatMap((row) => row.items.map((item) => item.id)),
+    ];
+  }
+
+  it("serves a finite automatic home from real sparse inventory without writing configuration", async () => {
+    await prisma.homeRowConfig.deleteMany();
+    const owner = await register("Automatic home", "automatic-home@example.com");
+    const first = await publishVideo(
+      owner.user.channel.id,
+      "First real title",
+      new Date(Date.now() - 1000),
+    );
+    const second = await publishVideo(owner.user.channel.id, "Second real title");
+    const storedSettingsBefore = await prisma.platformSetting.count();
+    const snapshotsBefore = await prisma.trendingScoreSnapshot.count();
+
+    const response = await app.inject({ method: "GET", url: "/public/discovery/home" });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe("private, no-store");
+    const home = response.json<HomeResponse>();
+    expect(home.mode).toBe("AUTO");
+    expect(home.status).toBe("READY");
+    expect(home.spotlight?.id).toBe(second.id);
+    expect(home.rows.map((row) => row.key)).toEqual(["auto-discover"]);
+    expect(homeIds(home)).toEqual([second.id, first.id]);
+    expect(home.rows.every((row) => row.nextCursor === null)).toBe(true);
+    const repeated = await app.inject({ method: "GET", url: "/public/discovery/home" });
+    expect(repeated.json()).toEqual(home);
+    expect(await prisma.homeRowConfig.count()).toBe(0);
+    expect(await prisma.platformSetting.count()).toBe(storedSettingsBefore);
+    expect(await prisma.trendingScoreSnapshot.count()).toBe(snapshotsBefore);
+  });
+
+  it("distinguishes an empty uninitialized catalogue from deliberately disabled rows", async () => {
+    await prisma.homeRowConfig.deleteMany();
+    const empty = await app.inject({ method: "GET", url: "/public/discovery/home" });
+    expect(empty.json()).toEqual({ mode: "AUTO", status: "EMPTY", spotlight: null, rows: [] });
+
+    const owner = await register("Disabled home", "disabled-home@example.com");
+    await publishVideo(owner.user.channel.id, "Must remain hidden from managed home");
+    await prisma.homeRowConfig.create({
+      data: {
+        key: "editor-disabled",
+        title: "Disabled by editor",
+        source: "RECENTLY_ADDED",
+        enabled: false,
+        position: 10,
+      },
+    });
+    const disabled = await app.inject({ method: "GET", url: "/public/discovery/home" });
+    expect(disabled.json()).toEqual({
+      mode: "MANAGED",
+      status: "DISABLED",
+      spotlight: null,
+      rows: [],
+    });
+    expect(
+      (await prisma.homeRowConfig.findUnique({ where: { key: "editor-disabled" } }))?.enabled,
+    ).toBe(false);
+  });
+
+  it("preserves editorial ownership when enabled rows target a different audience", async () => {
+    await prisma.homeRowConfig.deleteMany();
+    await prisma.homeRowConfig.create({
+      data: {
+        key: "members-only-row",
+        title: "Member selection",
+        source: "RECENTLY_ADDED",
+        audience: "AUTHENTICATED",
+        position: 10,
+      },
+    });
+    const home = await app.inject({ method: "GET", url: "/public/discovery/home" });
+    expect(home.json()).toEqual({ mode: "MANAGED", status: "EMPTY", spotlight: null, rows: [] });
+  });
+
+  it("honors explicit operator AUTO and MANAGED choices without changing stored rows", async () => {
+    const owner = await register("Chosen home", "chosen-home@example.com");
+    const video = await publishVideo(owner.user.channel.id, "Chosen mode title");
+    await prisma.homeRowConfig.updateMany({ data: { enabled: false } });
+    const setting = await prisma.platformSetting.create({
+      data: {
+        namespace: "DISCOVERY",
+        key: "homeDiscoveryMode",
+        valueType: "STRING",
+        value: "AUTO",
+      },
+    });
+    const automatic = await app.inject({ method: "GET", url: "/public/discovery/home" });
+    expect(automatic.json<HomeResponse>().mode).toBe("AUTO");
+    expect(homeIds(automatic.json<HomeResponse>())).toEqual([video.id]);
+    expect(await prisma.homeRowConfig.count({ where: { enabled: true } })).toBe(0);
+
+    await prisma.homeRowConfig.deleteMany();
+    await prisma.platformSetting.update({ where: { id: setting.id }, data: { value: "MANAGED" } });
+    const managed = await app.inject({ method: "GET", url: "/public/discovery/home" });
+    expect(managed.json()).toEqual({
+      mode: "MANAGED",
+      status: "DISABLED",
+      spotlight: null,
+      rows: [],
+    });
+  });
+
+  it("filters unavailable videos before the bounded automatic pool and rechecks only that pool", async () => {
+    await prisma.homeRowConfig.deleteMany();
+    const owner = await register("Automatic policy", "automatic-policy@example.com");
+    const now = Date.now();
+    const videos = Array.from({ length: 104 }, (_, index) => ({
+      id: randomUUID(),
+      channelId: owner.user.channel.id,
+      slug: `auto-policy-${randomUUID()}`,
+      title: `Automatic policy ${index}`,
+      status: "PUBLISHED" as const,
+      visibility: "PUBLIC" as const,
+      publishedAt: new Date(now - index * 1000),
+    }));
+    await prisma.video.createMany({ data: videos });
+    await prisma.mediaAsset.createMany({
+      data: videos.map((video) => ({
+        videoId: video.id,
+        channelId: video.channelId,
+        kind: "SOURCE_VIDEO" as const,
+        status: "VALIDATED" as const,
+        r2ObjectKey: `automatic/${video.id}.mp4`,
+        mimeType: "video/mp4",
+        sizeBytes: 1024n,
+      })),
+    });
+    await prisma.videoPolicy.createMany({
+      data: videos.slice(0, 101).map((video, index) => ({
+        videoId: video.id,
+        ...(index % 2
+          ? { allowedTerritories: ["DE"] }
+          : { rightsExpiresAt: new Date(now - 60_000) }),
+      })),
+    });
+    await prisma.videoPolicyOverride.create({
+      data: {
+        videoId: videos[101]!.id,
+        disposition: "FORCE_BLOCK",
+        actorAccountId: owner.user.account.id,
+        reason: "Automatic home must honor current policy blocks",
+      },
+    });
+    const database = moduleReference.get(DatabaseService).client;
+    const candidates = vi.spyOn(database, "$queryRaw");
+    const cardReads = vi.spyOn(database.video, "findMany");
+    try {
+      const response = await app.inject({ method: "GET", url: "/public/discovery/home" });
+      expect(response.statusCode).toBe(200);
+      expect(homeIds(response.json<HomeResponse>())).toEqual(
+        videos.slice(102).map((video) => video.id),
+      );
+      expect(candidates).toHaveBeenCalledTimes(1);
+      expect(cardReads).toHaveBeenCalledTimes(1);
+      expect(await candidates.mock.results[0]!.value).toHaveLength(2);
+      expect(await cardReads.mock.results[0]!.value).toHaveLength(2);
+    } finally {
+      candidates.mockRestore();
+      cardReads.mockRestore();
+    }
+  });
+
+  it("applies trusted territory to AUTO while unknown and forged country signals stay closed", async () => {
+    await prisma.homeRowConfig.deleteMany();
+    const owner = await register("Automatic territory", "automatic-territory@example.com");
+    const video = await publishVideo(owner.user.channel.id, "Territory-restricted title");
+    await prisma.videoPolicy.create({ data: { videoId: video.id, allowedTerritories: ["DE"] } });
+    for (const headers of [{}, { "x-ayin-region": "DE" }]) {
+      const response = await app.inject({ method: "GET", url: "/public/discovery/home", headers });
+      expect(response.json()).toEqual({ mode: "AUTO", status: "EMPTY", spotlight: null, rows: [] });
+    }
+    const allowed = await app.inject({
+      method: "GET",
+      url: "/public/discovery/home",
+      headers: { "x-ayin-edge-token": edgeToken, "x-ayin-edge-country": "DE" },
+    });
+    expect(homeIds(allowed.json<HomeResponse>())).toEqual([video.id]);
+    const blocked = await app.inject({
+      method: "GET",
+      url: "/public/discovery/home",
+      headers: { "x-ayin-edge-token": edgeToken, "x-ayin-edge-country": "US" },
+    });
+    expect(blocked.json<HomeResponse>().status).toBe("EMPTY");
+  });
+
+  it("keeps automatic Kids discovery policy-safe and row-only, including owned Kids profiles", async () => {
+    await prisma.homeRowConfig.deleteMany();
+    const owner = await register("Automatic Kids", "automatic-kids@example.com");
+    await publishVideo(owner.user.channel.id, "Unclassified video");
+    const safe = await publishVideo(owner.user.channel.id, "Classified general audience title");
+    await prisma.videoPolicy.create({
+      data: {
+        videoId: safe.id,
+        kidsEligible: true,
+        maturityLevel: "GENERAL",
+        ageRestriction: "NONE",
+      },
+    });
+    await prisma.viewerProfile.update({
+      where: { id: owner.user.profile.id },
+      data: { isKids: true },
+    });
+    for (const request of [
+      { url: "/public/discovery/kids" },
+      { url: "/discovery/home", headers: { cookie: owner.cookie } },
+    ]) {
+      const response = await app.inject({ method: "GET", ...request });
+      expect(response.statusCode).toBe(200);
+      const home = response.json<HomeResponse>();
+      expect(home.mode).toBe("AUTO");
+      expect(home.status).toBe("READY");
+      expect(home.spotlight).toBeNull();
+      expect(homeIds(home)).toEqual([safe.id]);
+      expect(home.rows[0]?.items[0]?.href).toBe(`/watch/${safe.slug}?kids=1`);
+      expect(home.rows.map((row) => row.source)).toEqual(["RECENTLY_ADDED"]);
+    }
+  });
+
+  it("resumes owned real progress without repeating it in the automatic spotlight or shelves", async () => {
+    await prisma.homeRowConfig.deleteMany();
+    const owner = await register("Automatic resume", "automatic-resume@example.com");
+    const resume = await publishVideo(owner.user.channel.id, "Unfinished title");
+    const fresh = await publishVideo(owner.user.channel.id, "Unwatched title");
+    await prisma.watchProgress.create({
+      data: { profileId: owner.user.profile.id, videoId: resume.id, positionMs: 25_000 },
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/discovery/home",
+      headers: { cookie: owner.cookie },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe("private, no-store");
+    const home = response.json<HomeResponse>();
+    expect(home.spotlight?.id).toBe(fresh.id);
+    expect(home.rows[0]?.key).toBe("auto-continue-watching");
+    expect(home.rows[0]?.items[0]).toMatchObject({
+      id: resume.id,
+      progress: { positionMs: 25_000 },
+    });
+    expect(new Set(homeIds(home)).size).toBe(2);
+    expect(homeIds(home)).toHaveLength(2);
+  });
 
   it("renders configured rows in database order using only real eligible data", async () => {
     const viewer = await register("Discovery Viewer", "task12-viewer@example.com");

@@ -82,6 +82,29 @@ describe("shared managed hero", () => {
     };
     expect(render()).toContain('href="/ar/watch/kids-title?kids=1"');
   });
+  it("keeps saved editorial content hidden when automatic composition owns the page", () => {
+    product.controls = {
+      resolvedHero: {
+        entityType: "VIDEO",
+        entityId: "saved",
+        title: "Saved editorial feature",
+        description: null,
+        href: "/watch/saved",
+      },
+    };
+    for (const navigationStatus of ["ready", "loading", "error"]) {
+      product.navigationStatus = navigationStatus;
+      const html = renderToStaticMarkup(
+        <I18nProvider locale="en">
+          <ManagedHero allowEditorial={false} compactFallback />
+        </I18nProvider>,
+      );
+      expect(html).toContain("Stories move differently here.");
+      expect(html).not.toContain("Saved editorial feature");
+      expect(html).not.toContain("Loading featured content");
+      expect(html).not.toContain("Featured content could not be loaded");
+    }
+  });
   it("preserves creator descriptions instead of translating their content", () => {
     product.controls = {
       resolvedHero: {

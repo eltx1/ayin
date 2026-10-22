@@ -1,14 +1,17 @@
+import { createHash } from "node:crypto";
 import { Prisma } from "@ayin/db";
-import { Inject, Injectable } from "@nestjs/common";
+import { HttpException, HttpStatus, Inject, Injectable } from "@nestjs/common";
 
 import { publicVideoEligibility } from "../creator/public-video-read.js";
 import { kidsSafeHref } from "../kids/kids-policy.js";
 import type { VideoPolicyContext } from "../video-policy/video-policy.service.js";
 import { DatabaseService } from "../database/database.service.js";
+import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
 import { AdminAuditLogService } from "./admin-audit-log.service.js";
 import {
   defaultProductControls,
   productControlsSchema,
+  type CreateHomeRow,
   type HomeRowPatch,
   type ProductControls,
   type UpdateProductControls,
@@ -17,15 +20,32 @@ import { adminBadRequest } from "./admin.errors.js";
 
 const PRODUCT_CONTROLS_KEY = "productControls";
 
+export function homeRowsRevision(rows: Array<{ id: string; updatedAt: Date }>): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify(
+        rows
+          .map((row) => [row.id, row.updatedAt.toISOString()])
+          .sort(([left], [right]) => left!.localeCompare(right!)),
+      ),
+    )
+    .digest("hex");
+}
+
+function homeRowConflict(code: string, message: string) {
+  return new HttpException({ error: { code, message } }, HttpStatus.CONFLICT);
+}
+
 @Injectable()
 export class AdminProductService {
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(AdminAuditLogService) private readonly audit: AdminAuditLogService,
+    @Inject(PlatformSettingsService) private readonly settings: PlatformSettingsService,
   ) {}
 
   async getAdminSnapshot() {
-    const [rows, controls] = await Promise.all([
+    const [rows, controls, homeDiscoveryMode] = await Promise.all([
       this.database.client.homeRowConfig.findMany({
         orderBy: [{ position: "asc" }, { key: "asc" }],
         include: {
@@ -34,6 +54,7 @@ export class AdminProductService {
         },
       }),
       this.getPublicControls(),
+      this.settings.get("homeDiscoveryMode"),
     ]);
 
     const targets: Array<{ entityType: string; entityId: string }> = rows.flatMap(
@@ -45,12 +66,128 @@ export class AdminProductService {
     const selectedTargets = await this.selectedTargets(targets);
     return {
       selectedTargets,
+      homeDiscoveryMode,
+      homeRowsRevision: homeRowsRevision(rows),
       rows: rows.map((row) => ({
         ...row,
         targetRegions: row.regionTargets.map((target) => target.regionCode),
       })),
       controls,
     };
+  }
+
+  async createRow(actorAccountId: string, input: CreateHomeRow) {
+    const targetRegions = [...new Set(input.targetRegions)].sort();
+    try {
+      return await this.database.client.$transaction(
+        async (tx) => {
+          const rows = await tx.homeRowConfig.findMany({
+            orderBy: [{ position: "asc" }, { key: "asc" }],
+            include: {
+              manualItems: { orderBy: { position: "asc" } },
+              regionTargets: { orderBy: { regionCode: "asc" } },
+            },
+          });
+          const existing = rows.find((row) => row.id === input.requestId);
+          if (existing) {
+            const sameRequest =
+              existing.key === input.key &&
+              existing.title === input.title &&
+              existing.source === input.source &&
+              existing.audience === input.audience &&
+              existing.enabled === input.enabled &&
+              existing.maxItems === input.maxItems &&
+              existing.regionPersonalizationRequired === input.regionPersonalizationRequired &&
+              JSON.stringify(existing.regionTargets.map((target) => target.regionCode).sort()) ===
+                JSON.stringify(targetRegions);
+            if (!sameRequest)
+              throw homeRowConflict(
+                "HOME_ROW_REQUEST_CONFLICT",
+                "This creation request already saved a different section. Reload the saved sections.",
+              );
+            return {
+              row: { ...existing, targetRegions },
+              homeRowsRevision: homeRowsRevision(rows),
+              replayed: true,
+            };
+          }
+          if (rows.some((row) => row.key === input.key))
+            throw homeRowConflict("HOME_ROW_KEY_EXISTS", "A section already uses this key.");
+          if (homeRowsRevision(rows) !== input.expectedRowsRevision)
+            throw homeRowConflict(
+              "HOME_ROWS_CHANGED",
+              "The saved sections changed. Reload and review them before creating a section.",
+            );
+          if (rows.length >= 100)
+            throw homeRowConflict("HOME_ROW_LIMIT_REACHED", "Use up to 100 home sections.");
+
+          const mode = await this.settings.getResolvedInTransaction(tx, "homeDiscoveryMode");
+          if (!rows.length && mode.value === "INHERIT" && !input.confirmManagedTransition)
+            throw homeRowConflict(
+              "HOME_MODE_REVIEW_REQUIRED",
+              "Creating the first section changes the inherited home to Managed. Review that change first.",
+            );
+          const row = await tx.homeRowConfig.create({
+            data: {
+              id: input.requestId,
+              key: input.key,
+              title: input.title,
+              source: input.source,
+              audience: input.audience,
+              enabled: input.enabled,
+              maxItems: input.maxItems,
+              regionPersonalizationRequired: input.regionPersonalizationRequired,
+              position: rows.reduce((maximum, item) => Math.max(maximum, item.position), -1) + 1,
+              ...(targetRegions.length
+                ? { regionTargets: { create: targetRegions.map((regionCode) => ({ regionCode })) } }
+                : {}),
+            },
+            include: {
+              manualItems: { orderBy: { position: "asc" } },
+              regionTargets: { orderBy: { regionCode: "asc" } },
+            },
+          });
+          await this.audit.recordInTransaction(tx, {
+            actorAccountId,
+            action: "HOME_ROW_CREATED",
+            entityType: "HomeRowConfig",
+            entityId: row.id,
+            reason: input.reason,
+            metadata: {
+              key: row.key,
+              source: row.source,
+              audience: row.audience,
+              enabled: row.enabled,
+              maxItems: row.maxItems,
+              targetRegions,
+              inheritedModeChanged: rows.length === 0 && mode.value === "INHERIT",
+            },
+          });
+          return {
+            row: { ...row, targetRegions },
+            homeRowsRevision: homeRowsRevision([...rows, row]),
+            replayed: false,
+          };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        ["P2002", "P2034"].includes(error.code)
+      )
+        throw homeRowConflict(
+          "HOME_ROWS_CHANGED",
+          "Another section change completed. Reload the saved sections before retrying.",
+        );
+      throw error;
+    }
+  }
+
+  private async rowRevision(tx: Prisma.TransactionClient) {
+    return homeRowsRevision(
+      await tx.homeRowConfig.findMany({ select: { id: true, updatedAt: true } }),
+    );
   }
 
   // Recover labels independently of search pages and public eligibility. A
@@ -210,6 +347,7 @@ export class AdminProductService {
       return {
         ...row,
         targetRegions: row.regionTargets.map((target) => target.regionCode),
+        homeRowsRevision: await this.rowRevision(tx),
       };
     });
   }
@@ -233,7 +371,7 @@ export class AdminProductService {
         reason,
         metadata: { rowIds },
       });
-      return { rowIds };
+      return { rowIds, homeRowsRevision: await this.rowRevision(tx) };
     });
   }
 

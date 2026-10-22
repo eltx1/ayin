@@ -13,6 +13,7 @@ import { translatePublicCreator } from "@/lib/i18n/public-creator";
 import { localizePath } from "@/lib/i18n/routing";
 import { getRequestLocale } from "@/lib/i18n/server";
 import type { PublicPlaylistResponse } from "@/lib/playlist";
+import { decodePublicPlaylistRouteSegments } from "@/lib/public-route-segments";
 import { getSeoPlaylist } from "@/lib/seo-content";
 import {
   absoluteUrl,
@@ -33,13 +34,21 @@ export async function generateMetadata({
   params,
   searchParams,
 }: PublicPlaylistPageProperties): Promise<Metadata> {
-  const [{ handle, slug }, locale, query] = await Promise.all([
+  const [routeParams, locale, query] = await Promise.all([
     params,
     getRequestLocale(),
     searchParams,
   ]);
+  const segments = decodePublicPlaylistRouteSegments(routeParams);
   const kidsMode = query.kids === "1";
-  const playlist = await getSeoPlaylist(handle, slug, await trustedApiRegionHeaders(), kidsMode);
+  const playlist = segments
+    ? await getSeoPlaylist(
+        segments.handle,
+        segments.slug,
+        await trustedApiRegionHeaders(),
+        kidsMode,
+      )
+    : null;
   if (!playlist) {
     return {
       title: translatePublicCreator(locale, "playlist.unavailable"),
@@ -88,11 +97,14 @@ export default async function PublicPlaylistPage({
   params,
   searchParams,
 }: PublicPlaylistPageProperties) {
-  const [{ handle, slug }, locale, query] = await Promise.all([
+  const [routeParams, locale, query] = await Promise.all([
     params,
     getRequestLocale(),
     searchParams,
   ]);
+  const segments = decodePublicPlaylistRouteSegments(routeParams);
+  if (!segments) notFound();
+  const { handle, slug } = segments;
   const kidsMode = query.kids === "1";
   const policySuffix = kidsMode ? "?kids=1" : "";
   const t = (

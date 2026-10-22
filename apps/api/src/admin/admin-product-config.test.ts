@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createHomeRowSchema,
   defaultProductControls,
   homeRowPatchSchema,
   updateProductControlsSchema,
@@ -52,5 +53,40 @@ describe("admin product controls", () => {
       homeRowPatchSchema.safeParse({ enabled: false, reason: "Temporarily disable this row" })
         .success,
     ).toBe(true);
+  });
+
+  it("bounds new sections and reserves automatic composition keys without changing existing rows", () => {
+    const input = {
+      requestId: "11111111-1111-4111-8111-111111111111",
+      expectedRowsRevision: "a".repeat(64),
+      key: "documentaries",
+      title: "  وثائقيات  ",
+      source: "RECENTLY_ADDED",
+      reason: "Create a curated documentary section",
+    };
+    expect(createHomeRowSchema.parse(input)).toMatchObject({
+      title: "وثائقيات",
+      maxItems: 24,
+      enabled: true,
+      audience: "ALL",
+      confirmManagedTransition: false,
+    });
+    for (const patch of [
+      { key: "auto-recently-added" },
+      { key: "../admin" },
+      { key: "x".repeat(81) },
+      { source: "ARBITRARY_QUERY" },
+      { maxItems: 41 },
+      { maxItems: 0 },
+      { title: " " },
+      { reason: "" },
+      { expectedRowsRevision: "" },
+      { requestId: "not-a-uuid" },
+      { targetRegions: ["USA"] },
+    ])
+      expect(createHomeRowSchema.safeParse({ ...input, ...patch }).success).toBe(false);
+    expect(
+      createHomeRowSchema.parse({ ...input, targetRegions: ["gb", " FR "] }).targetRegions,
+    ).toEqual(["GB", "FR"]);
   });
 });
