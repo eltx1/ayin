@@ -17,6 +17,7 @@ import { EmptyState } from "@/components/viewer/view-states";
 import type { PublicPlaybackResponse, AyinPlayerInitialPreferences } from "@/lib/ayin-player";
 import { releaseHtmlMediaElement } from "@/lib/adaptive-playback";
 import { mediaAssetUrl } from "@/lib/channel";
+import { captionTrackPath } from "@/lib/caption-delivery";
 import { localizePath } from "@/lib/i18n/routing";
 import { formatNumber } from "@/lib/i18n/format";
 import { translateCatalogDetail } from "@/lib/i18n/catalog-detail";
@@ -274,7 +275,7 @@ export function WatchContent({
     ? mediaAssetUrl(data.video.adaptiveSource.objectKey)
     : null;
   const captions = data.video.captions.flatMap((track) => {
-    const src = mediaAssetUrl(track.objectKey);
+    const src = captionTrackPath(track.objectKey) ?? mediaAssetUrl(track.objectKey);
     return src
       ? [
           {

@@ -40,7 +40,17 @@ const arabic: Record<string, string> = {
   "Give your video a clear title": "اكتب عنوانًا واضحًا للفيديو",
   "Upload status": "حالة الرفع",
   "Ready to publish": "جاهز للنشر",
+  "Upload complete": "اكتمل الرفع",
+  "Last checked stage": "المرحلة عند آخر تحقق",
+  "Preparing source": "جارٍ تجهيز الملف الأصلي",
+  "Checking source": "جارٍ فحص الملف الأصلي",
   "Preparing playback": "جارٍ تجهيز المشاهدة",
+  "Saving playback": "جارٍ حفظ نسخة المشاهدة",
+  "Checking playback": "جارٍ فحص نسخة المشاهدة",
+  "Preparing preview": "جارٍ تجهيز الصورة المصغرة",
+  "Finishing checks": "جارٍ إكمال الفحوص",
+  "Checking availability": "جارٍ التحقق من جاهزية المشاهدة",
+  "Waiting for status": "في انتظار تحديث الحالة",
   "Uploading video": "جارٍ رفع الفيديو",
   "Upload progress": "تقدم الرفع",
   "Advanced settings": "إعدادات إضافية",
@@ -68,6 +78,7 @@ const arabic: Record<string, string> = {
   Queued: "في الانتظار",
   Processing: "جارٍ التجهيز",
   Failed: "تعذر التجهيز",
+  Cancelled: "أُلغي التجهيز",
   "Not started": "لم يبدأ",
   "Your video is uploading…": "جارٍ رفع الفيديو…",
   "Upload and processing complete. Your video is ready to publish.":
@@ -77,8 +88,12 @@ const arabic: Record<string, string> = {
   "Drop one supported video file to start an upload.":
     "اسحب ملف فيديو واحدًا بصيغة مدعومة لبدء الرفع.",
   "Processing complete. This video is ready to publish.": "اكتمل التجهيز. الفيديو جاهز للنشر.",
-  "Playback is not ready. The video remains saved in Studio; check its status before publishing.":
-    "نسخة المشاهدة غير جاهزة. الفيديو محفوظ في الاستوديو؛ راجع حالته قبل النشر.",
+  "Playback preparation was still pending at the last check. Automatic checks are paused; check again for an update.":
+    "لم يكتمل تجهيز المشاهدة عند آخر تحقق. توقفت عمليات التحقق التلقائية؛ تحقق مجددًا لمعرفة آخر تحديث.",
+  "Processing failed. Your video remains saved in Studio; review its status before publishing.":
+    "تعذر تجهيز الفيديو. يظل الفيديو محفوظًا في الاستوديو؛ راجع حالته قبل النشر.",
+  "Processing was cancelled. Your video remains saved in Studio; review its status before publishing.":
+    "أُلغي تجهيز الفيديو. يظل الفيديو محفوظًا في الاستوديو؛ راجع حالته قبل النشر.",
   "Processing status is temporarily unavailable. Retry checking its status.":
     "تعذر تحميل حالة التجهيز مؤقتًا. أعد التحقق من الحالة.",
   "Check the title, schedule and advanced metadata before saving.":
@@ -109,6 +124,7 @@ const arabic: Record<string, string> = {
   " · The last response is uncertain; further writes are paused.":
     " · لم تتأكد نتيجة الطلب الأخير؛ تم إيقاف التعديلات التالية.",
   "Check processing status": "التحقق من حالة التجهيز",
+  "Checking processing status…": "جارٍ التحقق من حالة التجهيز…",
   "Leave this upload? Unsaved changes and local file progress will be lost. Saved drafts remain in Studio.":
     "هل تريد مغادرة صفحة الرفع؟ ستفقد التعديلات غير المحفوظة وتقدم الملف المحلي. تظل المسودات المحفوظة في الاستوديو.",
   "Finalizing upload…": "جارٍ تأكيد الرفع…",

@@ -35,6 +35,7 @@ pnpm-debug.log*
 .turbo/
 .vitest/
 test-results-recovery/
+test-results-caption-delivery/
 
 # iOS local/generated build state
 platforms/ios/AYIN.xcodeproj/
