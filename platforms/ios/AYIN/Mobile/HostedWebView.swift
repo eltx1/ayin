@@ -292,12 +292,11 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
             guard params["id"] is NSNull || params["id"] is String else { throw MobileBridgeError.invalidRequest }
             try firebase.setUser(params["id"] as? String); return ["accepted": true]
         case "ads.banner":
-            try keys(params, ["placement"]); try placement(params)
+            try MobileContract.validateAdRequest(params, interstitial: false)
             return try await ads.showBanner()
         case "ads.hideBanner": try keys(params, []); ads.hideBanner(); return ["hidden": true]
         case "ads.interstitial":
-            try keys(params, ["placement", "naturalTransition"]); try placement(params)
-            guard MobileContract.boolean(params["naturalTransition"]) == true else { throw MobileBridgeError.invalidRequest }
+            try MobileContract.validateAdRequest(params, interstitial: true)
             let mediaActive = try? await webView.callAsyncJavaScript("return document.documentElement.dataset.ayinUploadActive === 'true' || Array.from(document.querySelectorAll('video,audio')).some(m => !m.paused && !m.ended)", arguments: [:], in: nil, contentWorld: .page)
             guard generation == documentGeneration, mediaActive as? Bool == false else { throw MobileBridgeError.busy }
             return try await ads.naturalTransition()
@@ -311,10 +310,6 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
         }
     }
 
-    private func placement(_ params: [String: Any]) throws {
-        guard let value = params["placement"] as? String,
-              ["home", "feed", "search", "channel", "browse_bottom", "natural_transition", "video_exit"].contains(value) else { throw MobileBridgeError.invalidRequest }
-    }
     private func event(_ payload: [String: Any]) {
         guard bridgeReady else {
             if (payload["type"] as? String)?.hasPrefix("notification.") == true { deferredNativeEvents = Array((deferredNativeEvents + [payload]).suffix(10)) }

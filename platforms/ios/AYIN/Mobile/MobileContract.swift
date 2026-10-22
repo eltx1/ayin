@@ -126,6 +126,15 @@ enum MobileContract {
     static let capabilities = ["privacy", "analytics", "ads.banner", "ads.interstitial", "ads.gam", "notifications", "session.reset"]
     static let methods: Set<String> = ["runtime.configure", "privacy.request", "privacy.options", "analytics.consent", "analytics.event", "analytics.user", "ads.banner", "ads.hideBanner", "ads.interstitial", "notifications.request", "notifications.token", "session.reset"]
 
+    // Shared by the actual banner/interstitial dispatch paths and contract tests.
+    static func validateAdRequest(_ params: [String: Any], interstitial: Bool) throws {
+        let allowed: Set<String> = interstitial ? ["placement", "naturalTransition"] : ["placement"]
+        guard Set(params.keys).isSubset(of: allowed),
+              let placement = params["placement"] as? String,
+              ["home", "feed", "search", "channel", "browse_bottom", "browse_transition", "natural_transition", "video_exit"].contains(placement),
+              !interstitial || boolean(params["naturalTransition"]) == true else { throw MobileBridgeError.invalidRequest }
+    }
+
     static func boolean(_ value: Any?) -> Bool? {
         guard let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else { return nil }
         return number.boolValue

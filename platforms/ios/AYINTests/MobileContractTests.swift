@@ -153,6 +153,23 @@ final class MobileContractTests: XCTestCase {
         XCTAssertThrowsError(try MobileContract.event("video_progress", params: ["content_type": "clip", "position_seconds": 4]))
     }
 
+    func testBrowseTransitionPayloadPassesNativeAdDispatchValidation() throws {
+        // Exact payload emitted by requestBrowseInterstitial in the web runtime.
+        let data = Data(#"{"placement":"browse_transition","naturalTransition":true}"#.utf8)
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertNoThrow(try MobileContract.validateAdRequest(payload, interstitial: true))
+        XCTAssertNoThrow(try MobileContract.validateAdRequest(["placement": "browse_bottom"], interstitial: false))
+        let mutations: [[String: Any]] = [["naturalTransition": false], ["naturalTransition": 1], ["naturalTransition": "true"], ["placement": "unknown"], ["placement": "/watch/private"], ["placement": 1], ["extra": true]]
+        for mutation in mutations {
+            var invalid = payload
+            mutation.forEach { invalid[$0.key] = $0.value }
+            XCTAssertThrowsError(try MobileContract.validateAdRequest(invalid, interstitial: true))
+        }
+        XCTAssertThrowsError(try MobileContract.validateAdRequest(["placement": "browse_transition"], interstitial: true))
+        XCTAssertThrowsError(try MobileContract.validateAdRequest(["naturalTransition": true], interstitial: true))
+        XCTAssertThrowsError(try MobileContract.validateAdRequest(payload, interstitial: false))
+    }
+
     func testConsentDoesNotCoerceNumbersIntoBooleans() {
         XCTAssertEqual(MobileContract.boolean(true), true)
         XCTAssertEqual(MobileContract.boolean(false), false)
