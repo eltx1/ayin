@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { detachMobileSession } from "@/lib/mobile-runtime";
 import { useViewerProduct } from "@/components/viewer/viewer-product-context";
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { apiBaseUrl, type AyinIdentity } from "@/lib/api";
@@ -47,6 +48,7 @@ export function SessionPanel({ showWelcome }: { showWelcome: boolean }) {
 
   async function logout() {
     if (!isAudienceCurrent()) return;
+    await detachMobileSession();
     await fetch(`${apiBaseUrl}/auth/logout`, { method: "POST", credentials: "include" }).catch(
       () => undefined,
     );

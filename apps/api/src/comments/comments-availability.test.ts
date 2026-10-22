@@ -18,7 +18,11 @@ function setup(overrides: Record<string, unknown> = {}, allowed = true, kids = f
   const client = {
     $queryRaw: vi.fn(async () => []),
     video: { findUnique: vi.fn(async () => video), update: vi.fn(async () => video) },
-    channelMember: { findFirst: vi.fn(async (): Promise<{ id: string } | null> => null) },
+    channelMember: {
+      findFirst: vi.fn(async (): Promise<{ id: string } | null> => null),
+      findMany: vi.fn(async () => []),
+    },
+    userBlock: { findFirst: vi.fn(async () => null), findMany: vi.fn(async () => []) },
     adminRoleAssignment: {
       findMany: vi.fn(
         async (): Promise<Array<{ role: "AD_MANAGER" | "CONTENT_MODERATOR" | "ADMIN" }>> => [],

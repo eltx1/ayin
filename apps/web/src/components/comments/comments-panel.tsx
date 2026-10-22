@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { BlockUserButton } from "@/components/social/user-blocks";
 import { useI18n } from "@/components/i18n/i18n-provider";
 import {
   ActionButton,
@@ -40,6 +41,23 @@ function CommentThread({ videoId, enabled }: { videoId: string; enabled: boolean
   const abort = useRef<AbortController | null>(null);
   const endpoint = `${apiBaseUrl}/comments/videos/${encodeURIComponent(videoId)}`;
   useEffect(() => {
+    const blocked = (event: Event) => {
+      const profileId = (event as CustomEvent<{ profileId?: string }>).detail?.profileId;
+      if (!profileId) return;
+      setItems((current) =>
+        current
+          .filter((item) => item.authorProfile.id !== profileId)
+          .map((item) => ({
+            ...item,
+            replies: item.replies.filter((reply) => reply.authorProfile.id !== profileId),
+          })),
+      );
+    };
+    window.addEventListener("ayin:user-blocked", blocked);
+    return () => window.removeEventListener("ayin:user-blocked", blocked);
+  }, []);
+
+  useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
@@ -57,6 +75,7 @@ function CommentThread({ videoId, enabled }: { videoId: string; enabled: boolean
       try {
         const response = await fetch(next === null ? endpoint : `${endpoint}?cursor=${next}`, {
           cache: "no-store",
+          credentials: "include",
           signal: controller.signal,
         });
         if (!response.ok) throw new Error("COMMENTS_UNAVAILABLE");
@@ -243,6 +262,7 @@ function CommentView({ item }: { item: ViewerComment }) {
     <article className={styles.comment}>
       <header>
         <strong dir="auto">{item.authorProfile.name}</strong>
+        {item.authorProfile.id && <BlockUserButton profileId={item.authorProfile.id} />}
         {item.pinned ? <DataBadge>{t("pinned")}</DataBadge> : null}
         {item.creatorHearted ? <DataBadge tone="success">{t("hearted")}</DataBadge> : null}
       </header>

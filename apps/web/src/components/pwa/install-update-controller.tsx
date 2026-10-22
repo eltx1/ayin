@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@/components/i18n/i18n-provider";
+import { isMobileHost } from "@/lib/mobile-bridge";
 import { ActionButton } from "@/components/ui/design-system";
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -17,6 +18,7 @@ export function InstallUpdateController() {
   const accepting = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
+    if (isMobileHost()) return;
     let active = true;
     let registration: ServiceWorkerRegistration | undefined;
     const workers = new Set<ServiceWorker>();

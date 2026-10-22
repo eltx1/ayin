@@ -1,4 +1,6 @@
 import { Module } from "@nestjs/common";
+import { MobileModule } from "./mobile/mobile.module.js";
+import { UserBlocksModule } from "./user-blocks/user-blocks.module.js";
 
 import { AdminModule } from "./admin/admin.module.js";
 import { AdsModule } from "./ads/ads.module.js";
@@ -31,6 +33,8 @@ import { WatchModule } from "./watch/watch.module.js";
 @Module({
   imports: [
     DatabaseModule,
+    MobileModule,
+    UserBlocksModule,
     PlatformConfigModule,
     ObservabilityModule,
     AuthModule,

@@ -1,0 +1,244 @@
+name: Mobile release artifacts (no store publication)
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        type: choice
+        options: [android, ios]
+        required: true
+      version_code:
+        description: "Unused, monotonically increasing Android/iOS build number"
+        type: string
+        required: true
+      version_name:
+        description: "Marketing version, for example 1.1.0"
+        type: string
+        required: true
+      signed:
+        description: "Sign using the mobile-production environment's credentials"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-release-${{ inputs.platform }}-production
+  cancel-in-progress: false
+
+env:
+  AYIN_BUILD_ENVIRONMENT: production
+  AYIN_VERSION_CODE: ${{ inputs.version_code }}
+  AYIN_VERSION_NAME: ${{ inputs.version_name }}
+
+jobs:
+  android:
+    if: github.ref == 'refs/heads/main' && inputs.platform == 'android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    environment: mobile-production
+    env:
+      AYIN_ADMOB_ANDROID_APP_ID: ${{ vars.AYIN_ADMOB_ANDROID_APP_ID }}
+      AYIN_FIREBASE_ANDROID_APP_ID: ${{ vars.AYIN_FIREBASE_ANDROID_APP_ID }}
+      AYIN_FIREBASE_PROJECT_ID: ${{ vars.AYIN_FIREBASE_PROJECT_ID }}
+      AYIN_FIREBASE_SENDER_ID: ${{ vars.AYIN_FIREBASE_SENDER_ID }}
+      AYIN_FIREBASE_API_KEY: ${{ secrets.AYIN_FIREBASE_API_KEY }}
+      AYIN_CRASHLYTICS_UPLOAD_MAPPING: ${{ inputs.signed && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate mobile release security gates
+        run: python3 scripts/mobile-validation-test.py
+      - name: Validate configured release
+        env:
+          SIGNED: ${{ inputs.signed }}
+          AYIN_ANDROID_KEYSTORE_BASE64: ${{ secrets.AYIN_ANDROID_KEYSTORE_BASE64 }}
+          AYIN_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.AYIN_ANDROID_KEYSTORE_PASSWORD }}
+          AYIN_ANDROID_KEY_ALIAS: ${{ secrets.AYIN_ANDROID_KEY_ALIAS }}
+          AYIN_ANDROID_KEY_PASSWORD: ${{ secrets.AYIN_ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          flags=()
+          if [ "$SIGNED" = true ]; then flags+=(--signed); fi
+          firebase_config="$RUNNER_TEMP/ayin-google-services.json"
+          python3 scripts/mobile-release-config.py android "${flags[@]}" --firebase-json "$firebase_config"
+          echo "AYIN_FIREBASE_CONFIG_FILE=$firebase_config" >> "$GITHUB_ENV"
+          test -f platforms/android/app/gradle.lockfile
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+      - name: Build configured minified bundle
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          manager="$(find "$sdk_root/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
+          yes | "$manager" --licenses >/dev/null || true
+          "$manager" "platforms;android-36" "build-tools;35.0.0"
+          gradle -p platforms/android --no-daemon --stacktrace \
+            :app:testMobileDebugUnitTest :app:lintMobileRelease :app:assembleMobileRelease :app:bundleMobileRelease
+          python3 scripts/mobile-android-page-size.py platforms/android/app/build/outputs/bundle/mobileRelease/app-mobile-release.aab
+          "$sdk_root/build-tools/35.0.0/zipalign" -c -P 16 4 platforms/android/app/build/outputs/apk/mobile/release/app-mobile-release-unsigned.apk
+          mkdir -p "$RUNNER_TEMP/ayin-release"
+          cp platforms/android/app/build/outputs/bundle/mobileRelease/app-mobile-release.aab "$RUNNER_TEMP/ayin-release/AYIN-release.aab"
+          cp platforms/android/app/build/outputs/mapping/mobileRelease/mapping.txt "$RUNNER_TEMP/ayin-release/"
+      - name: Sign bundle with upload key
+        if: inputs.signed
+        env:
+          AYIN_ANDROID_KEYSTORE_BASE64: ${{ secrets.AYIN_ANDROID_KEYSTORE_BASE64 }}
+          AYIN_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.AYIN_ANDROID_KEYSTORE_PASSWORD }}
+          AYIN_ANDROID_KEY_ALIAS: ${{ secrets.AYIN_ANDROID_KEY_ALIAS }}
+          AYIN_ANDROID_KEY_PASSWORD: ${{ secrets.AYIN_ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 - <<'PY'
+          import base64, os
+          from pathlib import Path
+          (Path(os.environ['RUNNER_TEMP']) / 'upload.keystore').write_bytes(base64.b64decode(os.environ['AYIN_ANDROID_KEYSTORE_BASE64'], validate=True))
+          PY
+          jarsigner -keystore "$RUNNER_TEMP/upload.keystore" \
+            -storepass:env AYIN_ANDROID_KEYSTORE_PASSWORD -keypass:env AYIN_ANDROID_KEY_PASSWORD \
+            "$RUNNER_TEMP/ayin-release/AYIN-release.aab" "$AYIN_ANDROID_KEY_ALIAS"
+          jarsigner -verify "$RUNNER_TEMP/ayin-release/AYIN-release.aab"
+      - name: Record release provenance
+        env:
+          SIGNED: ${{ inputs.signed }}
+        run: |
+          state=unsigned
+          if [ "$SIGNED" = true ]; then state=distribution; fi
+          python3 scripts/mobile-build-metadata.py --platform android --signing "$state" \
+            --output "$RUNNER_TEMP/ayin-release/build-metadata.json" \
+            --artifact "$RUNNER_TEMP/ayin-release/AYIN-release.aab" --artifact "$RUNNER_TEMP/ayin-release/mapping.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ayin-android-production-${{ inputs.version_code }}-${{ github.sha }}
+          path: ${{ runner.temp }}/ayin-release/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove temporary upload key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/upload.keystore" "$RUNNER_TEMP/ayin-google-services.json"
+
+  ios:
+    if: github.ref == 'refs/heads/main' && inputs.platform == 'ios'
+    runs-on: macos-15
+    timeout-minutes: 50
+    environment: mobile-production
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+      AYIN_ADMOB_IOS_APP_ID: ${{ vars.AYIN_ADMOB_IOS_APP_ID }}
+      AYIN_IOS_TEAM_ID: ${{ vars.AYIN_IOS_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate mobile release security gates
+        run: python3 scripts/mobile-validation-test.py
+      - name: Validate configured release
+        env:
+          SIGNED: ${{ inputs.signed }}
+          AYIN_IOS_FIREBASE_PLIST_BASE64: ${{ secrets.AYIN_IOS_FIREBASE_PLIST_BASE64 }}
+          AYIN_IOS_CERTIFICATE_BASE64: ${{ secrets.AYIN_IOS_CERTIFICATE_BASE64 }}
+          AYIN_IOS_CERTIFICATE_PASSWORD: ${{ secrets.AYIN_IOS_CERTIFICATE_PASSWORD }}
+          AYIN_IOS_PROFILE_BASE64: ${{ secrets.AYIN_IOS_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+          flags=(ios --firebase-plist platforms/ios/AYIN/GoogleService-Info.plist)
+          if [ "$SIGNED" = true ]; then flags+=(--signed); fi
+          python3 scripts/mobile-release-config.py "${flags[@]}"
+          test -f platforms/ios/Package.resolved
+          test -d "$DEVELOPER_DIR"
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project and use reviewed package lock
+        working-directory: platforms/ios
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          lock_dir=AYIN.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
+          mkdir -p "$lock_dir"
+          cp Package.resolved "$lock_dir/Package.resolved"
+          xcodebuild -resolvePackageDependencies -project AYIN.xcodeproj -scheme AYIN -onlyUsePackageVersionsFromResolvedFile -clonedSourcePackagesDirPath "$RUNNER_TEMP/ayin-swift-packages"
+      - name: Run release-candidate unit tests on iPhone Simulator
+        working-directory: platforms/ios
+        run: |
+          set -euo pipefail
+          udid="$(python3 - <<'PY_SIM'
+          import json, subprocess
+          devices = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))["devices"]
+          for runtime, candidates in devices.items():
+              for device in candidates:
+                  if runtime.endswith("iOS-26-2") and device.get("isAvailable") and device.get("name", "").startswith("iPhone"):
+                      print(device["udid"])
+                      raise SystemExit(0)
+          raise SystemExit("No available iOS 26.2 iPhone Simulator")
+          PY_SIM
+          )"
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b
+          xcodebuild -project AYIN.xcodeproj -scheme AYIN -configuration Debug \
+            -destination "platform=iOS Simulator,id=$udid" \
+            -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/ayin-swift-packages" CODE_SIGNING_ALLOWED=NO test
+      - name: Install ephemeral distribution certificate and profile
+        if: inputs.signed
+        env:
+          AYIN_IOS_CERTIFICATE_BASE64: ${{ secrets.AYIN_IOS_CERTIFICATE_BASE64 }}
+          AYIN_IOS_CERTIFICATE_PASSWORD: ${{ secrets.AYIN_IOS_CERTIFICATE_PASSWORD }}
+          AYIN_IOS_PROFILE_BASE64: ${{ secrets.AYIN_IOS_PROFILE_BASE64 }}
+        run: python3 scripts/mobile-ios-signing.py install
+      - name: Archive and optionally export device IPA
+        env:
+          SIGNED: ${{ inputs.signed }}
+        working-directory: platforms/ios
+        run: |
+          set -euo pipefail
+          flags=(CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO)
+          if [ "$SIGNED" = true ]; then
+            flags=(CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Manual "DEVELOPMENT_TEAM=$AYIN_IOS_TEAM_ID" "PROVISIONING_PROFILE_SPECIFIER=$AYIN_IOS_PROFILE_UUID" "CODE_SIGN_IDENTITY=Apple Distribution")
+          fi
+          xcodebuild -project AYIN.xcodeproj -scheme AYIN -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/AYIN.xcarchive" \
+            -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/ayin-swift-packages" \
+            "AYIN_ADMOB_APP_ID=$AYIN_ADMOB_IOS_APP_ID" "CURRENT_PROJECT_VERSION=$AYIN_VERSION_CODE" \
+            "MARKETING_VERSION=$AYIN_VERSION_NAME" "${flags[@]}" archive
+          mkdir -p "$RUNNER_TEMP/ayin-release"
+          ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/AYIN.xcarchive" "$RUNNER_TEMP/ayin-release/AYIN.xcarchive.zip"
+          if [ "$SIGNED" = true ]; then
+            xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/AYIN.xcarchive" \
+              -exportOptionsPlist "$RUNNER_TEMP/ayin-signing/ExportOptions.plist" -exportPath "$RUNNER_TEMP/ayin-export"
+            cp "$RUNNER_TEMP/ayin-export/AYIN.ipa" "$RUNNER_TEMP/ayin-release/AYIN.ipa"
+          fi
+      - name: Upload configured Crashlytics device symbols
+        if: inputs.signed
+        run: |
+          set -euo pipefail
+          uploader="$RUNNER_TEMP/ayin-swift-packages/checkouts/firebase-ios-sdk/Crashlytics/upload-symbols"
+          test -x "$uploader"
+          test -d "$RUNNER_TEMP/AYIN.xcarchive/dSYMs"
+          "$uploader" -gsp platforms/ios/AYIN/GoogleService-Info.plist -p ios "$RUNNER_TEMP/AYIN.xcarchive/dSYMs"
+      - name: Record release provenance
+        env:
+          SIGNED: ${{ inputs.signed }}
+        run: |
+          set -euo pipefail
+          state=unsigned
+          flags=(--artifact "$RUNNER_TEMP/ayin-release/AYIN.xcarchive.zip")
+          if [ "$SIGNED" = true ]; then state=distribution; flags+=(--artifact "$RUNNER_TEMP/ayin-release/AYIN.ipa"); fi
+          python3 scripts/mobile-build-metadata.py --platform ios --signing "$state" \
+            --output "$RUNNER_TEMP/ayin-release/build-metadata.json" \
+            "${flags[@]}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ayin-ios-production-${{ inputs.version_code }}-${{ github.sha }}
+          path: ${{ runner.temp }}/ayin-release/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove temporary signing material
+        if: always()
+        run: |
+          python3 scripts/mobile-ios-signing.py cleanup
+          rm -f platforms/ios/AYIN/GoogleService-Info.plist

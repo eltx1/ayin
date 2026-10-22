@@ -1,5 +1,6 @@
 "use client";
 
+import { isMobileHost } from "@/lib/mobile-bridge";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 
@@ -26,6 +27,7 @@ export function PageAdSlot({ placementKey }: { placementKey: string }) {
   const pathname = usePathname();
   const consent = useAdvertisingConsent();
   const device = useSyncExternalStore(subscribePageAdDevice, detectPageAdDevice, () => null);
+  if (isMobileHost()) return null;
   if (!device || !pathname) return <div className={styles.probe} aria-hidden="true" />;
   return (
     <PageAdSlotSession

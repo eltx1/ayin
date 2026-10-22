@@ -18,11 +18,11 @@ CI builds and tests with code signing disabled. Final signing belongs in protect
 
 The app already declares `applinks:ayin.stream` and handles AYIN HTTPS links safely. Production universal links remain gated on the real Apple Team ID.
 
-Deploy `apple-app-site-association.template.json` as:
+The web server now serves the validated association at:
 
 `https://ayin.stream/.well-known/apple-app-site-association`
 
-after replacing `<APPLE_TEAM_ID>` with the real Team ID. Do not guess or commit a fake identifier.
+after setting `IOS_APP_LINKS_TEAM_ID` to the real Team ID. It returns 404 when unconfigured. The old template is reference material only; do not deploy its placeholder. See `../MOBILE_RELEASE.md` and `docs/MOBILE_RELEASE_OPERATIONS.md` for current build, SDK, APNs and signing gates.
 
 ## Store status
 

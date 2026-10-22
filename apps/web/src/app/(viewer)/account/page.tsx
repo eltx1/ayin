@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { AccountBlockedUsers } from "@/components/social/user-blocks";
+import { MobileSettings } from "@/components/mobile/mobile-settings";
 import { AccountWorkspace } from "@/components/account/account-workspace";
 import { AccountOverview } from "@/components/account/account-overview";
 import { AccountPrivacyControls } from "@/components/account/account-privacy-controls";
@@ -30,6 +32,8 @@ export default async function AccountPage() {
         <AccountOverview />
         <AccountSecurityWorkspace />
         <AccountPrivacyControls />
+        <MobileSettings />
+        <AccountBlockedUsers />
 
         <AccountRevenue />
       </AccountWorkspace>

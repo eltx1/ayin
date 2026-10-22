@@ -32,7 +32,12 @@ function releaseSha(): string {
 }
 
 function isLocaleBypassedPath(pathname: string): boolean {
-  if (pathname.startsWith("/_next/") || pathname.startsWith("/api/")) return true;
+  if (
+    pathname.startsWith("/_next/") ||
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/.well-known/")
+  )
+    return true;
   if (pathname === "/api" || pathname === "/robots.txt" || pathname === "/sitemap.xml") return true;
   if (pathname.startsWith("/sitemaps/")) return true;
   const lastSegment = pathname.split("/").at(-1) ?? "";

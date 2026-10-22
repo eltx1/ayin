@@ -7,6 +7,17 @@ function request(path: string, headers: Record<string, string> = {}, method = "G
 }
 
 describe("locale preference side effects", () => {
+  it.each(["/.well-known/assetlinks.json", "/.well-known/apple-app-site-association"])(
+    "never localizes app verification document %s",
+    (path) => {
+      const response = proxy(
+        request(path + "?lang=ar", { cookie: "ayin_locale=ar", "sec-fetch-dest": "document" }),
+      );
+      expect(response.headers.get("location")).toBeNull();
+      expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+      expect(response.headers.get("set-cookie")).toBeNull();
+    },
+  );
   it("persists explicit document switches and does not cache their redirects", () => {
     const response = proxy(
       request("/ar/browse?lang=en&keep=1", {

@@ -1,3 +1,4 @@
+import { trackMobileEvent } from "./mobile-runtime";
 import { apiBaseUrl, readApiError } from "@/lib/api";
 import { videoMimeTypeForUpload } from "@/lib/video-inspection";
 import {
@@ -82,7 +83,22 @@ export async function uploadVideoDirectly(input: {
   });
 }
 
-export async function uploadPreparedVideoDirectly(input: {
+let activeNativeUploads = 0;
+export async function uploadPreparedVideoDirectly(
+  input: Parameters<typeof performPreparedUpload>[0],
+): Promise<DirectUploadResult> {
+  activeNativeUploads++;
+  if (typeof document !== "undefined" && document.documentElement)
+    document.documentElement.dataset.ayinUploadActive = "true";
+  try {
+    return await performPreparedUpload(input);
+  } finally {
+    activeNativeUploads--;
+    if (activeNativeUploads === 0 && typeof document !== "undefined" && document.documentElement)
+      delete document.documentElement.dataset.ayinUploadActive;
+  }
+}
+async function performPreparedUpload(input: {
   session: UploadSession;
   file: File;
   onProgress: (percent: number) => void;
@@ -146,6 +162,7 @@ export async function uploadPreparedVideoDirectly(input: {
   const completedParts = new Map(
     resumed.map((part) => [part.partNumber, { partNumber: part.partNumber, etag: part.etag }]),
   );
+  if (resumed.length > 0) trackMobileEvent("upload_resumed", { size_bucket: "unknown" });
   let completedBytes = resumed.reduce((total, part) => total + part.sizeBytes, 0);
   reportProgress(completedBytes);
 

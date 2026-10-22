@@ -13,6 +13,7 @@ import {
 import type { MediaStorageConfig } from "../media/media-storage.config.js";
 import { FeatureFlagService } from "../platform-config/feature-flag.service.js";
 
+import { assertNoChannelBlock } from "../user-blocks/user-blocks.policy.js";
 import type { VideoPolicyContext } from "../video-policy/video-policy.service.js";
 import { publicVideoEligibility, publicVideoSelect } from "./public-video-read.js";
 
@@ -72,7 +73,10 @@ export class ChannelService {
     @Inject(MEDIA_STORAGE_CONFIG) private readonly storageConfig: MediaStorageConfig,
   ) {}
 
-  async getPublicChannel(handleRaw: string, context: VideoPolicyContext = {}) {
+  async getPublicChannel(
+    handleRaw: string,
+    context: VideoPolicyContext & { accountId?: string | undefined } = {},
+  ) {
     const requestedHandle = normalizeHandle(handleRaw);
     if (!validHandle(requestedHandle)) {
       throw new ChannelError("CHANNEL_NOT_FOUND", "This AYIN channel could not be found.", 404);
@@ -110,6 +114,7 @@ export class ChannelService {
             );
           }
 
+          await assertNoChannelBlock(tx, context.accountId, channel.id);
           const candidates = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
         SELECT v.id FROM "Video" v WHERE v."channelId" = ${channel.id}::uuid
         AND ${publicVideoEligibility(policyContext)}

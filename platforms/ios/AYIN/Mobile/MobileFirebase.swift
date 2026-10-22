@@ -1,0 +1,243 @@
+import UIKit
+import UserNotifications
+import FirebaseCore
+import FirebaseAnalytics
+import FirebaseMessaging
+import FirebaseCrashlytics
+
+@MainActor
+final class MobileFirebase: NSObject, MessagingDelegate, UNUserNotificationCenterDelegate {
+    static let shared = MobileFirebase()
+    private(set) var configured = false
+    private(set) var token: String?
+    private var analyticsAllowed = false
+    private var analyticsRemoteEnabled = false
+    private var notificationsRemoteEnabled = false
+    private var receiver: (([String: Any]) -> Void)?
+    private var pending: [[String: Any]] = []
+    private var seenNotifications: Set<String> = []
+    private(set) var accountId: String? = {
+        guard let value = UserDefaults.standard.string(forKey: "ayin.mobile.boundAccount.v1"), UUID(uuidString: value) != nil else { return nil }
+        return value
+    }()
+    private var sessionGeneration = UUID()
+    private var webReady = false
+
+    var installationId: String {
+        let key = "ayin.mobile.installation.v1"
+        if let stored = UserDefaults.standard.string(forKey: key), UUID(uuidString: stored) != nil { return stored }
+        let value = UUID().uuidString.lowercased()
+        UserDefaults.standard.set(value, forKey: key)
+        return value
+    }
+
+    func initialize() {
+        guard !configured, let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
+              let options = FirebaseOptions(contentsOfFile: path), options.bundleID == Bundle.main.bundleIdentifier,
+              !options.googleAppID.isEmpty, !options.gcmSenderID.isEmpty else { return }
+        FirebaseApp.configure(options: options)
+        configured = true
+        // No persisted SDK choice can turn collection on before the current web consent is reconciled.
+        Analytics.setAnalyticsCollectionEnabled(false)
+        Analytics.setConsent([.analyticsStorage: .denied, .adStorage: .denied, .adUserData: .denied, .adPersonalization: .denied])
+        Analytics.setUserID(nil)
+        Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(false)
+        Messaging.messaging().isAutoInitEnabled = false
+        Messaging.messaging().delegate = self
+        UNUserNotificationCenter.current().delegate = self
+    }
+
+    func configure(_ config: MobileRuntimeConfig, runtimeAllowed: Bool) {
+        analyticsRemoteEnabled = runtimeAllowed && config.analytics.enabled
+        notificationsRemoteEnabled = runtimeAllowed && config.notifications.enabled
+        if configured && !notificationsRemoteEnabled { Messaging.messaging().isAutoInitEnabled = false }
+        applyAnalyticsConsent()
+    }
+
+    func setConsent(_ enabled: Bool) -> Bool {
+        analyticsAllowed = enabled
+        applyAnalyticsConsent()
+        return configured && analyticsAllowed && analyticsRemoteEnabled
+    }
+
+    private func applyAnalyticsConsent() {
+        guard configured else { return }
+        let allowed = analyticsAllowed && analyticsRemoteEnabled
+        Analytics.setConsent([.analyticsStorage: allowed ? .granted : .denied, .adStorage: .denied, .adUserData: .denied, .adPersonalization: .denied])
+        Analytics.setAnalyticsCollectionEnabled(allowed)
+        Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(allowed)
+        if !allowed {
+            Analytics.setUserID(nil)
+            Crashlytics.crashlytics().deleteUnsentReports()
+        }
+    }
+
+    func event(_ name: String, params: [String: Any]) throws {
+        let safe = try MobileContract.event(name, params: params)
+        guard configured else { throw MobileBridgeError.unavailable }
+        guard analyticsAllowed && analyticsRemoteEnabled else { throw MobileBridgeError.consentRequired }
+        Analytics.logEvent(name, parameters: safe)
+    }
+
+    func setUser(_ id: String?) throws {
+        guard configured else { throw MobileBridgeError.unavailable }
+        guard id == nil || (id!.range(of: #"^[A-Za-z0-9_-]{1,128}$"#, options: .regularExpression) != nil) else { throw MobileBridgeError.invalidRequest }
+        Analytics.setUserID(analyticsAllowed && analyticsRemoteEnabled ? id : nil)
+    }
+
+    func requestNotifications() async throws -> Bool {
+        guard configured else { throw MobileBridgeError.unavailable }
+        guard notificationsRemoteEnabled else { throw MobileBridgeError.disabled }
+        let generation = sessionGeneration
+        let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound])
+        guard generation == sessionGeneration, accountId != nil else { return false }
+        if granted {
+            Messaging.messaging().isAutoInitEnabled = true
+            UIApplication.shared.registerForRemoteNotifications()
+        }
+        return granted
+    }
+
+    func currentToken() async -> String? {
+        guard configured, notificationsRemoteEnabled else { return nil }
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return nil }
+        if accountId != nil {
+            let generation = sessionGeneration
+            Messaging.messaging().isAutoInitEnabled = true
+            UIApplication.shared.registerForRemoteNotifications()
+            // A fresh APNs registration is asynchronous. Let the caller register its FCM token
+            // in the same explicit opt-in action instead of requiring a second button press.
+            for _ in 0..<100 {
+                guard generation == sessionGeneration, !Task.isCancelled else { return nil }
+                if let token { return token }
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+        }
+        return token
+    }
+
+    func adEvent(_ type: String, format: String, code: String? = nil) {
+        guard configured, analyticsAllowed, analyticsRemoteEnabled,
+              ["ad_request", "ad_loaded", "ad_failed"].contains(type) else { return }
+        var params: [String: Any] = ["ad_format": format]
+        if let code { params["error_code"] = String(code.prefix(40)) }
+        Analytics.logEvent(type, parameters: params)
+    }
+
+    func apnsRegistered(_ data: Data) {
+        guard configured, notificationsRemoteEnabled, accountId != nil else { return }
+        // APNs bytes are passed only to Firebase. Only the FCM registration token crosses the bridge.
+        Messaging.messaging().apnsToken = data
+        let generation = sessionGeneration
+        Messaging.messaging().token { [weak self] value, _ in
+            Task { @MainActor in guard self?.sessionGeneration == generation else { return }; self?.receivedToken(value) }
+        }
+    }
+
+    nonisolated func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
+        Task { @MainActor [weak self] in self?.receivedToken(fcmToken) }
+    }
+
+    private func receivedToken(_ value: String?) {
+        guard accountId != nil, notificationsRemoteEnabled, let value, !value.isEmpty, value.count <= 4096 else { return }
+        token = value
+        emit(["type": "notification.token", "token": value, "tokenType": "fcm", "recipientAccountId": accountId as Any? ?? NSNull()])
+    }
+
+    func reset() async {
+        accountId = nil
+        UserDefaults.standard.removeObject(forKey: "ayin.mobile.boundAccount.v1")
+        sessionGeneration = UUID()
+        analyticsAllowed = false
+        applyAnalyticsConsent()
+        token = nil
+        pending.removeAll()
+        if configured {
+            Analytics.setUserID(nil)
+            Analytics.resetAnalyticsData()
+            Messaging.messaging().isAutoInitEnabled = false
+            try? await Messaging.messaging().deleteToken()
+        }
+        UIApplication.shared.unregisterForRemoteNotifications()
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+    }
+
+    func bindAccount(_ id: String) throws {
+        guard accountId == nil || accountId == id else { throw MobileBridgeError.invalidRequest }
+        if accountId != id { sessionGeneration = UUID(); accountId = id }
+        UserDefaults.standard.set(id, forKey: "ayin.mobile.boundAccount.v1")
+    }
+    func bind(_ handler: @escaping ([String: Any]) -> Void) { receiver = handler; webReady = false }
+    func navigating() { webReady = false }
+    func ready() {
+        webReady = true
+        let events = pending
+        pending.removeAll()
+        for event in events { receiver?(event) }
+        if let token { receiver?(["type": "notification.token", "token": token, "tokenType": "fcm", "recipientAccountId": accountId as Any? ?? NSNull()]) }
+    }
+    func unbind() { receiver = nil; webReady = false }
+
+    func emit(_ payload: [String: Any]) {
+        if webReady, let receiver { receiver(payload) }
+        else { pending = Array((pending + [payload]).suffix(10)) }
+    }
+
+    func notification(_ userInfo: [AnyHashable: Any], opened: Bool) {
+        guard let id = userInfo["notificationId"] as? String, UUID(uuidString: id) != nil,
+              let recipient = userInfo["recipientAccountId"] as? String, UUID(uuidString: recipient) != nil
+        else { return }
+        // A cold-start tap may arrive before the web restores its session; the web resolves
+        // this opaque ID through an authenticated ownership/visibility endpoint.
+        guard accountId == nil && opened || recipient == accountId else { return }
+        let dedupe = "\(opened):\(id)"
+        guard !seenNotifications.contains(dedupe) else { return }
+        seenNotifications.insert(dedupe)
+        if seenNotifications.count > 100 { seenNotifications = [dedupe] }
+        emit(["type": opened ? "notification.opened" : "notification.received", "notificationId": id,
+              "recipientAccountId": recipient])
+        if configured && analyticsAllowed && analyticsRemoteEnabled {
+            // SDK swizzling is disabled: these are explicitly owned by this delegate.
+            Analytics.logEvent(opened ? "ayin_notification_open" : "ayin_notification_receive", parameters: nil)
+        }
+    }
+
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        let info = Self.safeNotificationInfo(notification.request.content.userInfo)
+        Task { @MainActor [weak self] in
+            guard let self, self.notificationsRemoteEnabled, let accountId = self.accountId, info["recipientAccountId"] == accountId else { completionHandler([]); return }
+            self.notification(info, opened: false)
+            completionHandler([.banner, .sound, .badge])
+        }
+    }
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        let info = Self.safeNotificationInfo(response.notification.request.content.userInfo)
+        Task { @MainActor [weak self] in
+            self?.notification(info, opened: true)
+            completionHandler()
+        }
+    }
+    nonisolated private static func safeNotificationInfo(_ info: [AnyHashable: Any]) -> [String: String] {
+        var output: [String: String] = [:]
+        for key in ["notificationId", "recipientAccountId"] {
+            if let value = info[key] as? String, value.count <= 128 { output[key] = value }
+        }
+        return output
+    }
+}
+
+@MainActor
+final class MobileAppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        MobileFirebase.shared.initialize()
+        return true
+    }
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        MobileFirebase.shared.apnsRegistered(deviceToken)
+    }
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        MobileFirebase.shared.emit(["type": "notification.error", "code": "apns_registration_failed"])
+    }
+}

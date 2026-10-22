@@ -7,7 +7,7 @@ import styles from "./admin-advertising-navigation.module.css";
 
 // These are route links, not stateful tabs: the existing editors keep their own
 // authorization, request binding and departure guards, including modified clicks.
-export function AdminAdvertisingNavigation({ current }: { current: "page" | "video" }) {
+export function AdminAdvertisingNavigation({ current }: { current: "page" | "video" | "mobile" }) {
   const { locale, href } = useI18n();
   const copy = locale === "ar" ? adminAdvertisingAr : adminAdvertisingEn;
   return (
@@ -23,6 +23,12 @@ export function AdminAdvertisingNavigation({ current }: { current: "page" | "vid
         aria-current={current === "video" ? "page" : undefined}
       >
         {copy.videoArea}
+      </ActionLink>
+      <ActionLink
+        href={href("/admin/mobile")}
+        aria-current={current === "mobile" ? "page" : undefined}
+      >
+        {locale === "ar" ? "إعلانات التطبيق" : "App ads"}
       </ActionLink>
     </nav>
   );

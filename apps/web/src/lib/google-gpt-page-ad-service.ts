@@ -1,3 +1,4 @@
+import { isMobileHost } from "./mobile-bridge";
 import {
   normalizeAdvertisingConsent,
   type AdvertisingConsentSnapshot,
@@ -108,6 +109,7 @@ export function gptPrivacySettingsForConsent(
 }
 
 export function loadGooglePublisherTag(consent: AdvertisingConsentSnapshot) {
+  if (isMobileHost()) return Promise.reject(new GptRuntimeError("GPT_NATIVE_INVENTORY_DISABLED"));
   consent = normalizeAdvertisingConsent(consent);
   const requestedSource = gptScriptUrlForConsent(consent);
   if (loader) {
