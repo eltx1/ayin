@@ -233,20 +233,75 @@ test("V1 critical journeys remain launchable end to end", async ({ page }) => {
   });
 
   await test.step("8. admin homepage row change reaches the public UI", async () => {
-    if (!admin) throw new Error("Admin setup missing.");
+    if (!admin || !creator) throw new Error("Admin or creator setup missing.");
     const snapshotResponse = await admin.api.get("/admin/product-controls");
     expect(snapshotResponse.ok()).toBeTruthy();
-    const snapshot = (await snapshotResponse.json()) as { rows: Array<{ id: string }> };
+    const snapshot = (await snapshotResponse.json()) as {
+      rows: Array<{
+        id: string;
+        key: string;
+        title: string;
+        manualItems: Array<{ entityType: string; entityId: string }>;
+      }>;
+    };
     expect(snapshot.rows.length).toBeGreaterThan(0);
-    expect(
-      (
-        await admin.api.patch(`/admin/product-controls/home-rows/${snapshot.rows[0]!.id}`, {
-          data: { title: "E2E Editor Picks", reason: "E2E merchandising acceptance" },
-        })
-      ).ok(),
-    ).toBeTruthy();
-    await page.goto("/");
-    await expect(page.getByRole("heading", { name: "E2E Editor Picks" })).toBeVisible();
+    const row = snapshot.rows.find((item) => item.key === "editor-picks");
+    if (!row) throw new Error("Expected the seeded Editor Picks section.");
+    const video = db<VideoRecord>("find-video", { channelId: creator.user.channel.id });
+    const rowPath = `/admin/product-controls/home-rows/${row.id}`;
+    const originalItems = row.manualItems.map(({ entityType, entityId }) => ({
+      entityType,
+      entityId,
+    }));
+    try {
+      expect(
+        (
+          await admin.api.patch(rowPath, {
+            data: { title: "E2E Editor Picks", reason: "E2E merchandising acceptance" },
+          })
+        ).ok(),
+      ).toBeTruthy();
+      // Home hides empty rails. Select the published film in the actual editorial
+      // section instead of renaming another viewer's empty Continue Watching row.
+      expect(
+        (
+          await admin.api.put(`${rowPath}/manual-items`, {
+            data: {
+              items: [{ entityType: "VIDEO", entityId: video.id }],
+              reason: "E2E merchandising acceptance",
+            },
+          })
+        ).ok(),
+      ).toBeTruthy();
+      const homeRead = page.waitForResponse(
+        (response) => response.url() === `${API}/discovery/home`,
+      );
+      await page.goto("/");
+      const response = await homeRead;
+      expect(response.ok()).toBeTruthy();
+      expect(await response.json()).toMatchObject({ mode: "MANAGED", status: "READY" });
+      await expect(page.getByRole("heading", { name: "E2E Editor Picks" })).toBeVisible();
+      await expect(
+        page
+          .getByRole("region", { name: "E2E Editor Picks", exact: true })
+          .getByRole("link", { name: /^Edited Launch Film,/ }),
+      ).toBeVisible();
+    } finally {
+      expect(
+        (
+          await admin.api.put(`${rowPath}/manual-items`, {
+            data: { items: originalItems, reason: "Restore E2E editorial selections" },
+          })
+        ).ok(),
+      ).toBeTruthy();
+      expect(
+        (
+          await admin.api.patch(rowPath, {
+            data: { title: row.title, reason: "Restore E2E editorial title" },
+          })
+        ).ok(),
+      ).toBeTruthy();
+    }
   });
 
   await test.step("9. failed IMA ad startup never blocks the content element", async () => {
@@ -304,6 +359,7 @@ test("V1 critical journeys remain launchable end to end", async ({ page }) => {
 
   await test.step("11. creator revenue contract math smoke path", async () => {
     if (!admin || !creator) throw new Error("Revenue setup missing.");
+    const revenueKey = `e2e-launch-revenue-${creator.user.channel.id}`;
     const contract = await admin.api.post(
       `/admin/revenue/channels/${creator.user.channel.id}/contracts`,
       {
@@ -321,7 +377,7 @@ test("V1 critical journeys remain launchable end to end", async ({ page }) => {
         source: "E2E",
         entries: [
           {
-            idempotencyKey: "e2e-launch-revenue-001",
+            idempotencyKey: revenueKey,
             channelId: creator.user.channel.id,
             periodStart: new Date(Date.now() - 3_600_000).toISOString(),
             periodEnd: new Date().toISOString(),
@@ -333,10 +389,11 @@ test("V1 critical journeys remain launchable end to end", async ({ page }) => {
       },
     });
     expect(imported.ok()).toBeTruthy();
+    expect(await imported.json()).toEqual({ created: 1, duplicates: 0, requested: 1 });
     expect(
       db("ledger", {
         channelId: creator.user.channel.id,
-        idempotencyKey: "E2E:e2e-launch-revenue-001",
+        idempotencyKey: `E2E:${revenueKey}`,
       }),
     ).toEqual({ grossAmount: "100", amount: "70", revenueShareBps: 7000 });
   });

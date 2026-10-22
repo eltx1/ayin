@@ -13,13 +13,15 @@ try {
   if (["grant", "evidence", "cleanup"].includes(command)) {
     const account = await db.account.findUniqueOrThrow({
       where: { id: input.accountId },
-      select: { email: true, channelMemberships: { select: { channelId: true } } },
+      select: { email: true, channelMemberships: { select: { channelId: true, role: true } } },
     });
     if (!account.email?.startsWith("home-builder-") || !account.email.endsWith("@e2e.ayin.test"))
       throw new Error("Expected this scenario's test account.");
     if (
       command === "cleanup" &&
-      !account.channelMemberships.some((membership) => membership.channelId === input.channelId)
+      !account.channelMemberships.some(
+        (membership) => membership.channelId === input.channelId && membership.role === "OWNER",
+      )
     )
       throw new Error("Expected this scenario's test channel.");
   }
@@ -73,6 +75,13 @@ try {
     await db.$transaction(async (tx) => {
       await tx.adminAuditLog.deleteMany({ where: { actorAccountId: input.accountId } });
       await tx.adminRoleAssignment.deleteMany({ where: { accountId: input.accountId } });
+      // Registration provisions a pending contract with a restrictive channel FK.
+      // Delete only that scenario-owned contract before the channel. Its settings,
+      // Uploads playlist, TV and membership cascade; account deletion then cascades
+      // the viewer profile, sessions, MFA credential and recovery codes.
+      await tx.creatorContract.deleteMany({
+        where: { channelId: input.channelId, status: "PENDING" },
+      });
       await tx.channel.deleteMany({ where: { id: input.channelId } });
       await tx.account.deleteMany({ where: { id: input.accountId } });
     });

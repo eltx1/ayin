@@ -30,6 +30,7 @@ test("home builder reviews the first inherited section and verifies automatic mo
   let accountId: string | undefined;
   let channelId: string | undefined;
   let emptied = false;
+  const failures: unknown[] = [];
   try {
     const suffix = randomUUID();
     const registration = await page.request.post(`${API}/auth/register`, {
@@ -191,15 +192,44 @@ test("home builder reviews the first inherited section and verifies automatic mo
       metadata: { previousValue: "INHERIT", newValue: "AUTO", highImpact: true },
     });
     expect(afterMode.creationAudits).toHaveLength(1);
-  } finally {
+  } catch (error) {
+    failures.push(error);
     try {
-      await page.goto("about:blank");
-    } finally {
-      try {
+      await testInfo.attach("home-builder-primary-state", {
+        body: await page.screenshot({ fullPage: true, timeout: 5_000 }),
+        contentType: "image/png",
+      });
+    } catch (captureError) {
+      failures.push(captureError);
+    }
+  } finally {
+    // Attempt every restoration step without replacing the original assertion
+    // with a later teardown error. Retain additional failures as CI evidence.
+    for (const cleanup of [
+      () => page.goto("about:blank"),
+      () => {
         if (emptied) fixture("restore", saved);
-      } finally {
+      },
+      () => {
         if (accountId && channelId) fixture("cleanup", { accountId, channelId });
+      },
+    ]) {
+      try {
+        await cleanup();
+      } catch (error) {
+        failures.push(error);
       }
     }
   }
+  if (failures.length > 1)
+    await testInfo
+      .attach("home-builder-additional-failures", {
+        body: failures
+          .slice(1)
+          .map((error) => (error instanceof Error ? error.stack : String(error)))
+          .join("\n\n"),
+        contentType: "text/plain",
+      })
+      .catch((error: unknown) => failures.push(error));
+  if (failures.length) throw failures[0];
 });

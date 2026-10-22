@@ -238,10 +238,14 @@ test("A committed creative with a lost response stays uncertain through current 
   const data = await seed(page),
     copy = advertisingEditorEn;
   await page.goto("/admin/video-ads?lang=en");
+  // The initial enabled button can precede hydration and its verified read.
+  // Wait for loaded records so the existing busy-operation departure guard is idle.
+  await expect(page.getByText("Review and edit player defaults", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: adminAdvertisingEn.refresh, exact: true }),
   ).toBeEnabled();
   await page.getByRole("link", { name: adminAdvertisingEn.pageArea, exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/advertising$/);
   await expect(
     page.getByRole("button", { name: adminAdvertisingEn.refresh, exact: true }),
   ).toBeEnabled();
@@ -437,10 +441,12 @@ for (const kind of ["creative", "placement"] as const) {
     const data = await seed(page),
       copy = advertisingEditorEn;
     await page.goto("/admin/video-ads?lang=en");
+    await expect(page.getByText("Review and edit player defaults", { exact: true })).toBeVisible();
     await expect(
       page.getByRole("button", { name: adminAdvertisingEn.refresh, exact: true }),
     ).toBeEnabled();
     await page.getByRole("link", { name: adminAdvertisingEn.pageArea, exact: true }).click();
+    await expect(page).toHaveURL(/\/admin\/advertising$/);
     await expect(
       page.getByRole("button", { name: adminAdvertisingEn.refresh, exact: true }),
     ).toBeEnabled();
@@ -529,10 +535,12 @@ for (const kind of ["creative", "placement"] as const) {
     const data = await seed(page),
       copy = advertisingEditorEn;
     await page.goto("/admin/video-ads?lang=en");
+    await expect(page.getByText("Review and edit player defaults", { exact: true })).toBeVisible();
     await expect(
       page.getByRole("button", { name: adminAdvertisingEn.refresh, exact: true }),
     ).toBeEnabled();
     await page.getByRole("link", { name: adminAdvertisingEn.pageArea, exact: true }).click();
+    await expect(page).toHaveURL(/\/admin\/advertising$/);
     await expect(
       page.getByRole("button", { name: adminAdvertisingEn.refresh, exact: true }),
     ).toBeEnabled();
