@@ -18,3 +18,9 @@ export type {
   UploadRecoveryCapability,
   UploadRecoveryOutcomeResponse,
 } from "./upload-recovery.js";
+
+export {
+  ISO_3166_ALPHA2,
+  normalizeTerritoryCode,
+  normalizeTerritoryCodes,
+} from "./country-codes.js";

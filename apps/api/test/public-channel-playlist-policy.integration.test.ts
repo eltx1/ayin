@@ -321,6 +321,70 @@ databaseDescribe(
       expect(await prisma.adminAuditLog.count()).toBe(0);
     });
 
+    it("preserves the viewer country and unknown server context through Cloudflare for listing and playback", async () => {
+      const f = await fixture();
+      const global = await video(f.channel.id, 1);
+      const us = await video(f.channel.id, 2);
+      const gb = await video(f.channel.id, 3);
+      for (const [position, v] of [global, us, gb].entries())
+        await item(f.playlist.id, v.id, position);
+      await prisma.videoPolicy.createMany({
+        data: [
+          { videoId: us.id, allowedTerritories: ["US"] },
+          { videoId: gb.id, allowedTerritories: ["GB"] },
+        ],
+      });
+      const prior = process.env.AYIN_TRUST_CLOUDFLARE_REGION;
+      process.env.AYIN_TRUST_CLOUDFLARE_REGION = "true";
+      try {
+        const cases: Array<{ headers: Record<string, string>; expected: string[] }> = [
+          { headers: {}, expected: [global.id, us.id] },
+          {
+            headers: {
+              "x-ayin-edge-context": "server",
+              "x-ayin-edge-token": edgeToken,
+              "x-ayin-edge-country": "GB",
+            },
+            expected: [global.id, gb.id],
+          },
+          { headers: { "x-ayin-edge-context": "server" }, expected: [global.id] },
+          {
+            headers: { "x-ayin-edge-context": "server", "x-ayin-edge-token": edgeToken },
+            expected: [global.id],
+          },
+          {
+            headers: { "x-ayin-edge-token": "incorrect", "x-ayin-edge-country": "GB" },
+            expected: [global.id],
+          },
+        ];
+        for (const scenario of cases) {
+          const headers = { "cf-ipcountry": "US", ...scenario.headers };
+          for (const path of urls(f.channel.handle, f.playlist.slug)) {
+            const response = await app.inject({ url: path, headers });
+            expect(response.statusCode).toBe(200);
+            expect(ids(response.json()).sort()).toEqual([...scenario.expected].sort());
+            if (response.json().playlists)
+              expect(response.json().playlists[0].itemCount).toBe(scenario.expected.length);
+            privateHeaders(response);
+            expect(response.body).not.toContain(edgeToken);
+          }
+          for (const v of [global, us, gb]) {
+            const playback = await app.inject({
+              url: `/public/videos/${v.slug}/playback`,
+              headers,
+            });
+            expect(playback.statusCode).toBe(scenario.expected.includes(v.id) ? 200 : 404);
+            privateHeaders(playback);
+            expect(playback.body).not.toContain(edgeToken);
+          }
+        }
+      } finally {
+        if (prior === undefined) delete process.env.AYIN_TRUST_CLOUDFLARE_REGION;
+        else process.env.AYIN_TRUST_CLOUDFLARE_REGION = prior;
+      }
+      expect(await prisma.adminAuditLog.count()).toBe(0);
+    });
+
     it("preserves canonical handle redirects and unlisted direct reads while hiding private/deleted/inconsistent-public playlists", async () => {
       const f = await fixture();
       const v = await video(f.channel.id, 1);

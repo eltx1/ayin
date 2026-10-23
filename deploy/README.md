@@ -83,6 +83,67 @@ NEXT_PUBLIC_MEDIA_BASE_URL=https://media.ayin.stream
 
 `NEXT_PUBLIC_*` values are embedded into browser-accessible code during `next build`. Passwords, private keys, tokens, R2 credentials and all other secrets are forbidden from `web.env`.
 
+### Trusted country at server runtime
+
+Web country forwarding is disabled by default through a separate rollout gate,
+`AYIN_WEB_REGION_FORWARDING`. `api.env` is the sole production source for this
+gate, `AYIN_TRUST_CLOUDFLARE_REGION`, and the purpose-specific
+`AYIN_INTERNAL_EDGE_TOKEN`. Both flags accept absent/empty/`false`, or explicitly
+`true`. A configured token must use 32–256 header-safe characters; provision at
+least 32 random bytes encoded as hex or base64url. Do not reuse authentication,
+R2, or other application credentials.
+
+Only `AYIN_WEB_REGION_FORWARDING=true` with API country trust enabled and a valid
+token allows PM2 to inject that token and `AYIN_TRUST_CLOUDFLARE_REGION=true` into
+the Web **server runtime**. With the gate off, Web receives an empty token and
+`false`, even when legacy API-only trust and a token are configured. API-only
+trust without a token remains supported while Web forwarding is off. Enabling
+the Web gate without API trust or a valid token fails environment validation.
+Validation runs before Corepack or shared FFmpeg preparation, as well as before
+database migrations, release switching, or process activation.
+
+Only those two allowlisted runtime keys are shared with Web. The rollout gate
+stays in `api.env`; none is supplied to the immutable CI Web build, included in
+its public build manifest, or placed in `web.env`. The helper is `server-only`.
+Its fixed server-hop marker has no authority; absent or invalid credentials keep
+the viewer country unknown even if the API also receives a Cloudflare header for
+the Web server's egress address. The API never upgrades partial internal context
+through that fallback. Token-bearing API fetches reject HTTP redirects.
+
+For a code-only rollout, keep the new Web gate absent/empty/`false`. The
+configuration summary can verify that file state without exposing credentials;
+legacy API settings do not silently opt Web into forwarding. Live API trust and
+ingress remain separate facts that repository defaults cannot establish.
+
+Activation is a separate operator step after deploying with Web forwarding off:
+
+1. Verify both `ayin.stream` and `api.ayin.stream` ingress. Cloudflare must supply
+   the IP-geolocation country header, and the origin must authenticate the edge
+   or sanitize/strip that header on untrusted ingress. Proxied DNS, a `loc` value
+   in `/cdn-cgi/trace`, and Full/Full (strict) TLS alone do not prove authenticated
+   origin access. The reference Nginx snippets do not establish that guarantee.
+   See Cloudflare's [IP geolocation forwarding](https://developers.cloudflare.com/network/ip-geolocation/)
+   and [authenticated origin explanation](https://developers.cloudflare.com/ssl/origin-configuration/authenticated-origin-pull/explanation/).
+2. After that boundary is proved, provision the dedicated token only in the
+   private `api.env` and set both `AYIN_TRUST_CLOUDFLARE_REGION=true` and
+   `AYIN_WEB_REGION_FORWARDING=true`. Activate both Web and API through the
+   existing controlled deployment/PM2 lifecycle. Do not copy
+   the full API environment to Web or change a video's territory policy to test
+   configuration.
+3. Verify ordinary public channel, playlist, and playback requests from an
+   actually permitted viewer location, and verify denial from an unpermitted or
+   unknown location. Keep the existing publication, Kids, rights-expiry and media
+   boundaries intact. A missing or mismatched runtime token must still deny
+   restricted server-rendered results.
+
+Successful environment validation emits only five allowlisted booleans under
+`Region configuration (not ingress verification)`: Cloudflare trust enabled,
+internal token configured, Web forwarding opted in, runtime country forwarding configured, and
+`ingressVerified=false`. This describes the validated **files**, not the running
+PM2 environment or a proven ingress boundary. It prints no credential, hash, or
+environment dump. Public health/readiness and the public edge workflow do not
+prove regional availability. Do not claim activation from those checks alone.
+
 ### API environment
 
 Production must set at least:
@@ -191,8 +252,8 @@ Deploy only an exact reviewed Git commit SHA. GitHub Actions bootstraps the trus
 2. takes an exclusive AYIN deployment lock;
 3. clones and checks out the exact requested commit;
 4. verifies the server Node version exactly matches `.nvmrc`;
-5. activates the pinned pnpm version;
-6. validates production environment files and permissions;
+5. validates production environment files and permissions;
+6. activates the pinned pnpm version and prepares the checksum-verified FFmpeg runtime;
 7. installs the frozen lockfile and generates Prisma;
 8. builds shared packages;
 9. builds the API using only `api.env`;
@@ -249,13 +310,13 @@ as an implicit deployment workaround.
 
 `deploy/ecosystem.config.cjs` loads each environment file independently:
 
-- `ayin-web` receives only `web.env` and listens on `127.0.0.1:3000`.
+- `ayin-web` receives `web.env` plus only the two runtime country keys described above from `api.env`, and listens on `127.0.0.1:3000`.
 - `ayin-api` receives only `api.env` and listens on `127.0.0.1:4000`.
 - `ayin-analytics-worker` receives `api.env` and runs scheduled UTC analytics rollup/reconciliation plus retention cleanup.
 - `ayin-warehouse-worker` receives `api.env` and runs the provider-neutral incremental export boundary. With the built-in disabled adapter it performs no database export and requires no external warehouse.
 - `ayin-media-worker` receives `api.env` and runs media/privacy background processing. Media claims are PostgreSQL-leased and horizontally safe; see `docs/MEDIA_WORKER_SCALING.md` for per-process concurrency, worker registry metadata, lease recovery and multi-host requirements.
 
-API/worker secrets therefore do not need to exist in the web process environment. After the first successful deployment enable PM2 startup persistence for the AYIN user and verify a controlled server reboot.
+API/worker credentials remain isolated from the Web process except for the purpose-specific internal country-context token. After the first successful deployment enable PM2 startup persistence for the AYIN user and verify a controlled server reboot.
 
 ## Health and readiness
 

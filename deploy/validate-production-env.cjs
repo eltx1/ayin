@@ -117,6 +117,32 @@ for (const [key, value] of Object.entries(webEnv)) {
   }
 }
 
+const regionTrust = apiEnv.AYIN_TRUST_CLOUDFLARE_REGION;
+if (regionTrust && !["false", "true"].includes(regionTrust)) {
+  fail("api.env: AYIN_TRUST_CLOUDFLARE_REGION must be false or true");
+}
+const webRegionForwarding = apiEnv.AYIN_WEB_REGION_FORWARDING;
+if (webRegionForwarding && !["false", "true"].includes(webRegionForwarding)) {
+  fail("api.env: AYIN_WEB_REGION_FORWARDING must be false or true");
+}
+const internalEdgeToken = apiEnv.AYIN_INTERNAL_EDGE_TOKEN || "";
+if (
+  internalEdgeToken &&
+  (internalEdgeToken.length < 32 ||
+    internalEdgeToken.length > 256 ||
+    !/^[A-Za-z0-9._~+/-]+={0,2}$/.test(internalEdgeToken))
+) {
+  fail("api.env: AYIN_INTERNAL_EDGE_TOKEN must contain 32-256 header-safe token characters");
+}
+if (webRegionForwarding === "true") {
+  if (regionTrust !== "true") {
+    fail("api.env: AYIN_WEB_REGION_FORWARDING=true requires AYIN_TRUST_CLOUDFLARE_REGION=true");
+  }
+  if (!internalEdgeToken) {
+    fail("api.env: AYIN_WEB_REGION_FORWARDING=true requires AYIN_INTERNAL_EDGE_TOKEN");
+  }
+}
+
 requireExact(apiEnv, "NODE_ENV", "production", "api.env");
 requireExact(apiEnv, "APP_ENV", "production", "api.env");
 requireExact(apiEnv, "API_HOST", "127.0.0.1", "api.env");
@@ -270,3 +296,16 @@ if (failures.length) {
 }
 
 console.log("Production environment validation passed.");
+// This is file configuration evidence, not proof of active PM2 values or of
+// authenticated Cloudflare ingress. Never log tokens, hashes, or whole envs.
+console.log(
+  "Region configuration (not ingress verification): " +
+    JSON.stringify({
+      cloudflareTrustEnabled: regionTrust === "true",
+      internalTokenConfigured: Boolean(internalEdgeToken),
+      webRegionForwardingEnabled: webRegionForwarding === "true",
+      runtimeCountryForwardingConfigured:
+        webRegionForwarding === "true" && regionTrust === "true" && Boolean(internalEdgeToken),
+      ingressVerified: false,
+    }),
+);
