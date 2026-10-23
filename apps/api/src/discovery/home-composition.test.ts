@@ -141,7 +141,7 @@ describe("automatic homepage composition", () => {
     expect(new Set(renderedIds(home)).size).toBe(videos.length);
   });
 
-  it("preserves resume order and progress while excluding resumed titles from every other placement", () => {
+  it("prefers an unseen title in the same tier while preserving resume order and progress", () => {
     const videos = [candidate("newest"), candidate("older"), candidate("fresh")];
     const progress = { positionMs: 42_000, completedAt: null };
     const resume = [
@@ -153,6 +153,107 @@ describe("automatic homepage composition", () => {
     expect(home.rows[0]?.items).toEqual(resume);
     expect(home.spotlight?.id).toBe("fresh");
     expect(new Set(renderedIds(home)).size).toBe(3);
+  });
+
+  it.each(["CLIP", "LONG_FORM"] as const)(
+    "keeps resumed films in the spotlight ahead of a metadata-poor %s",
+    (videoForm) => {
+      const weak = candidate("unprepared", {
+        creatorId: "another-creator",
+        videoForm,
+        description: null,
+        durationMs: 9_000,
+      });
+      const first = candidate("first-film");
+      const second = candidate("second-film");
+      const videos = [weak, first, second];
+      const resume = [
+        { ...second.item, progress: { positionMs: 130_000, completedAt: null } },
+        { ...first.item, progress: { positionMs: 84_000, completedAt: null } },
+      ];
+      const initial = composeAutomaticHome(videos);
+      const home = composeAutomaticHome(videos, resume);
+
+      expect(initial.spotlight?.id).toBe(first.item.id);
+      expect(home.spotlight?.id).toBe(initial.spotlight?.id);
+      expect(home.rows[0]?.source).toBe("CONTINUE_WATCHING");
+      expect(home.rows[0]?.items).toEqual(resume);
+      expect(home.rows[1]?.items).toEqual([weak.item]);
+      const rowIds = home.rows.flatMap((row) => row.items.map((item) => item.id));
+      expect(new Set(rowIds).size).toBe(rowIds.length);
+      expect(renderedIds(home).filter((id) => id === first.item.id)).toHaveLength(2);
+      expect(new Set(renderedIds(home)).size).toBe(videos.length);
+    },
+  );
+
+  it.each([
+    { label: "missing artwork", artworkObjectKey: null, description: "Real description" },
+    { label: "blank artwork", artworkObjectKey: " \n ", description: "Real description" },
+    { label: "missing description", artworkObjectKey: "cover.jpg", description: null },
+    { label: "blank description", artworkObjectKey: "cover.jpg", description: " \t\n " },
+  ])("keeps content with $label in a shelf without inventing a spotlight", (metadata) => {
+    const video = candidate("incomplete-presentation", { description: metadata.description });
+    video.item.artworkObjectKey = metadata.artworkObjectKey;
+
+    const home = composeAutomaticHome([video]);
+
+    expect(home.spotlight).toBeNull();
+    expect(home.status).toBe("READY");
+    expect(home.rows.map((row) => row.key)).toEqual(["auto-discover"]);
+    expect(home.rows[0]?.items).toEqual([video.item]);
+  });
+
+  it("can feature a short catalogue and prefers the first unseen short in the same tier", () => {
+    const videos = [
+      candidate("first-short", { videoForm: "CLIP", durationMs: 9_000 }),
+      candidate("second-short", { videoForm: "CLIP", durationMs: 20_000 }),
+      candidate("third-short", { videoForm: "CLIP", durationMs: 30_000 }),
+    ];
+    const resume = {
+      ...videos[0]!.item,
+      progress: { positionMs: 3_000, completedAt: null },
+    };
+
+    expect(composeAutomaticHome(videos).spotlight?.id).toBe("first-short");
+    const home = composeAutomaticHome(videos, [resume]);
+
+    expect(home.spotlight?.id).toBe("second-short");
+    expect(home.rows[0]?.items).toEqual([resume]);
+    expect(home.rows[1]?.items).toEqual([videos[2]!.item]);
+    expect(new Set(renderedIds(home)).size).toBe(renderedIds(home).length);
+  });
+
+  it("does not demote a long-form spotlight to an unseen short when viewing progress changes", () => {
+    const short = candidate("ready-short", { videoForm: "CLIP", durationMs: 9_000 });
+    const film = candidate("ready-film");
+    const videos = [short, film];
+    const resume = { ...film.item, progress: { positionMs: 60_000, completedAt: null } };
+
+    expect(composeAutomaticHome(videos).spotlight?.id).toBe(film.item.id);
+    const home = composeAutomaticHome(videos, [resume]);
+
+    expect(home.spotlight?.id).toBe(film.item.id);
+    expect(home.rows[0]?.items).toEqual([resume]);
+    expect(home.rows[1]?.items).toEqual([short.item]);
+  });
+
+  it("counts a reused spotlight once when balancing creators in the remaining shelf", () => {
+    const film = candidate("resumed-film", { creatorId: "creator-a" });
+    const sameCreator = candidate("same-creator", {
+      creatorId: "creator-a",
+      description: null,
+    });
+    const otherCreator = candidate("other-creator", {
+      creatorId: "creator-b",
+      description: null,
+    });
+    const resume = { ...film.item, progress: { positionMs: 60_000, completedAt: null } };
+
+    const home = composeAutomaticHome([film, sameCreator, otherCreator], [resume]);
+
+    expect(home.spotlight?.id).toBe(film.item.id);
+    expect(home.rows[0]?.items).toEqual([resume]);
+    expect(home.rows[1]?.items).toEqual([sameCreator.item, otherCreator.item]);
   });
 
   it("can serve progress outside the recency pool without inventing a spotlight", () => {

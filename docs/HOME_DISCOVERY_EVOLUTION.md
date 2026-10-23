@@ -26,7 +26,7 @@ An empty public response alone does not establish whether production configurati
 | No eligible content    | Understand the state and choose a next action | A localized neutral state and search, never fabricated cards                                  |
 | Failed read            | Recover without losing trust                  | A bounded read deadline and retry; no claim that the catalogue is empty                       |
 
-The account controls remain available, but the account strip follows discovery. The brand fallback is compact. Content artwork is used without autoplay, new audio behavior, or a new media encoding path. Missing artwork has a neutral visual fallback while the real title and action remain usable.
+The account controls remain available, but the account strip follows discovery. The brand fallback is compact. Content artwork is used without autoplay, new audio behavior, or a new media encoding path. Automatic spotlights require a stored artwork reference and a nonblank description. If selected artwork fails to load, the neutral visual fallback keeps the real title and action usable. Videos missing presentation metadata remain available in normal shelves.
 
 ## Configuration ownership
 
@@ -50,15 +50,17 @@ Create Section uses a retained request UUID, a unique bounded key, a server-issu
 1. Resolve the current owned profile and trusted territory context.
 2. Select at most 96 real, policy-eligible video IDs. Publication, public visibility, active channel, canonical validated media, territory, expiry, policy overrides, and Kids classification constrain eligibility **before** the bound.
 3. Hydrate card fields in a batch and recheck current distribution policy at the serving boundary.
-4. Preserve real Continue Watching when available. Select a separate eligible spotlight, preferring a long-form title with artwork.
-5. Remove repeated video IDs across the initial resume row, spotlight, and shelves.
-6. Prefer creators with fewer displayed items, then relax the preference when supply is sparse. A catalogue from one creator remains useful.
+4. Preserve real Continue Watching and its progress order. Select the spotlight from the full bounded eligible pool with nonblank artwork references and descriptions. Prefer long-form titles, then an unseen title within the same format tier, then the existing stable candidate order.
+5. Keep video IDs unique across rows and exclude the spotlight from discovery shelves. The spotlight may intentionally reuse a Continue Watching title when its tier has no unseen title; its resume entry and progress remain intact.
+6. Count each displayed video once for creator diversity, including a reused spotlight. Prefer creators with fewer displayed items, then relax the preference when supply is sparse. A catalogue from one creator remains useful.
 7. Create format shelves only when there are at least two substantial distinct pools. Otherwise show one useful mixed shelf. Do not create empty TV recommendations from automatically provisioned channel entities.
 8. Return explicit `mode`, `status`, `spotlight`, and `rows` fields.
 
 The finite selection contains at most five rows, with at most eight cards per row. It is an entry point to discovery, not exhaustive catalogue pagination. Its rows return `nextCursor: null`; existing managed row pagination is preserved. Search and catalogue destinations provide further exploration.
 
 Automatic selection uses recency and composition rules. It does not claim to be personalized affinity ranking or popularity. There are no title IDs, creator IDs, film names, fake audience counts, or fixed countries in the compositor.
+
+Adding playback progress must not lower the spotlight's format tier while the eligible catalogue is unchanged. Resume membership is a preference within a tier, not a reason to promote incomplete metadata or a clip ahead of an available long-form title. A short-only catalogue can still supply a spotlight when its artwork and description are present; there is no duration cutoff or filename rule. If no candidate has the required presentation metadata, the spotlight is null and the existing compact brand fallback and normal shelves remain usable. These requirements apply to automatic spotlight placement only; publishing metadata remains optional, and no video is hidden from ordinary discovery by this rule.
 
 ### Response states
 
@@ -84,7 +86,7 @@ The release does not weaken media policy, Admin authorization, advertising conse
 
 Required evidence is layered:
 
-1. Pure composition and contract tests: zero/one/sparse/diverse inventory, mode ownership, no duplicates, diversity relaxation, bounds, malformed destinations, preserved editorial titles.
+1. Pure composition and contract tests: zero/one/sparse/diverse inventory, mode ownership, unique row items with only intentional spotlight/resume overlap, presentation metadata requirements, stable format tiers across progress changes, valid short catalogues, diversity relaxation without double-counting reused spotlights, bounds, malformed destinations, preserved editorial titles.
 2. API integration against disposable Postgres: eligibility before pagination, more than 100 newer blocked titles, trusted and unknown territory, Kids, owned resume data, no configuration/snapshot writes from AUTO reads.
 3. Actual Next browser checks: English and Arabic, narrow/mobile and desktop layout, working actions, empty/disabled/error/recovery states, section anchors, and synchronous concealment on suspension.
 4. Repository formatting, lint, type checks, production builds, security checks, and deployment workflow gates.

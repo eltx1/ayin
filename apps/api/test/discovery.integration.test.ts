@@ -172,6 +172,25 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
     return { id, slug };
   }
 
+  async function prepareSpotlight(videoId: string, channelId: string) {
+    await prisma.video.update({
+      where: { id: videoId },
+      data: { description: "A complete film with a useful synopsis for viewers." },
+    });
+    await prisma.mediaAsset.create({
+      data: {
+        id: randomUUID(),
+        channelId,
+        videoId,
+        kind: "THUMBNAIL",
+        status: "VALIDATED",
+        r2ObjectKey: `channels/${channelId}/media/${videoId}/thumbnail.jpg`,
+        mimeType: "image/jpeg",
+        sizeBytes: 1024n,
+      },
+    });
+  }
+
   function homeIds(home: HomeResponse) {
     return [
       ...(home.spotlight ? [home.spotlight.id] : []),
@@ -188,6 +207,7 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
       new Date(Date.now() - 1000),
     );
     const second = await publishVideo(owner.user.channel.id, "Second real title");
+    await prepareSpotlight(second.id, owner.user.channel.id);
     const storedSettingsBefore = await prisma.platformSetting.count();
     const snapshotsBefore = await prisma.trendingScoreSnapshot.count();
 
@@ -395,11 +415,13 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
     }
   });
 
-  it("resumes owned real progress without repeating it in the automatic spotlight or shelves", async () => {
+  it("prefers an equally ready unwatched spotlight while preserving owned resume progress", async () => {
     await prisma.homeRowConfig.deleteMany();
     const owner = await register("Automatic resume", "automatic-resume@example.com");
     const resume = await publishVideo(owner.user.channel.id, "Unfinished title");
     const fresh = await publishVideo(owner.user.channel.id, "Unwatched title");
+    await prepareSpotlight(resume.id, owner.user.channel.id);
+    await prepareSpotlight(fresh.id, owner.user.channel.id);
     await prisma.watchProgress.create({
       data: { profileId: owner.user.profile.id, videoId: resume.id, positionMs: 25_000 },
     });
@@ -419,6 +441,72 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
     });
     expect(new Set(homeIds(home)).size).toBe(2);
     expect(homeIds(home)).toHaveLength(2);
+  });
+
+  it("does not demote the spotlight after both presentation-ready films enter Continue Watching", async () => {
+    await prisma.homeRowConfig.deleteMany();
+    const owner = await register("Returning viewer", "returning-home@example.com");
+    const now = Date.now();
+    const first = await publishVideo(
+      owner.user.channel.id,
+      "First complete film",
+      new Date(now - 3000),
+    );
+    const second = await publishVideo(
+      owner.user.channel.id,
+      "Second complete film",
+      new Date(now - 2000),
+    );
+    const incomplete = await publishVideo(
+      owner.user.channel.id,
+      "Uncurated upload",
+      new Date(now - 1000),
+    );
+    await prepareSpotlight(first.id, owner.user.channel.id);
+    await prepareSpotlight(second.id, owner.user.channel.id);
+    await prepareSpotlight(incomplete.id, owner.user.channel.id);
+    await prisma.video.update({
+      where: { id: incomplete.id },
+      data: { description: null, videoForm: "LONG_FORM", durationMs: 9000 },
+    });
+    const request = {
+      method: "GET" as const,
+      url: "/discovery/home",
+      headers: { cookie: owner.cookie },
+    };
+    const before = await app.inject(request);
+    expect(before.statusCode).toBe(200);
+    expect(before.json<HomeResponse>().spotlight?.id).toBe(second.id);
+
+    await prisma.watchProgress.createMany({
+      data: [
+        { profileId: owner.user.profile.id, videoId: first.id, positionMs: 25_000 },
+        { profileId: owner.user.profile.id, videoId: second.id, positionMs: 35_000 },
+      ],
+    });
+    const response = await app.inject(request);
+    expect(response.statusCode).toBe(200);
+    const home = response.json<HomeResponse>();
+    expect(home.spotlight?.id).toBe(second.id);
+    expect(home.rows[0]?.source).toBe("CONTINUE_WATCHING");
+    expect(home.rows[0]?.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: first.id,
+          progress: expect.objectContaining({ positionMs: 25_000 }),
+        }),
+        expect.objectContaining({
+          id: second.id,
+          progress: expect.objectContaining({ positionMs: 35_000 }),
+        }),
+      ]),
+    );
+    expect(home.rows[0]?.items).toHaveLength(2);
+    expect(home.rows.slice(1).flatMap((row) => row.items.map((item) => item.id))).toEqual([
+      incomplete.id,
+    ]);
+    const rowIds = home.rows.flatMap((row) => row.items.map((item) => item.id));
+    expect(new Set(rowIds).size).toBe(rowIds.length);
   });
 
   it("renders configured rows in database order using only real eligible data", async () => {
