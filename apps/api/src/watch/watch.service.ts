@@ -49,6 +49,7 @@ export class WatchService {
         slug: true,
         title: true,
         description: true,
+        contentType: true,
         commentsEnabled: true,
         durationMs: true,
         publishedAt: true,
@@ -235,7 +236,7 @@ export class WatchService {
         chapters,
       },
       detail: {
-        contentType: seriesContext ? ("SERIES_EPISODE" as const) : ("CREATOR_VIDEO" as const),
+        contentType: seriesContext ? ("SERIES_EPISODE" as const) : video.contentType,
         seriesContext,
         nextEpisode: seriesContext?.nextEpisode ?? null,
         saveHook: { action: "WATCH_LATER" as const, available: true },

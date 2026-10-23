@@ -144,7 +144,7 @@ export interface PublicPlaybackResponse {
     }>;
   } & (
     | {
-        contentType: "CREATOR_VIDEO";
+        contentType: "CREATOR_VIDEO" | "MOVIE" | "DOCUMENTARY";
         seriesContext?: null;
         nextEpisode?: null;
       }
