@@ -76,6 +76,7 @@ export function composeAutomaticHome(
   const isKids = options.isKidsProfile === true;
 
   const remember = (candidate: AutomaticHomeCandidate) => {
+    if (seen.has(candidate.item.id)) return;
     seen.add(candidate.item.id);
     creatorCounts.set(candidate.creatorId, (creatorCounts.get(candidate.creatorId) ?? 0) + 1);
   };
@@ -102,13 +103,15 @@ export function composeAutomaticHome(
   // The existing Kids screen consumes rows only, and must never lose its sole
   // eligible title to a spotlight that it does not render.
   if (!isKids) {
-    const available = remaining();
-    const featured =
-      available.find(
-        (candidate) => candidate.videoForm === "LONG_FORM" && candidate.item.artworkObjectKey,
-      ) ??
-      available.find((candidate) => candidate.videoForm === "LONG_FORM") ??
-      available[0];
+    const presentationReady = candidates.filter((candidate) =>
+      Boolean(candidate.item.artworkObjectKey?.trim() && candidate.description?.trim()),
+    );
+    const longForm = presentationReady.filter((candidate) => candidate.videoForm === "LONG_FORM");
+    const tier = longForm.length ? longForm : presentationReady;
+    // Resume deduplication must not demote the spotlight to a weaker tier.
+    // Prefer unseen titles within the tier; otherwise keep the resume entry
+    // and reuse its catalogue metadata without counting its creator twice.
+    const featured = tier.find((candidate) => !seen.has(candidate.item.id)) ?? tier[0];
     if (featured) {
       remember(featured);
       spotlight = {
