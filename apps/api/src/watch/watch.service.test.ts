@@ -7,6 +7,7 @@ const video = {
   slug: "adaptive-film",
   title: "Adaptive Film",
   description: null,
+  contentType: "CREATOR_VIDEO",
   commentsEnabled: true,
   durationMs: 120_000,
   publishedAt: new Date("2026-09-07T00:00:00.000Z"),
@@ -75,15 +76,77 @@ function harness(input: { hlsEnabled: boolean; generation?: typeof readyGenerati
       .mockResolvedValue({ allowed: true, maturityLevel: null, ageRestriction: "NONE" }),
     filterAvailableVideoIds: vi.fn(async (ids: string[]) => new Set(ids)),
   };
+  const seriesCatalog = { getPublicContextForVideo: vi.fn().mockResolvedValue(null) };
   const service = new WatchService(
     database as never,
     settings as never,
     featureFlags as never,
-    { getPublicContextForVideo: vi.fn().mockResolvedValue(null) } as never,
+    seriesCatalog as never,
     policy as never,
   );
-  return { service, database, generationLookup, featureFlags };
+  return { service, database, generationLookup, featureFlags, seriesCatalog, policy };
 }
+
+describe("WatchService content classification", () => {
+  it.each(["CREATOR_VIDEO", "MOVIE", "DOCUMENTARY"])(
+    "preserves %s from the stored video",
+    async (contentType) => {
+      const { service, database } = harness({ hlsEnabled: false });
+      database.client.video.findUnique.mockResolvedValue({ ...video, contentType });
+
+      const response = await service.getPublicPlayback(video.slug);
+
+      expect(database.client.video.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ select: expect.objectContaining({ contentType: true }) }),
+      );
+      expect(response.detail.contentType).toBe(contentType);
+      expect(response.detail.seriesContext).toBeNull();
+    },
+  );
+
+  it("keeps verified series context authoritative over the stored video type", async () => {
+    const { service, database, seriesCatalog } = harness({ hlsEnabled: false });
+    database.client.video.findUnique.mockResolvedValue({ ...video, contentType: "MOVIE" });
+    const context = { series: { title: "A Series" }, nextEpisode: null };
+    seriesCatalog.getPublicContextForVideo.mockResolvedValue(context);
+
+    const response = await service.getPublicPlayback(video.slug, "US");
+
+    expect(seriesCatalog.getPublicContextForVideo).toHaveBeenCalledWith(video.id, "US");
+    expect(response.detail.contentType).toBe("SERIES_EPISODE");
+    expect(response.detail.seriesContext).toBe(context);
+  });
+
+  it("preserves a kids-eligible film type without exposing series navigation", async () => {
+    const { service, database, seriesCatalog } = harness({ hlsEnabled: false });
+    database.client.video.findUnique.mockResolvedValue({ ...video, contentType: "MOVIE" });
+
+    const response = await service.getPublicPlayback(video.slug, "US", true);
+
+    expect(response.detail.contentType).toBe("MOVIE");
+    expect(response.detail.seriesContext).toBeNull();
+    expect(seriesCatalog.getPublicContextForVideo).not.toHaveBeenCalled();
+  });
+
+  it("still denies a movie when geographic policy disallows playback", async () => {
+    const { service, database, policy } = harness({ hlsEnabled: false });
+    database.client.video.findUnique.mockResolvedValue({ ...video, contentType: "MOVIE" });
+    policy.decide.mockResolvedValue({
+      allowed: false,
+      maturityLevel: null,
+      ageRestriction: "NONE",
+    });
+
+    await expect(service.getPublicPlayback(video.slug, "GB")).rejects.toMatchObject({
+      code: "VIDEO_NOT_FOUND",
+      statusCode: 404,
+    });
+    expect(policy.decide).toHaveBeenCalledWith(video.id, {
+      countryCode: "GB",
+      isKidsProfile: false,
+    });
+  });
+});
 
 describe("WatchService adaptive playback", () => {
   it("keeps the existing canonical MP4 path when the Task 41 playback flag is off", async () => {
