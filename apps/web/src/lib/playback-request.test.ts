@@ -26,20 +26,36 @@ const audience = { identity, isCurrent: () => true };
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Watch audience-scoped playback", () => {
-  it.each(["MOVIE", "DOCUMENTARY"])("accepts published %s playback for both audiences", async (contentType) => {
-    const value = { ...body, detail: { ...body.detail, contentType } };
-    vi.stubGlobal("fetch", async () => Response.json(value));
-    for (const viewer of [audience, { identity: null, isCurrent: () => true }]) {
-      await expect(readPlayback(params, viewer, new AbortController().signal)).resolves.toEqual(value);
-    }
-  });
-  it.each(["UNKNOWN", "movie", null, ["MOVIE"], {}, 1])("rejects unsupported content type %j", async (contentType) => {
-    vi.stubGlobal("fetch", async () => Response.json({ ...body, detail: { ...body.detail, contentType } }));
-    await expect(readPlayback(params, audience, new AbortController().signal)).rejects.toMatchObject({ status: 0 });
-  });
+  it.each(["MOVIE", "DOCUMENTARY"])(
+    "accepts published %s playback for both audiences",
+    async (contentType) => {
+      const value = { ...body, detail: { ...body.detail, contentType } };
+      vi.stubGlobal("fetch", async () => Response.json(value));
+      for (const viewer of [audience, { identity: null, isCurrent: () => true }]) {
+        await expect(readPlayback(params, viewer, new AbortController().signal)).resolves.toEqual(
+          value,
+        );
+      }
+    },
+  );
+  it.each(["UNKNOWN", "movie", null, ["MOVIE"], {}, 1])(
+    "rejects unsupported content type %j",
+    async (contentType) => {
+      vi.stubGlobal("fetch", async () =>
+        Response.json({ ...body, detail: { ...body.detail, contentType } }),
+      );
+      await expect(
+        readPlayback(params, audience, new AbortController().signal),
+      ).rejects.toMatchObject({ status: 0 });
+    },
+  );
   it.each(["MOVIE", "DOCUMENTARY"])("preserves Kids checks for %s", async (contentType) => {
-    vi.stubGlobal("fetch", async () => Response.json({ ...body, detail: { ...body.detail, contentType } }));
-    await expect(readPlayback({ ...params, explicitKids: true }, audience, new AbortController().signal)).rejects.toMatchObject({ status: 0 });
+    vi.stubGlobal("fetch", async () =>
+      Response.json({ ...body, detail: { ...body.detail, contentType } }),
+    );
+    await expect(
+      readPlayback({ ...params, explicitKids: true }, audience, new AbortController().signal),
+    ).rejects.toMatchObject({ status: 0 });
   });
   it("sends browser credentials and exact viewer fences without asserting territory", async () => {
     const fetch = vi.fn(async () => Response.json(body));
