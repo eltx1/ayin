@@ -52,7 +52,12 @@ export const getPublicMovie = cache(
     const params = new URLSearchParams({ locale });
     const response = await fetch(
       `${apiBaseUrl}/public/movies/${encodeURIComponent(slug)}?${params.toString()}`,
-      { cache: "no-store", headers: trustedHeaders, signal: AbortSignal.timeout(10_000) },
+      {
+        cache: "no-store",
+        redirect: "error",
+        headers: trustedHeaders,
+        signal: AbortSignal.timeout(10_000),
+      },
     );
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`Catalog request failed (${response.status}).`);

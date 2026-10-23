@@ -195,6 +195,9 @@ if [[ "$current_node_version" != "$required_node_version" ]]; then
   exit 69
 fi
 
+# Reject configuration before preparing shared package-manager or media binaries.
+node deploy/validate-production-env.cjs "$AYIN_WEB_ENV_FILE" "$AYIN_API_ENV_FILE"
+
 corepack enable
 corepack prepare pnpm@11.24.0 --activate
 command -v pnpm >/dev/null 2>&1 || {
@@ -205,7 +208,6 @@ command -v pnpm >/dev/null 2>&1 || {
 # The media worker uses a pinned checksum-verified runtime under /home/ayin/bin.
 bash deploy/ensure-ffmpeg-runtime.sh
 
-node deploy/validate-production-env.cjs "$AYIN_WEB_ENV_FILE" "$AYIN_API_ENV_FILE"
 pnpm install --frozen-lockfile
 pnpm db:generate
 pnpm packages:build

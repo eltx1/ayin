@@ -49,6 +49,7 @@ export async function fetchPublicDirectory(
       : `/public/discovery/${section}`;
   const response = await fetch(`${apiBaseUrl}${path}?${params}`, {
     cache: "no-store",
+    redirect: "error",
     headers: trustedHeaders,
     signal: AbortSignal.timeout(10_000),
   });

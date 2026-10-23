@@ -10,6 +10,8 @@ const apiEnvFile = process.env.AYIN_API_ENV_FILE || "/home/ayin/env/api.env";
 
 const webEnv = loadEnvFile(webEnvFile);
 const apiEnv = loadEnvFile(apiEnvFile);
+const webRegionForwardingEnabled =
+  apiEnv.AYIN_WEB_REGION_FORWARDING === "true" && apiEnv.AYIN_TRUST_CLOUDFLARE_REGION === "true";
 
 function releaseSha() {
   try {
@@ -32,6 +34,12 @@ module.exports = {
       interpreter: "node",
       env: {
         ...webEnv,
+        // Runtime-only, purpose-specific sharing. Never spread apiEnv into Web or
+        // supply this credential to the immutable CI Web build/public settings.
+        AYIN_INTERNAL_EDGE_TOKEN: webRegionForwardingEnabled
+          ? apiEnv.AYIN_INTERNAL_EDGE_TOKEN?.trim() || ""
+          : "",
+        AYIN_TRUST_CLOUDFLARE_REGION: webRegionForwardingEnabled ? "true" : "false",
         NODE_ENV: "production",
         AYIN_RELEASE_SHA: currentReleaseSha,
         AYIN_SERVICE_NAME: "ayin-web",

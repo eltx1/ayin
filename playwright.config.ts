@@ -54,6 +54,8 @@ export default defineConfig({
         NEXT_PUBLIC_API_BASE_URL: "http://127.0.0.1:3001",
         NEXT_PUBLIC_MEDIA_BASE_URL: "http://media.invalid",
         AYIN_INTERNAL_EDGE_TOKEN: "controlled-e2e-viewer-policy-edge-token-more-than32",
+        // Controlled synthetic ingress for the server-rendered policy acceptance fixtures.
+        AYIN_TRUST_CLOUDFLARE_REGION: "true",
       },
     },
   ],

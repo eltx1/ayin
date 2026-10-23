@@ -39,7 +39,7 @@ if [[ "$1" == clone ]]; then
   target="\${@: -1}"
   mkdir -p "$target/deploy" "$target/apps/web"
   printf '%s\\n' "$TEST_NODE_VERSION" > "$target/.nvmrc"
-  printf '#!/usr/bin/env bash\\nexit 0\\n' > "$target/deploy/ensure-ffmpeg-runtime.sh"
+  printf '%s\\n' '#!/usr/bin/env bash' 'printf "ffmpeg-prepare\\n" >> "$TEST_LOG"' > "$target/deploy/ensure-ffmpeg-runtime.sh"
 elif [[ "$*" == *'rev-parse HEAD'* ]]; then
   printf '%s\\n' "$TEST_SHA"
 fi`,
@@ -49,6 +49,7 @@ fi`,
     `
 if [[ "$1" == --version ]]; then printf 'v%s\\n' "$TEST_NODE_VERSION"; exit 0; fi
 printf 'node %s\\n' "$*" >> "$TEST_LOG"
+if [[ "$1" == deploy/validate-production-env.cjs && "$TEST_MODE" == invalid-env ]]; then exit 78; fi
 if [[ "$1" == deploy/web-build-artifact.mjs ]]; then
   [[ "$2" == install && "$4" == "$TEST_SHA" && "$6" == "$TEST_DIGEST" ]]
   [[ "$(readlink "$TEST_CURRENT")" == "$TEST_PREVIOUS" ]]
@@ -117,6 +118,8 @@ for (const mode of ["invalid", "valid"]) {
         assert.deepEqual(readdirSync(state.root), ["previous"]);
       } else {
         assert.equal(result.status, 0, result.stderr);
+        assert.ok(log.indexOf("validate-production-env.cjs") < log.indexOf("corepack enable"));
+        assert.ok(log.indexOf("validate-production-env.cjs") < log.indexOf("ffmpeg-prepare"));
         assert.ok(log.indexOf("web-build-artifact.mjs install") < log.indexOf("db:migrate:deploy"));
         assert.ok(log.indexOf("db:migrate:deploy") < log.indexOf("pm2 "));
         assert.notEqual(readlinkSync(state.current), state.previous);
@@ -126,6 +129,26 @@ for (const mode of ["invalid", "valid"]) {
     }
   });
 }
+
+test("rejected environment stops before shared tool preparation, migration and activation", () => {
+  const state = fixture("invalid-env");
+  try {
+    const result = spawnSync("bash", [release, sha, state.artifact, digest], {
+      env: state.env,
+      encoding: "utf8",
+      timeout: 10000,
+    });
+    assert.ifError(result.error);
+    assert.equal(result.status, 78, result.stderr);
+    const log = readFileSync(state.log, "utf8");
+    assert.match(log, /validate-production-env\.cjs/);
+    assert.doesNotMatch(log, /corepack |ffmpeg-prepare|pnpm |db:migrate:deploy|pm2 /);
+    assert.equal(readlinkSync(state.current), state.previous);
+    assert.deepEqual(readdirSync(state.root), ["previous"]);
+  } finally {
+    rmSync(state.directory, { recursive: true, force: true });
+  }
+});
 
 test("release requires a Web artifact instead of falling back to a host compilation", () => {
   const result = spawnSync("bash", [release, sha], { encoding: "utf8" });

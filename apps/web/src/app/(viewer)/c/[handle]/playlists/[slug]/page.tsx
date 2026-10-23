@@ -115,6 +115,7 @@ export default async function PublicPlaylistPage({
     `${apiBaseUrl}/public/channels/${encodeURIComponent(handle)}/playlists/${encodeURIComponent(slug)}${policySuffix}`,
     {
       cache: "no-store",
+      redirect: "error",
       headers: await trustedApiRegionHeaders(),
       signal: AbortSignal.timeout(10_000),
     },

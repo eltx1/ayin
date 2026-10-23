@@ -13,7 +13,13 @@ AYIN now has one authoritative video-availability policy used by playback, catal
 
 Territories use ISO 3166-1 alpha-2 identifiers. Free-form country text is rejected. An empty allow list plus empty block list means worldwide availability. If any geographic restriction exists and AYIN has no trusted country signal, availability is denied conservatively.
 
-`x-ayin-region` remains personalization-only and has no rights authority. Enforcement accepts either Cloudflare `CF-IPCountry` when `AYIN_TRUST_CLOUDFLARE_REGION=true`, or an internal `x-ayin-edge-country` header authenticated with `AYIN_INTERNAL_EDGE_TOKEN`. Production origins must remain protected from direct untrusted header injection. Deployments must enable only a region source that is guaranteed to be set or authenticated by trusted edge infrastructure; otherwise restricted content intentionally fails closed.
+`x-ayin-region` remains personalization-only and has no rights authority. Direct requests can use Cloudflare `CF-IPCountry` only when `AYIN_TRUST_CLOUDFLARE_REGION=true`. Internal `x-ayin-edge-country` context authenticated with `AYIN_INTERNAL_EDGE_TOKEN` takes precedence over the server's own egress country. The Web server marks every such request with the non-authoritative `x-ayin-edge-context: server`, including when its token is missing. Any internal-header presence selects the internal path; missing, incorrect, duplicate or malformed credentials/context result in unknown country, without falling back to Cloudflare. Existing authenticated callers without the marker remain supported.
+
+Web forwards a normalized ISO country only after explicit runtime trust opt-in. The production runtime additionally requires the separate `AYIN_WEB_REGION_FORWARDING=true` gate in `api.env`; legacy API-only trust never activates Web forwarding. Unknown or invalid countries are omitted; a configured token still authenticates that unknown context. Server requests reject HTTP redirects so the internal credential cannot follow a redirect to another origin. Responses remain private/no-store and contain no internal credential.
+
+Production origins must remain protected from direct untrusted header injection. Cloudflare IP-geolocation forwarding must be enabled, and both Web and API ingress must authenticate or sanitize that header before trust is activated. A Cloudflare trace country, proxied DNS, or encrypted TLS connection alone does not establish this boundary. See the runtime-only configuration and activation procedure in `deploy/README.md`; defaults remain disabled and restricted content intentionally fails closed.
+
+Cloudflare documents [enabling the geolocation header](https://developers.cloudflare.com/network/ip-geolocation/) separately from [authenticating origin requests](https://developers.cloudflare.com/ssl/origin-configuration/authenticated-origin-pull/explanation/).
 
 ## Maturity and age hook
 

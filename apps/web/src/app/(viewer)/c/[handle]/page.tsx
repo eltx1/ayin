@@ -89,6 +89,7 @@ export default async function PublicChannelPage({
   const [response, seoChannel] = await Promise.all([
     fetch(`${apiBaseUrl}/public/channels/${encodeURIComponent(handle)}${policySuffix}`, {
       cache: "no-store",
+      redirect: "error",
       headers: await trustedApiRegionHeaders(),
       signal: AbortSignal.timeout(10_000),
     }),

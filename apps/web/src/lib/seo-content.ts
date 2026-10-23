@@ -107,6 +107,7 @@ async function fetchSeo<T>(
 ): Promise<T | null> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     cache: "no-store",
+    redirect: "error",
     headers: requestHeaders,
     signal: AbortSignal.timeout(10_000),
   });
