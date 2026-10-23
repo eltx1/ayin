@@ -774,7 +774,8 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
       await page.goto(`/c/${tv.handle}/tv`);
       await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(1);
       await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
-      const video = page.locator("main video");
+      const video = page.locator("main video:visible");
+      await expect(video).toHaveCount(1);
       await video.evaluate((element: HTMLVideoElement) => {
         element.currentTime = 15;
         element.dispatchEvent(new Event("timeupdate"));
