@@ -74,7 +74,8 @@ export async function readPlayback(
     !Array.isArray(video.captions) ||
     !Array.isArray(video.chapters) ||
     !Array.isArray(detail.related) ||
-    !["CREATOR_VIDEO", "SERIES_EPISODE"].includes(String(detail.contentType)) ||
+    typeof detail.contentType !== "string" ||
+    !["CREATOR_VIDEO", "MOVIE", "DOCUMENTARY", "SERIES_EPISODE"].includes(detail.contentType) ||
     typeof object(detail.commentsSlot).enabled !== "boolean" ||
     !Number.isFinite(policy.progressSaveIntervalMs) ||
     !Number.isFinite(policy.completionThresholdPercent)
