@@ -1,0 +1,52 @@
+name: Home discovery browser acceptance
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/**"
+      - "packages/**"
+      - "tests/home-discovery/**"
+      - "playwright.home-discovery.config.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".nvmrc"
+      - ".github/workflows/home-discovery.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  home-discovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Prepare workspace packages
+        run: |
+          pnpm db:generate
+          pnpm packages:build
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Verify actual Next home rendering and viewer lifecycle
+        # Public responses are controlled fixtures. Real database eligibility
+        # remains covered separately by the Task quality gates integration suite.
+        run: pnpm exec playwright test --config playwright.home-discovery.config.ts
+      - name: Preserve home evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: home-discovery-evidence
+          path: test-results-home-discovery
+          if-no-files-found: ignore
+          retention-days: 7

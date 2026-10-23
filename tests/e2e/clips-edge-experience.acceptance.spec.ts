@@ -428,6 +428,10 @@ test("ordinary VIDEO_NOT_PLAYABLE capability409 stays unavailable without an ide
   const catalog = fixture<Catalog>("seed");
   let capabilityReads = 0;
   let identityReads = 0;
+  let releaseCapability!: () => void;
+  const capabilityGate = new Promise<void>((resolve) => {
+    releaseCapability = resolve;
+  });
   try {
     page.on("request", (request) => {
       if (request.url() === `${API}/auth/me`) identityReads++;
@@ -436,6 +440,7 @@ test("ordinary VIDEO_NOT_PLAYABLE capability409 stays unavailable without an ide
       `${API}/public/videos/${catalog.videos[0]!.slug}/playback?*`,
       async (route) => {
         capabilityReads++;
+        await capabilityGate;
         await route.fulfill({
           status: 409,
           contentType: "application/json",
@@ -449,8 +454,16 @@ test("ordinary VIDEO_NOT_PLAYABLE capability409 stays unavailable without an ide
       },
     );
     await open(page, catalog);
+    // Decoding can precede the social reads' final /auth/me checks. An enabled
+    // Subscribe action proves both social reads and their identity fences settled
+    // before this optional capability failure becomes the measured event.
+    await expect(
+      active(page).getByRole("button", { name: "Subscribe", exact: true }),
+    ).toBeEnabled();
+    await expect.poll(() => capabilityReads).toBe(1);
     const identityBefore = identityReads;
     const retained = await video(page).elementHandle();
+    releaseCapability();
     await active(page).getByRole("button", { name: "Details", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Details", exact: true });
     await expect(dialog.getByRole("button", { name: "Try again", exact: true })).toBeVisible();
@@ -466,6 +479,7 @@ test("ordinary VIDEO_NOT_PLAYABLE capability409 stays unavailable without an ide
     await playing(page, true);
     await retained!.dispose();
   } finally {
+    releaseCapability();
     fixture("cleanup", { fixtureId: catalog.fixtureId });
   }
 });

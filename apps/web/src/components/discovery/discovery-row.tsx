@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { ContentRow } from "@/components/viewer/content-row";
@@ -12,6 +12,8 @@ import {
 } from "@/components/viewer/media-card";
 import { mediaAssetUrl } from "@/lib/channel";
 import { translateKidsDiscoverySource } from "@/lib/i18n/kids";
+import { discoveryRowTitle, homeSectionAnchor } from "@/lib/home-presentation";
+import { withViewerReadDeadline } from "@/lib/viewer-bootstrap";
 import {
   fetchDiscoveryRow,
   fetchKidsDiscoveryRow,
@@ -27,6 +29,7 @@ interface DiscoveryRowProperties {
   row: DiscoveryRowData;
   scope?: "home" | "my-ayin";
   kidsMode?: boolean;
+  automatic?: boolean;
 }
 
 export function DiscoveryRow({
@@ -34,41 +37,61 @@ export function DiscoveryRow({
   row,
   scope = "home",
   kidsMode = false,
+  automatic = false,
 }: DiscoveryRowProperties) {
   const { locale, t } = useI18n();
   const [items, setItems] = useState(row.items);
   const [cursor, setCursor] = useState(row.nextCursor);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const request = useRef<AbortController | null>(null);
+  useEffect(() => () => request.current?.abort(), []);
 
   async function loadMore() {
-    if (!cursor || loading) return;
+    if (!cursor || request.current) return;
+    const controller = new AbortController();
+    request.current = controller;
     setLoading(true);
     setError(null);
     try {
-      const page =
-        scope === "my-ayin"
-          ? await fetchMyAyinSection(row.key, cursor)
-          : kidsMode
-            ? await fetchKidsDiscoveryRow(row.key, cursor)
-            : await fetchDiscoveryRow(row.key, cursor, authenticated);
+      const page = await withViewerReadDeadline(
+        (signal) =>
+          scope === "my-ayin"
+            ? fetchMyAyinSection(row.key, cursor, signal)
+            : kidsMode
+              ? fetchKidsDiscoveryRow(row.key, cursor, signal)
+              : fetchDiscoveryRow(row.key, cursor, authenticated, signal),
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
       setItems((current) => mergeItems(current, page.items));
       setCursor(page.nextCursor);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : t("home.loadMoreError"));
+    } catch {
+      if (!controller.signal.aborted) setError(t("home.loadMoreError"));
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
+      if (request.current === controller) request.current = null;
     }
   }
 
-  const variant = row.source === "CREATOR_TV" ? "landscape" : "poster";
-  const rowTitle = kidsMode
-    ? translateKidsDiscoverySource(locale, row.source, row.title)
-    : row.title;
+  const variant =
+    row.source === "CREATOR_TV" ||
+    (automatic &&
+      ["auto-creator-videos", "auto-clips", "auto-discover", "auto-continue-watching"].includes(
+        row.key,
+      ))
+      ? "landscape"
+      : "poster";
+  const rowTitle = discoveryRowTitle(locale, row, kidsMode, automatic);
 
   return (
     <div aria-busy={loading} className={styles.rowBlock}>
-      <ContentRow rowId={`${scope}-${row.key}`} title={rowTitle}>
+      <ContentRow
+        {...(scope === "home" ? { anchorId: homeSectionAnchor(row.key) } : {})}
+        rowId={`${scope}-${row.key}`}
+        title={rowTitle}
+        variant={variant}
+      >
         {items.length > 0 ? (
           items.map((item) => (
             <DiscoveryCard
@@ -77,7 +100,9 @@ export function DiscoveryRow({
               kicker={
                 kidsMode
                   ? translateKidsDiscoverySource(locale, row.source, item.kicker)
-                  : item.kicker
+                  : automatic
+                    ? rowTitle
+                    : item.kicker
               }
               variant={variant}
             />

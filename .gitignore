@@ -35,6 +35,7 @@ pnpm-debug.log*
 .turbo/
 .vitest/
 test-results-recovery/
+test-results-caption-delivery/
 
 # iOS local/generated build state
 platforms/ios/AYIN.xcodeproj/
@@ -51,3 +52,4 @@ platforms/tvos/DerivedData/
 
 # Isolated browser signature acceptance
 test-results-r2-length/
+test-results-home-discovery/

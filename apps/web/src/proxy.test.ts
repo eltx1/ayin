@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import nextConfig from "../next.config";
 import { proxy } from "./proxy";
 
 function request(path: string, headers: Record<string, string> = {}, method = "GET") {
@@ -67,5 +68,69 @@ describe("locale preference side effects", () => {
     const prefetch = proxy(request("/ar/shorts?source=old", { rsc: "1" }));
     expect(prefetch.status).toBe(308);
     expect(prefetch.headers.get("set-cookie")).toBeNull();
+  });
+});
+
+describe("locale rewrite origin", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  function originalRequest(path: string, headers: Record<string, string>) {
+    // Next's adapter sets this build flag from next.config. Its NextRequest
+    // then retains request.url while nextUrl still normalizes loopback hosts.
+    expect(nextConfig.skipProxyUrlNormalize).toBe(true);
+    vi.stubEnv("__NEXT_NO_MIDDLEWARE_URL_NORMALIZE", "1");
+    return new NextRequest(`http://127.0.0.1:3237${path}`, { headers });
+  }
+
+  it("keeps a prefixed document rewrite internal and retains locale and trace headers", () => {
+    const input = originalRequest("/ar", {
+      "sec-fetch-dest": "document",
+      "x-request-id": "locale-request-123",
+      "x-correlation-id": "locale-correlation-123",
+      cookie: "ayin_locale=ar",
+    });
+    expect(input.nextUrl.hostname).toBe("localhost");
+    const response = proxy(input);
+    expect(response.headers.get("x-middleware-rewrite")).toBe("http://127.0.0.1:3237/");
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("x-middleware-request-x-ayin-locale")).toBe("ar");
+    expect(response.headers.get("x-middleware-request-x-request-id")).toBe("locale-request-123");
+    expect(response.headers.get("x-request-id")).toBe("locale-request-123");
+    expect(response.headers.get("x-correlation-id")).toBe("locale-correlation-123");
+    expect(response.cookies.get("ayin_locale")?.value).toBe("ar");
+  });
+
+  it("switches once on the original origin without deriving a destination from forwarded headers", () => {
+    const response = proxy(
+      originalRequest("/ar?lang=en&keep=1", {
+        "sec-fetch-dest": "document",
+        host: "untrusted.example",
+        "x-forwarded-host": "untrusted.example",
+        cookie: "ayin_locale=ar",
+      }),
+    );
+    expect(response.headers.get("location")).toBe("http://127.0.0.1:3237/?keep=1");
+    expect(response.cookies.get("ayin_locale")?.value).toBe("en");
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it("preserves RSC routing inputs without applying a prefetched language switch", () => {
+    const response = proxy(
+      originalRequest("/ar?lang=en&_rsc=opaque-navigation-key", {
+        "sec-fetch-dest": "empty",
+        accept: "text/x-component",
+        rsc: "1",
+        "next-router-prefetch": "1",
+        cookie: "ayin_locale=en",
+      }),
+    );
+    expect(response.headers.get("x-middleware-rewrite")).toBe(
+      "http://127.0.0.1:3237/?lang=en&_rsc=opaque-navigation-key",
+    );
+    expect(response.headers.get("x-middleware-request-x-ayin-locale")).toBe("ar");
+    expect(response.headers.get("x-middleware-request-rsc")).toBe("1");
+    expect(response.headers.get("x-middleware-request-next-router-prefetch")).toBe("1");
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("set-cookie")).toBeNull();
   });
 });

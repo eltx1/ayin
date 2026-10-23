@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 
 import { PageAdSlot } from "@/components/ads/page-ad-slot";
 import { DiscoveryHome } from "@/components/discovery/discovery-home";
-import { ManagedHero } from "@/components/viewer/managed-hero";
 import { localizePath } from "@/lib/i18n/routing";
 import { localizedAlternates } from "@/lib/i18n/seo";
 import { getRequestLocale } from "@/lib/i18n/server";
@@ -49,16 +48,11 @@ export default async function Home({ searchParams }: HomeProperties) {
 
   return (
     <main>
-      <ManagedHero />
-      <PageAdSlot placementKey="home_top" />
-
       <div className={styles.homeBody}>
+        <DiscoveryHome showHero afterHero={<PageAdSlot placementKey="home_top" />} />
+
         <section aria-label={translate(locale, "shell.account")} className={styles.accountStrip}>
           <SessionPanel showWelcome={params.welcome === "1"} />
-        </section>
-
-        <section id="discovery">
-          <DiscoveryHome />
         </section>
       </div>
     </main>

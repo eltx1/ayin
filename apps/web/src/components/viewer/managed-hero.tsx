@@ -3,37 +3,28 @@
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { ActionButton, StatusNotice } from "@/components/ui/design-system";
 import { translatePublicDiscovery } from "@/lib/i18n/public-discovery";
+import { revealCoveredFocus } from "@/lib/viewer-focus";
 
 import { Hero } from "./hero";
 import { useViewerProduct } from "./viewer-product-context";
 
-export function ManagedHero() {
+export function ManagedHero({
+  compactFallback = false,
+  allowEditorial = true,
+}: {
+  compactFallback?: boolean;
+  allowEditorial?: boolean;
+}) {
   const { locale, href } = useI18n();
   const { controls, navigationStatus, retryNavigation } = useViewerProduct();
-  const hero = navigationStatus === "ready" ? controls?.resolvedHero : null;
+  const hero = allowEditorial && navigationStatus === "ready" ? controls?.resolvedHero : null;
   const t = (key: Parameters<typeof translatePublicDiscovery>[1]) =>
     translatePublicDiscovery(locale, key);
 
   return (
     <Hero
-      onFocusCapture={(event) => {
-        // Native focus can consider a target visible while the fixed mobile
-        // tabs cover it. Check the painted target after native focus settles.
-        const target = event.target;
-        // Run after the browser's own focus scroll; never move a newer focus.
-        window.requestAnimationFrame(() => {
-          if (target.isConnected && document.activeElement === target) {
-            const bounds = target.getBoundingClientRect();
-            const centerX = bounds.x + bounds.width / 2;
-            const covered =
-              !target.contains(document.elementFromPoint(centerX, bounds.top + 3)) ||
-              !target.contains(document.elementFromPoint(centerX, bounds.bottom - 3));
-            if (covered) {
-              target.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" });
-            }
-          }
-        });
-      }}
+      compact={compactFallback && !hero}
+      onFocusCapture={revealCoveredFocus}
       description={
         hero
           ? (hero.description ?? t(`hero.${hero.entityType}.description`))
@@ -48,7 +39,7 @@ export function ManagedHero() {
       secondaryAction={{ href: href("/search"), label: t("hero.search") }}
       title={hero?.title ?? t("hero.title")}
     >
-      {navigationStatus !== "ready" ? (
+      {allowEditorial && navigationStatus !== "ready" ? (
         <StatusNotice announce="polite" tone={navigationStatus === "error" ? "warning" : "info"}>
           <p>{t(navigationStatus === "error" ? "hero.error" : "hero.loading")}</p>
           {navigationStatus === "error" ? (

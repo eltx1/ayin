@@ -32,7 +32,7 @@ function internalHref(value: unknown): value is string {
   });
 }
 
-function parseDiscoveryItem(value: unknown): DiscoveryItem {
+export function parseDiscoveryItem(value: unknown): DiscoveryItem {
   if (!value || typeof value !== "object") throw new Error("INVALID_MY_AYIN");
   const item = value as Record<string, unknown>;
   if (

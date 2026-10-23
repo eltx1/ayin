@@ -54,6 +54,10 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Locale rewrites must retain the incoming origin and navigation headers.
+  // NextURL aliases loopback hosts, which can turn an internal rewrite into
+  // a second HTTP request and lose the locale header or repeat its redirect.
+  skipProxyUrlNormalize: true,
   transpilePackages: ["@ayin/ui"],
   images: {
     remotePatterns: mediaRemotePattern ? [mediaRemotePattern] : [],

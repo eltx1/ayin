@@ -296,3 +296,47 @@
     padding-block: 2rem;
   }
 }
+
+/* A brand introduction must leave room for the actual catalogue. Authored
+   editorial features retain the full hero treatment. */
+.hero.compact {
+  min-height: 0;
+  padding-block: clamp(1.6rem, 3vw, 2.8rem);
+}
+
+.compact .copy h1 {
+  font-size: clamp(1.8rem, 3.5vw, 3.2rem);
+  letter-spacing: -0.035em;
+  line-height: 1.16;
+  max-width: 26ch;
+}
+
+.compact .description {
+  font-size: 1rem;
+  margin-block-start: 0.8rem;
+  max-width: 50rem;
+}
+
+.compact .actions {
+  margin-block-start: 1.1rem;
+}
+
+.compact .visual {
+  opacity: 0.5;
+}
+
+:global([dir="rtl"]) .compact .copy h1 {
+  letter-spacing: normal;
+  line-height: 1.4;
+}
+
+@media (max-width: 560px) {
+  .compact .actions {
+    flex-direction: row;
+  }
+
+  .compact .primary,
+  .compact .secondary {
+    width: auto;
+  }
+}

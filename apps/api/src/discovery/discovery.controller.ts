@@ -15,6 +15,7 @@ import { z } from "zod";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { TrustedRegionService, type HeaderBag } from "../video-policy/trusted-region.service.js";
 import { DiscoveryError, DiscoveryService, type DiscoveryContext } from "./discovery.service.js";
+import { homeStatusAfterRows } from "./home-composition.js";
 import { RegionalDiscoveryService } from "./regional-discovery.service.js";
 import { TrendingService } from "./trending.service.js";
 import { parseDirectoryQuery } from "../video-policy/catalog-directory-query.js";
@@ -65,10 +66,17 @@ export class PublicDiscoveryController {
     };
     return runDiscovery(async () => {
       const home = await this.discovery.getHome(context);
+      if (home.mode === "AUTO") return home;
       const trendingRows = await this.trending.applyRows(home.rows, context);
+      const rows = await this.regionalDiscovery.rankAndTargetRows(
+        countryCode,
+        allowed,
+        trendingRows,
+      );
       return {
         ...home,
-        rows: await this.regionalDiscovery.rankAndTargetRows(countryCode, allowed, trendingRows),
+        status: homeStatusAfterRows(home, rows),
+        rows,
       };
     });
   }
@@ -83,10 +91,13 @@ export class PublicDiscoveryController {
         isKidsProfile: true,
       };
       const home = await this.discovery.getKidsHome(context);
+      if (home.mode === "AUTO") return home;
       const trendingRows = await this.trending.applyRows(home.rows, context);
+      const rows = await this.regionalDiscovery.rankAndTargetRows(undefined, false, trendingRows);
       return {
         ...home,
-        rows: await this.regionalDiscovery.rankAndTargetRows(undefined, false, trendingRows),
+        status: homeStatusAfterRows(home, rows),
+        rows,
       };
     });
   }
@@ -158,6 +169,8 @@ export class DiscoveryController {
   ) {}
 
   @Get("home")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
   async home(
     @Req() request: AuthenticatedRequest,
     @Query() query: unknown,
@@ -175,10 +188,17 @@ export class DiscoveryController {
     };
     return runDiscovery(async () => {
       const home = await this.discovery.getHome(context);
+      if (home.mode === "AUTO") return home;
       const trendingRows = await this.trending.applyRows(home.rows, context);
+      const rows = await this.regionalDiscovery.rankAndTargetRows(
+        countryCode,
+        allowed,
+        trendingRows,
+      );
       return {
         ...home,
-        rows: await this.regionalDiscovery.rankAndTargetRows(countryCode, allowed, trendingRows),
+        status: homeStatusAfterRows(home, rows),
+        rows,
       };
     });
   }

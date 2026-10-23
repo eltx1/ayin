@@ -150,6 +150,21 @@ export const platformSettingCatalog = {
     highImpact: false,
     superadminOnly: false,
   },
+  homeDiscoveryMode: {
+    namespace: "DISCOVERY",
+    key: "homeDiscoveryMode",
+    valueType: "STRING",
+    defaultValue: "INHERIT",
+    schema: z.enum(["INHERIT", "AUTO", "MANAGED"]),
+    section: "watching",
+    label: "Homepage composition",
+    description:
+      "INHERIT preserves configured homepage rows, including disabled rows, and uses automatic discovery only when no rows exist. AUTO selects from eligible published videos. MANAGED uses only the configured rows.",
+    control: "select",
+    options: ["INHERIT", "AUTO", "MANAGED"],
+    highImpact: true,
+    superadminOnly: false,
+  },
   watchProgressSaveIntervalSeconds: {
     namespace: "DISCOVERY",
     key: "watchProgressSaveIntervalSeconds",

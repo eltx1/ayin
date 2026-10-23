@@ -33,6 +33,10 @@
   gap: 0.5rem;
 }
 
+.controls[hidden] {
+  display: none;
+}
+
 .controls button {
   align-items: center;
   backdrop-filter: blur(12px);
@@ -76,6 +80,14 @@
   display: none;
 }
 
+.scroller.landscape {
+  grid-auto-columns: clamp(17rem, 28vw, 23rem);
+}
+
+.scroller.landscape > * {
+  width: 100%;
+}
+
 @media (max-width: 700px) {
   .section {
     padding-block: 0.65rem;
@@ -93,6 +105,10 @@
     gap: 0.85rem;
     grid-auto-columns: clamp(10.25rem, 47vw, 11.5rem);
     padding-bottom: 1.1rem;
+  }
+
+  .scroller.landscape {
+    grid-auto-columns: min(78vw, 21rem);
   }
 }
 

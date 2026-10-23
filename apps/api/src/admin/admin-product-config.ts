@@ -23,6 +23,27 @@ const regionCodeSchema = z
   .regex(/^[A-Za-z]{2}$/)
   .transform((value) => value.toUpperCase());
 
+export const createHomeRowSchema = z.object({
+  requestId: z.string().uuid(),
+  expectedRowsRevision: z.string().regex(/^[a-f0-9]{64}$/),
+  key: z
+    .string()
+    .trim()
+    .min(1)
+    .max(80)
+    .regex(/^[a-z0-9][a-z0-9_-]*$/)
+    .refine((value) => !value.startsWith("auto-"), "This section key is reserved."),
+  title: z.string().trim().min(1).max(120),
+  source: homeRowSourceSchema,
+  audience: homeRowAudienceSchema.default("ALL"),
+  enabled: z.boolean().default(true),
+  maxItems: z.number().int().min(1).max(40).default(24),
+  regionPersonalizationRequired: z.boolean().default(false),
+  targetRegions: z.array(regionCodeSchema).max(64).default([]),
+  confirmManagedTransition: z.boolean().default(false),
+  reason: z.string().trim().min(3).max(500),
+});
+
 export const homeRowPatchSchema = z.object({
   title: z.string().trim().min(1).max(120).optional(),
   source: homeRowSourceSchema.optional(),
@@ -95,6 +116,7 @@ export const updateProductControlsSchema = productControlsSchema.extend({
 });
 
 export type HomeRowPatch = z.infer<typeof homeRowPatchSchema>;
+export type CreateHomeRow = z.infer<typeof createHomeRowSchema>;
 export type ProductControls = z.infer<typeof productControlsSchema>;
 export type UpdateProductControls = z.infer<typeof updateProductControlsSchema>;
 
