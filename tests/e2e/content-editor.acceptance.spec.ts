@@ -107,6 +107,110 @@ const failure = {
   headers: { "access-control-allow-origin": WEB, "access-control-allow-credentials": "true" },
   json: { error: { message: "Isolated failure" } },
 };
+
+test("published thumbnail replacement uses the existing upload contract without changing metadata", async ({
+  page,
+}) => {
+  const [videoId] = await seed(page, true);
+  const assetId = "861dc24c-4ddf-4e11-9870-e4bb2a762759";
+  const headers = {
+    "access-control-allow-origin": WEB,
+    "access-control-allow-credentials": "true",
+  };
+  const phases: string[] = [];
+  let release!: () => void;
+  const completion = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(`${API}/creator/videos/${videoId}/thumbnail/authorize`, async (route) => {
+    phases.push("authorize");
+    expect(route.request().postDataJSON()).toMatchObject({ mimeType: "image/png" });
+    await route.fulfill({
+      headers,
+      json: {
+        assetId,
+        upload: {
+          url: `${API}/studio-thumbnail-fixture`,
+          method: "PUT",
+          headers: { "content-type": "image/png" },
+        },
+      },
+    });
+  });
+  await page.route(`${API}/studio-thumbnail-fixture`, async (route) => {
+    if (route.request().method() === "PUT") phases.push("put");
+    await route.fulfill({
+      status: 200,
+      headers: {
+        ...headers,
+        "access-control-allow-methods": "PUT, OPTIONS",
+        "access-control-allow-headers": "content-type",
+      },
+      body: "",
+    });
+  });
+  await page.route(`${API}/creator/videos/${videoId}/thumbnail/complete`, async (route) => {
+    phases.push("complete");
+    expect(route.request().postDataJSON()).toEqual({ assetId });
+    await completion;
+    await route.fulfill({ headers, json: { assetId, status: "UPLOADED" } });
+  });
+  await page.goto("/studio/content?lang=en");
+  await openFirst(page);
+  const picker = page.getByLabel("Replace thumbnail", { exact: true });
+  await page.getByLabel("Title", { exact: true }).fill("Unsaved title");
+  await expect(picker).toBeDisabled();
+  await page.getByLabel("Title", { exact: true }).fill("Editor video 0");
+  await picker.setInputFiles({
+    name: "poster.gif",
+    mimeType: "image/gif",
+    buffer: Buffer.from("invalid"),
+  });
+  await expect(
+    page.getByText("Choose a JPG or PNG thumbnail up to 5 MB.", { exact: true }),
+  ).toBeVisible();
+  expect(phases).toEqual([]);
+  await picker.setInputFiles({
+    name: "poster.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("fixture"),
+  });
+  await expect.poll(() => phases).toEqual(["authorize", "put", "complete"]);
+  await expect(page.getByRole("button", { name: "Back to videos" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Unpublish", exact: true })).toBeDisabled();
+  release();
+  await expect(
+    page.getByText("The thumbnail was saved. Your videos are being refreshed."),
+  ).toBeVisible();
+  await expect(page.getByRole("row", { name: /Editor video 0/ })).toContainText("Published");
+  await openFirst(page);
+  await expect(page.getByLabel("Title", { exact: true })).toHaveValue("Editor video 0");
+  expect(phases).toEqual(["authorize", "put", "complete"]);
+});
+
+test("uncertain thumbnail writes require review and are not retried", async ({ page }) => {
+  const [videoId] = await seed(page, true);
+  let attempts = 0;
+  await page.route(`${API}/creator/videos/${videoId}/thumbnail/authorize`, async (route) => {
+    attempts += 1;
+    await route.fulfill(failure);
+  });
+  await page.goto("/studio/content?lang=en");
+  await openFirst(page);
+  const picker = page.getByLabel("Replace thumbnail", { exact: true });
+  await picker.setInputFiles({
+    name: "poster.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("fixture"),
+  });
+  await expect(page.getByText(/We could not confirm the complete update/)).toBeVisible();
+  await expect(picker).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Unpublish", exact: true })).toBeDisabled();
+  expect(attempts).toBe(1);
+  await page.getByRole("button", { name: "Back to videos" }).click();
+  await expect(page.getByRole("table")).toBeVisible();
+  expect(attempts).toBe(1);
+});
 async function noOverflow(page: Page) {
   await page.evaluate(async () => {
     await document.fonts.ready;
