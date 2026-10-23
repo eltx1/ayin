@@ -49,6 +49,11 @@ export const contentEditorEn = {
   "content.captions": "Captions & subtitles",
   "content.title": "Title",
   "content.description": "Description (optional)",
+  "content.thumbnail": "Replace thumbnail",
+  "content.thumbnailHint":
+    "Choose a JPG or PNG up to 5 MB. The image saves immediately. Save other changes first.",
+  "content.thumbnailInvalid": "Choose a JPG or PNG thumbnail up to 5 MB.",
+  "content.thumbnailSaved": "The thumbnail was saved. Your videos are being refreshed.",
   "content.preferences": "Audience settings",
   "content.comments": "Comments",
   "content.tv": "Include in Creator TV",
@@ -136,6 +141,11 @@ export const contentEditorAr: Record<keyof typeof contentEditorEn, string> = {
   "content.captions": "الترجمة والتسميات",
   "content.title": "العنوان",
   "content.description": "الوصف (اختياري)",
+  "content.thumbnail": "استبدال الصورة المصغرة",
+  "content.thumbnailHint":
+    "اختر صورة JPG أو PNG بحجم لا يتجاوز ٥ ميجابايت. تُحفظ الصورة فورًا. احفظ التغييرات الأخرى أولًا.",
+  "content.thumbnailInvalid": "اختر صورة مصغرة بصيغة JPG أو PNG بحجم لا يتجاوز ٥ ميجابايت.",
+  "content.thumbnailSaved": "تم حفظ الصورة المصغرة. جارٍ تحديث فيديوهاتك.",
   "content.preferences": "إعدادات الجمهور",
   "content.comments": "التعليقات",
   "content.tv": "إدراج في تلفزيون القناة",

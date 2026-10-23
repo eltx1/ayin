@@ -29,7 +29,11 @@ import {
   type StudioVideo,
 } from "@/lib/studio";
 import type { ContentTranslationKey } from "@/lib/i18n/content-copy";
-import { getQuickProcessingStatus, publishQuickVideo } from "@/lib/quick-upload";
+import {
+  getQuickProcessingStatus,
+  publishQuickVideo,
+  uploadQuickThumbnail,
+} from "@/lib/quick-upload";
 
 import { StudioCaptionManager } from "./studio-caption-manager";
 import styles from "./studio-content.module.css";
@@ -54,6 +58,7 @@ export function StudioVideoEditor({
   const [tab, setTab] = useState("details");
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
+  const thumbnailController = useRef<AbortController | null>(null);
   const [captionBusy, setCaptionBusy] = useState(false);
   const captionPending = useRef(false);
   const [captionDraft, setCaptionDraft] = useState(false);
@@ -71,6 +76,7 @@ export function StudioVideoEditor({
     const wasClosed = captionScopeClosed.current;
     captionScopeClosed.current = closed;
     if (closed) {
+      thumbnailController.current?.abort();
       editor.current
         ?.querySelectorAll<HTMLElement>("[data-caption-parent-private]")
         .forEach((node) => {
@@ -143,6 +149,7 @@ export function StudioVideoEditor({
     heading.current?.focus({ preventScroll: true });
     return () => {
       mounted.current = false;
+      thumbnailController.current?.abort();
     };
   }, []);
 
@@ -255,6 +262,54 @@ export function StudioVideoEditor({
   function change(patch: Partial<ContentDraft>) {
     setDraft((current) => ({ ...current, ...patch }));
     setError(null);
+  }
+
+  async function replaceThumbnail(file: File | undefined) {
+    if (
+      !file ||
+      !mounted.current ||
+      pending.current ||
+      captionPending.current ||
+      captionReview.current ||
+      captionScopeClosed.current ||
+      confirmationIntent.current ||
+      uncertain ||
+      dirty ||
+      captionDraft ||
+      video.status === "REMOVED"
+    )
+      return;
+    if (
+      !["image/jpeg", "image/png"].includes(file.type) ||
+      file.size < 1 ||
+      file.size > 5 * 1024 * 1024
+    ) {
+      setError("content.thumbnailInvalid");
+      return;
+    }
+    const controller = new AbortController();
+    thumbnailController.current = controller;
+    pending.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      await uploadQuickThumbnail(video.id, file, controller.signal);
+      if (
+        mounted.current &&
+        !controller.signal.aborted &&
+        !captionScopeClosed.current &&
+        !captionReview.current
+      )
+        onCommitted("content.thumbnailSaved");
+    } catch {
+      // Authorization, PUT and completion are separate steps. A lost response
+      // must be reviewed, never automatically replayed or reported as rolled back.
+      if (mounted.current && !captionScopeClosed.current) setUncertain(true);
+    } finally {
+      thumbnailController.current = null;
+      pending.current = false;
+      if (mounted.current) setBusy(false);
+    }
   }
 
   async function commit(kind: "save" | "publish" | "unpublish" | "remove") {
@@ -395,6 +450,19 @@ export function StudioVideoEditor({
                     </option>
                   ))}
                 </SelectField>
+                <TextField
+                  id="content-thumbnail"
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  label={t("content.thumbnail")}
+                  hint={t("content.thumbnailHint")}
+                  disabled={disabled || dirty || captionDraft || captionReviewRequired}
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    event.currentTarget.value = "";
+                    void replaceThumbnail(file);
+                  }}
+                />
                 <div className={styles.toggles}>
                   <label>
                     <input
