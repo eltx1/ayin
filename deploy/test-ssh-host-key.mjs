@@ -15,7 +15,7 @@ import { join, resolve } from "node:path";
 import { test } from "node:test";
 
 const workflow = readFileSync(resolve(".github/workflows/deploy.yml"), "utf8");
-const host = "13.52.116.200";
+const host = "13.63.216.89";
 const port = "22";
 const pinnedFingerprint = "SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y";
 

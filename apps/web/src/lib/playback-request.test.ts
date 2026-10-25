@@ -26,6 +26,24 @@ const audience = { identity, isCurrent: () => true };
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Watch audience-scoped playback", () => {
+  it.each(["https://outside.test/watch/x", "/watch/x?kids=0", "/watch/x"])(
+    "rejects an unsafe Kids recommendation href %s before rendering",
+    async (href) => {
+      vi.stubGlobal("fetch", async () =>
+        Response.json({
+          ...body,
+          viewer: { isKids: true },
+          detail: {
+            ...body.detail,
+            recommendations: [{ id: "next", title: "Next", href, durationMs: 1000 }],
+          },
+        }),
+      );
+      await expect(
+        readPlayback({ ...params, explicitKids: true }, audience, new AbortController().signal),
+      ).rejects.toMatchObject({ status: 0 });
+    },
+  );
   it.each(["MOVIE", "DOCUMENTARY"])(
     "accepts published %s playback for both audiences",
     async (contentType) => {

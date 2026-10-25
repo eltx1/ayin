@@ -65,6 +65,24 @@ describe("homepage ownership and status", () => {
 });
 
 describe("automatic homepage composition", () => {
+  it("offers runtime shelves for a single-type catalogue without repeating titles", () => {
+    const videos = [
+      candidate("hero"),
+      ...Array.from({ length: 3 }, (_, i) => candidate(`quick-${i}`, { durationMs: 120_000 })),
+      ...Array.from({ length: 3 }, (_, i) => candidate(`long-${i}`, { durationMs: 600_000 })),
+    ];
+    const home = composeAutomaticHome(videos);
+    expect(home.rows.map((row) => row.key)).toEqual(["auto-under-five", "auto-take-your-time"]);
+    expect(home.rows[0]?.items.every((item) => item.id.startsWith("quick-"))).toBe(true);
+    expect(home.rows[1]?.items.every((item) => item.id.startsWith("long-"))).toBe(true);
+    expect(new Set(renderedIds(home)).size).toBe(videos.length);
+  });
+
+  it("does not hide a populated content category just because another category is sparse", () => {
+    const home = composeAutomaticHome(Array.from({ length: 6 }, (_, i) => candidate(`film-${i}`)));
+    expect(home.rows[0]?.key).toBe("auto-movies");
+    expect(home.rows[0]?.items).toHaveLength(5);
+  });
   it("has a truthful empty state without fabricated content or rows", () => {
     expect(composeAutomaticHome([])).toEqual({
       mode: "AUTO",

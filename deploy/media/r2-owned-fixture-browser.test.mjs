@@ -176,7 +176,7 @@ test("SSH uses only fixed identity/host, strict pin verification and deployed en
   const args = sshArguments(approval, "/runner");
   assert.ok(args.includes("StrictHostKeyChecking=yes"));
   assert.ok(args.includes("IdentitiesOnly=yes"));
-  assert.ok(args.includes("ayin@13.52.116.200"));
+  assert.ok(args.includes("ayin@13.63.216.89"));
   assert.match(args.at(-1), /test ! -w \/home\/horusapp/);
   assert.match(args.at(-1), /deploy\/run-with-env.cjs \/home\/ayin\/env\/api.env/);
   assert.ok(!args.at(-1).includes("cat "));

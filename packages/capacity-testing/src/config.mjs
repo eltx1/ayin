@@ -3,6 +3,7 @@ const PRODUCTION_HOSTS = new Set([
   "api.ayin.stream",
   "media.ayin.stream",
   "13.52.116.200",
+  "13.63.216.89",
 ]);
 
 export const profiles = Object.freeze({

@@ -325,7 +325,7 @@ export function sshArguments(options, home = homedir()) {
     "ServerAliveCountMax=3",
     "-p",
     "22",
-    "ayin@13.52.116.200",
+    "ayin@13.63.216.89",
     command,
   ];
 }

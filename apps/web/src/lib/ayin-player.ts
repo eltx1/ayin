@@ -99,6 +99,16 @@ export const noopPlayerAnalytics: AyinPlayerAnalytics = {
   emit: () => undefined,
 };
 
+export interface WatchRecommendation {
+  id: string;
+  title: string;
+  href: string;
+  durationMs: number | null;
+  artworkObjectKey?: string | null;
+  channelName?: string;
+  channelHandle?: string;
+}
+
 export interface PublicPlaybackResponse {
   viewer: { isKids: boolean };
   video: {
@@ -136,12 +146,8 @@ export interface PublicPlaybackResponse {
     saveHook: { action: "WATCH_LATER"; available: boolean };
     commentsSlot: { reserved: boolean; enabled: boolean };
     externalAdPlacementKeys: string[];
-    related: Array<{
-      id: string;
-      title: string;
-      href: string;
-      durationMs: number | null;
-    }>;
+    related: WatchRecommendation[];
+    recommendations?: WatchRecommendation[];
   } & (
     | {
         contentType: "CREATOR_VIDEO" | "MOVIE" | "DOCUMENTARY";

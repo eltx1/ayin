@@ -181,8 +181,33 @@
 }
 
 .homeDiscovery {
-  padding-block: 0.8rem 1.5rem;
+  padding-block: 2rem 1.5rem;
   scroll-margin-top: 6rem;
+}
+
+.collectionHeader {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding-inline: var(--shell-gutter);
+}
+.collectionHeader h2 {
+  margin: 0.3rem 0 0;
+  font-size: clamp(1.5rem, 2.5vw, 2.3rem);
+  letter-spacing: -0.04em;
+}
+.collectionHeader p {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0;
+}
+.collectionHeader > div > p {
+  color: var(--text-accent);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .homeState {

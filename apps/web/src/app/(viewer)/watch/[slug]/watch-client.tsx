@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { PageHeader, ActionLink } from "@/components/ui/design-system";
+import { ActionLink } from "@/components/ui/design-system";
 import { PageAdSlot } from "@/components/ads/page-ad-slot";
 import { CommentsPanel } from "@/components/comments/comments-panel";
 import {
@@ -19,7 +19,10 @@ import { releaseHtmlMediaElement } from "@/lib/adaptive-playback";
 import { mediaAssetUrl } from "@/lib/channel";
 import { captionTrackPath } from "@/lib/caption-delivery";
 import { localizePath } from "@/lib/i18n/routing";
-import { formatNumber } from "@/lib/i18n/format";
+import { formatNumber, formatDate } from "@/lib/i18n/format";
+import { translatePublicDiscovery } from "@/lib/i18n/public-discovery";
+import { localizedMediaTitle } from "@/lib/home-presentation";
+import { WatchRecommendations } from "@/components/viewer/watch-recommendations";
 import { translateCatalogDetail } from "@/lib/i18n/catalog-detail";
 import { readPlayback, PlaybackReadError } from "@/lib/playback-request";
 import styles from "./page.module.css";
@@ -292,122 +295,130 @@ export function WatchContent({
 
   return (
     <>
-      <AnalyticsAyinPlayer
-        advertisingEnabled={!kidsMode}
-        analytics={analyticsSession?.analytics}
-        completedAdBreaks={analyticsSession?.completedAdBreaks}
-        onContentImpression={analyticsSession?.recordImpression}
-        initialPreferences={initialPreferences}
-        initialPositionMs={initialPositionMs}
-        onPlaybackReleaseReady={onPlaybackReleaseReady}
-        onPositionAuthorityReady={onPositionAuthorityReady}
-        adaptiveSourceUrl={adaptiveSourceUrl}
-        autoPlay={autoPlay}
-        className={styles.playerFrame}
-        captions={captions}
-        chapters={data.video.chapters}
-        durationMs={data.video.durationMs}
-        progressPolicy={data.playerPolicy}
-        sourceUrl={sourceUrl}
-        title={displayTitle}
-        videoId={data.video.id}
-      />
-      <section className={styles.details}>
-        {seriesContext ? (
-          <nav
-            className={styles.seriesNavigation}
-            aria-label={catalogText("series.episodeNavigation")}
-          >
-            <ActionLink
-              tone="secondary"
-              href={localizePath(
-                `/series/${encodeURIComponent(seriesContext.series.slug)}?season=${seriesContext.season.seasonNumber}`,
-                locale,
-              )}
-              data-tv-focusable="true"
-            >
-              <span dir="auto">{seriesContext.series.title}</span>
-              <span>{catalogText("series.allEpisodes")}</span>
-            </ActionLink>
-            <p dir="auto">
-              {episodePosition(
-                seriesContext.season.seasonNumber,
-                seriesContext.episode.episodeNumber,
-              )}
-              {seriesContext.season.title ? ` · ${seriesContext.season.title}` : ""}
-            </p>
-            {seriesContext.nextEpisode ? (
-              <ActionLink
-                href={localizePath(
-                  `/watch/${encodeURIComponent(seriesContext.nextEpisode.video.slug)}`,
-                  locale,
-                )}
-                data-tv-focusable="true"
-                data-tv-focus-id="watch-next-episode"
+      <div className={styles.watchLayout}>
+        <div className={styles.mainColumn}>
+          <AnalyticsAyinPlayer
+            advertisingEnabled={!kidsMode}
+            analytics={analyticsSession?.analytics}
+            completedAdBreaks={analyticsSession?.completedAdBreaks}
+            onContentImpression={analyticsSession?.recordImpression}
+            initialPreferences={initialPreferences}
+            initialPositionMs={initialPositionMs}
+            onPlaybackReleaseReady={onPlaybackReleaseReady}
+            onPositionAuthorityReady={onPositionAuthorityReady}
+            adaptiveSourceUrl={adaptiveSourceUrl}
+            autoPlay={autoPlay}
+            className={styles.playerFrame}
+            captions={captions}
+            chapters={data.video.chapters}
+            durationMs={data.video.durationMs}
+            progressPolicy={data.playerPolicy}
+            sourceUrl={sourceUrl}
+            title={displayTitle}
+            videoId={data.video.id}
+          />
+          <section className={styles.details}>
+            {seriesContext ? (
+              <nav
+                className={styles.seriesNavigation}
+                aria-label={catalogText("series.episodeNavigation")}
               >
-                <span>{catalogText("series.nextEpisode")}</span>
-                <span dir="auto">
+                <ActionLink
+                  tone="secondary"
+                  href={localizePath(
+                    `/series/${encodeURIComponent(seriesContext.series.slug)}?season=${seriesContext.season.seasonNumber}`,
+                    locale,
+                  )}
+                  data-tv-focusable="true"
+                >
+                  <span dir="auto">{seriesContext.series.title}</span>
+                  <span>{catalogText("series.allEpisodes")}</span>
+                </ActionLink>
+                <p dir="auto">
                   {episodePosition(
-                    seriesContext.nextEpisode.seasonNumber,
-                    seriesContext.nextEpisode.episodeNumber,
-                  )}{" "}
-                  · {seriesContext.nextEpisode.title}
-                </span>
-              </ActionLink>
-            ) : (
-              <p>{catalogText("series.lastAvailableEpisode")}</p>
-            )}
-          </nav>
-        ) : null}
-        <PageHeader
-          eyebrow={t("watch.eyebrow")}
-          title={displayTitle}
-          {...(displayDescription ? { description: displayDescription } : {})}
-          {...(!kidsMode
-            ? {
-                actions: (
+                    seriesContext.season.seasonNumber,
+                    seriesContext.episode.episodeNumber,
+                  )}
+                  {seriesContext.season.title ? ` · ${seriesContext.season.title}` : ""}
+                </p>
+                {seriesContext.nextEpisode ? (
                   <ActionLink
-                    tone="secondary"
-                    data-tv-focusable="true"
-                    data-tv-focus-id="watch-channel"
                     href={localizePath(
-                      `/c/${encodeURIComponent(data.video.channel.handle)}`,
+                      `/watch/${encodeURIComponent(seriesContext.nextEpisode.video.slug)}`,
                       locale,
                     )}
+                    data-tv-focusable="true"
+                    data-tv-focus-id="watch-next-episode"
                   >
-                    <span dir="auto">{data.video.channel.name}</span> ·{" "}
-                    <bdi dir="ltr">@{data.video.channel.handle}</bdi>
+                    <span>{catalogText("series.nextEpisode")}</span>
+                    <span dir="auto">
+                      {episodePosition(
+                        seriesContext.nextEpisode.seasonNumber,
+                        seriesContext.nextEpisode.episodeNumber,
+                      )}{" "}
+                      · {seriesContext.nextEpisode.title}
+                    </span>
                   </ActionLink>
-                ),
-              }
-            : {})}
-        >
-          {kidsMode ? (
-            <p dir="auto">{data.video.channel.name}</p>
-          ) : (
-            <VideoSocialActions className={styles.actions} videoId={data.video.id} />
-          )}
-        </PageHeader>
-      </section>
-      {!kidsMode ? <PageAdSlot placementKey="watch_below_player" /> : null}
-      {data.detail.related.length > 0 ? (
-        <section className={styles.related}>
-          <h2 dir="auto">{t("watch.moreFrom", { name: data.video.channel.name })}</h2>
-          <div>
-            {data.detail.related.map((item) => (
-              <Link data-tv-focusable="true" href={localizePath(item.href, locale)} key={item.id}>
-                <strong dir="auto">{item.title}</strong>
-                {item.durationMs ? (
-                  <span>{t("watch.minutes", { count: Math.ceil(item.durationMs / 60_000) })}</span>
-                ) : null}
-              </Link>
-            ))}
-          </div>
-        </section>
-      ) : null}
-      {!kidsMode ? (
-        <CommentsPanel enabled={data.detail.commentsSlot.enabled} videoId={data.video.id} />
-      ) : null}
+                ) : (
+                  <p>{catalogText("series.lastAvailableEpisode")}</p>
+                )}
+              </nav>
+            ) : null}
+            <h1 dir="auto" title={displayTitle}>
+              {localizedMediaTitle(displayTitle, locale)}
+            </h1>
+            <div className={styles.creatorBar}>
+              {!kidsMode ? (
+                <Link
+                  className={styles.channel}
+                  data-tv-focusable="true"
+                  data-tv-focus-id="watch-channel"
+                  href={localizePath(`/c/${encodeURIComponent(data.video.channel.handle)}`, locale)}
+                >
+                  <span className={styles.avatar} aria-hidden="true">
+                    {data.video.channel.name.slice(0, 1)}
+                  </span>
+                  <span>
+                    <strong dir="auto">{data.video.channel.name}</strong>
+                    <small dir="ltr">@{data.video.channel.handle}</small>
+                  </span>
+                </Link>
+              ) : (
+                <p dir="auto">{data.video.channel.name}</p>
+              )}
+              {!kidsMode ? (
+                <VideoSocialActions className={styles.actions} videoId={data.video.id} />
+              ) : null}
+            </div>
+            {displayDescription || data.video.publishedAt ? (
+              <details className={styles.description}>
+                <summary>
+                  {translatePublicDiscovery(locale, "watch.about")}
+                  {data.video.publishedAt && Number.isFinite(Date.parse(data.video.publishedAt)) ? (
+                    <span>
+                      {translatePublicDiscovery(locale, "watch.published")} ·{" "}
+                      {formatDate(data.video.publishedAt, locale)}
+                    </span>
+                  ) : null}
+                </summary>
+                {displayDescription ? <p dir="auto">{displayDescription}</p> : null}
+              </details>
+            ) : null}
+          </section>
+          {!kidsMode ? <PageAdSlot placementKey="watch_below_player" /> : null}
+        </div>
+        <WatchRecommendations
+          currentId={data.video.id}
+          items={data.detail.recommendations ?? data.detail.related}
+          related={data.detail.related}
+          channelName={data.video.channel.name}
+        />
+        <div className={styles.discussion}>
+          {!kidsMode ? (
+            <CommentsPanel enabled={data.detail.commentsSlot.enabled} videoId={data.video.id} />
+          ) : null}
+        </div>
+      </div>
     </>
   );
 }

@@ -155,10 +155,32 @@ export function composeAutomaticHome(
             available.indexOf(left.candidates[0]!) - available.indexOf(right.candidates[0]!),
         );
 
-  // A homogeneous or small catalogue gets one useful mixed shelf. Sections
-  // become meaningful only when there are multiple substantial distinct pools.
-  if (sections.length >= 2) {
-    for (const section of sections) {
+  // A single content type can still offer useful ways to browse. Runtime is
+  // real catalogue metadata; never infer genres or popularity from a title.
+  const quick = available.filter(
+    (item) => item.durationMs !== null && item.durationMs > 0 && item.durationMs < 300_000,
+  );
+  const longer = available.filter((item) => item.durationMs !== null && item.durationMs >= 300_000);
+  const shelves =
+    !isKids && sections.length < 2 && quick.length >= 2 && longer.length >= 2
+      ? [
+          {
+            key: "auto-under-five",
+            title: "Under five minutes",
+            source: "SHORT_WATCHES",
+            candidates: quick,
+          },
+          {
+            key: "auto-take-your-time",
+            title: "Take your time",
+            source: "LONGER_WATCHES",
+            candidates: longer,
+          },
+        ]
+      : sections;
+
+  if (shelves.length > 0) {
+    for (const section of shelves) {
       if (rows.length >= maximumAutomaticRows) break;
       const selected = selectDiverse(section.candidates, creatorCounts);
       for (const candidate of selected) remember(candidate);

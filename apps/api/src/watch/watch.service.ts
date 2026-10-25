@@ -8,6 +8,7 @@ import { kidsSafeHref } from "../kids/kids-policy.js";
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
 import { SeriesCatalogService } from "../series-catalog/series-catalog.service.js";
 import { VideoPolicyService } from "../video-policy/video-policy.service.js";
+import { selectWatchRecommendations } from "./watch-recommendations.js";
 
 const playableStates = ["VALIDATED"] as const;
 const HLS_PLAYBACK_FLAG = "player.hls.enabled";
@@ -167,7 +168,6 @@ export class WatchService {
     const related = await this.database.client.video.findMany({
       where: {
         id: { not: video.id },
-        channelId: video.channel.id,
         status: "PUBLISHED",
         visibility: "PUBLIC",
         removedAt: null,
@@ -182,14 +182,37 @@ export class WatchService {
         },
       },
       orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
-      take: 8,
-      select: { id: true, slug: true, title: true, durationMs: true },
+      take: 48,
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        durationMs: true,
+        contentType: true,
+        channel: { select: { id: true, name: true, handle: true } },
+        mediaAssets: {
+          where: { kind: "THUMBNAIL", status: { in: ["UPLOADED", "VALIDATED"] }, removedAt: null },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 1,
+          select: { r2ObjectKey: true },
+        },
+      },
     });
 
     const allowedRelatedIds = await this.videoPolicy.filterAvailableVideoIds(
       related.map((item) => item.id),
       { countryCode, isKidsProfile },
     );
+    const eligible = related.filter((item) => allowedRelatedIds.has(item.id));
+    const toCard = (item: (typeof related)[number]) => ({
+      id: item.id,
+      title: item.title,
+      href: isKidsProfile ? kidsSafeHref(`/watch/${item.slug}`) : `/watch/${item.slug}`,
+      durationMs: item.durationMs,
+      artworkObjectKey: item.mediaAssets[0]?.r2ObjectKey ?? null,
+      channelName: item.channel.name,
+      channelHandle: item.channel.handle,
+    });
     const seriesContext = isKidsProfile
       ? null
       : await this.seriesCatalog.getPublicContextForVideo(video.id, countryCode);
@@ -250,14 +273,11 @@ export class WatchService {
           ageRestriction: availability.ageRestriction,
           kidsEligible: availability.kidsEligible,
         },
-        related: related
-          .filter((item) => allowedRelatedIds.has(item.id))
-          .map((item) => ({
-            id: item.id,
-            title: item.title,
-            href: isKidsProfile ? kidsSafeHref(`/watch/${item.slug}`) : `/watch/${item.slug}`,
-            durationMs: item.durationMs,
-          })),
+        related: eligible
+          .filter((item) => item.channel.id === video.channel.id)
+          .slice(0, 8)
+          .map(toCard),
+        recommendations: selectWatchRecommendations(eligible, video).map(toCard),
       },
       playerPolicy: await this.getPlayerPolicy(),
     };

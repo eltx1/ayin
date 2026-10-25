@@ -115,6 +115,20 @@ function ViewerChrome({ children }: { children: ReactNode }) {
           data-tv-visible={device?.tv !== false}
         >
           <ProductLinks items={model.primary} browse={model.browse} surface="desktop" />
+          {model.primary.some((item) => item.key === "search") ? (
+            <form action={href("/search")} className={styles.headerSearch} role="search">
+              <input
+                aria-label={t("nav.search")}
+                name="q"
+                placeholder={t("nav.search")}
+                type="search"
+                maxLength={200}
+              />
+              <button type="submit" aria-label={t("nav.search")}>
+                <NavigationIcon name="search" />
+              </button>
+            </form>
+          ) : null}
         </nav>
         <div
           className={styles.accountActions}

@@ -173,7 +173,7 @@ test("continuation refuses default/old approval and uses only its fixed SSH comm
   const args = sshArguments(approval, "/runner");
   assert.ok(args.includes("StrictHostKeyChecking=yes"));
   assert.ok(args.includes("IdentitiesOnly=yes"));
-  assert.ok(args.includes("ayin@13.52.116.200"));
+  assert.ok(args.includes("ayin@13.63.216.89"));
   assert.match(
     args.at(-1),
     /r2-owned-continuation-provider\.mjs --execute-approved --execute-continuation-approved /,

@@ -13,6 +13,8 @@ const automaticTitles: Record<string, PublicDiscoveryTranslationKey> = {
   "auto-creator-videos": "home.creators",
   "auto-clips": "home.clips",
   "auto-discover": "home.recent",
+  "auto-under-five": "home.underFive",
+  "auto-take-your-time": "home.takeYourTime",
 };
 
 export function discoveryRowTitle(
@@ -40,4 +42,13 @@ export function formatMediaDuration(durationMs: number | null): string | null {
   return hours > 0
     ? `${hours}:${minutes.toString().padStart(2, "0")}:${seconds}`
     : `${minutes}:${seconds}`;
+}
+
+/** Display the matching half only when the publisher supplied an Arabic/Latin pair. */
+export function localizedMediaTitle(title: string, locale: Locale): string {
+  const parts = title.split(/\s+\|\s+/);
+  if (parts.length !== 2) return title;
+  const arabic = parts.find((part) => /[\u0600-\u06ff]/u.test(part));
+  const latin = parts.find((part) => /[a-z]/i.test(part) && !/[\u0600-\u06ff]/u.test(part));
+  return arabic && latin ? (locale === "ar" ? arabic : latin) : title;
 }

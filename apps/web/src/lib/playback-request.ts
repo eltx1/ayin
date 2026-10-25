@@ -97,11 +97,15 @@ export async function readPlayback(
     if (!text(chapter.id) || !text(chapter.title) || !Number.isFinite(chapter.startMs))
       throw new PlaybackReadError(0);
   }
-  for (const raw of detail.related) {
+  if (detail.recommendations !== undefined && !Array.isArray(detail.recommendations))
+    throw new PlaybackReadError(0);
+  for (const raw of [...detail.related, ...((detail.recommendations ?? []) as unknown[])]) {
     const item = object(raw);
     if (
       !text(item.id) ||
       !text(item.title) ||
+      (item.artworkObjectKey != null && !text(item.artworkObjectKey)) ||
+      (item.channelName !== undefined && !text(item.channelName)) ||
       typeof item.href !== "string" ||
       !/^\/watch\/[^/?#\\\s%]+(?:\?kids=1)?$/.test(item.href) ||
       (viewer.isKids && !item.href.endsWith("?kids=1"))

@@ -12,7 +12,7 @@ import {
 } from "@/components/viewer/media-card";
 import { mediaAssetUrl } from "@/lib/channel";
 import { translateKidsDiscoverySource } from "@/lib/i18n/kids";
-import { discoveryRowTitle, homeSectionAnchor } from "@/lib/home-presentation";
+import { discoveryRowTitle, homeSectionAnchor, localizedMediaTitle } from "@/lib/home-presentation";
 import { withViewerReadDeadline } from "@/lib/viewer-bootstrap";
 import {
   fetchDiscoveryRow,
@@ -74,14 +74,7 @@ export function DiscoveryRow({
     }
   }
 
-  const variant =
-    row.source === "CREATOR_TV" ||
-    (automatic &&
-      ["auto-creator-videos", "auto-clips", "auto-discover", "auto-continue-watching"].includes(
-        row.key,
-      ))
-      ? "landscape"
-      : "poster";
+  const variant = row.source === "CREATOR_TV" || automatic ? "landscape" : "poster";
   const rowTitle = discoveryRowTitle(locale, row, kidsMode, automatic);
 
   return (
@@ -101,7 +94,7 @@ export function DiscoveryRow({
                 kidsMode
                   ? translateKidsDiscoverySource(locale, row.source, item.kicker)
                   : automatic
-                    ? rowTitle
+                    ? ""
                     : item.kicker
               }
               variant={variant}
@@ -159,19 +152,21 @@ function DiscoveryCard({
   kicker: string;
   variant: MediaCardVariant;
 }) {
-  const { href, t } = useI18n();
+  const { href, t, locale } = useI18n();
   const progress = item.progress?.positionMs
     ? t("home.resumeAt", { position: formatPosition(item.progress.positionMs) })
     : null;
   const meta = [item.meta, progress].filter(Boolean).join(" · ");
   const artworkUrl = item.artworkObjectKey ? mediaAssetUrl(item.artworkObjectKey) : null;
+  const runtime = item.meta?.match(/(?:^| · )(\d{1,2}:\d{2}(?::\d{2})?)$/)?.[1];
   return (
     <MediaCard
       {...(artworkUrl ? { artworkUrl } : {})}
+      {...(runtime ? { badge: runtime } : {})}
       href={href(item.href)}
       kicker={kicker}
       {...(meta ? { meta } : {})}
-      title={item.title}
+      title={localizedMediaTitle(item.title, locale)}
       tone={toneFor(item.id)}
       variant={variant}
     />

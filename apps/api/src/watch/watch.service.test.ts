@@ -88,6 +88,40 @@ function harness(input: { hlsEnabled: boolean; generation?: typeof readyGenerati
 }
 
 describe("WatchService content classification", () => {
+  it("returns thumbnail recommendations across channels only after viewer policy filtering", async () => {
+    const { service, database, policy } = harness({ hlsEnabled: false });
+    const card = (id: string, channelId: string) => ({
+      id,
+      slug: id,
+      title: id,
+      durationMs: 90_000,
+      contentType: "MOVIE",
+      channel: { id: channelId, name: channelId, handle: channelId },
+      mediaAssets: [{ r2ObjectKey: `${id}/thumb.jpg` }],
+    });
+    database.client.video.findMany.mockResolvedValue([
+      card("same", video.channel.id),
+      card("other", "another"),
+      card("blocked", "restricted"),
+    ] as never);
+    policy.filterAvailableVideoIds.mockResolvedValue(new Set(["same", "other"]));
+    const response = await service.getPublicPlayback(video.slug, "EG", true);
+    expect(policy.filterAvailableVideoIds).toHaveBeenCalledWith(["same", "other", "blocked"], {
+      countryCode: "EG",
+      isKidsProfile: true,
+    });
+    expect(response.detail.related.map((item) => item.id)).toEqual(["same"]);
+    expect(response.detail.recommendations.map((item) => item.id)).toEqual(["same", "other"]);
+    expect(response.detail.recommendations[1]).toMatchObject({
+      artworkObjectKey: "other/thumb.jpg",
+      channelName: "another",
+      href: "/watch/other?kids=1",
+    });
+    expect(database.client.video.findMany.mock.calls[0]?.[0]).toMatchObject({
+      where: { visibility: "PUBLIC", removedAt: null, id: { not: video.id } },
+    });
+    expect(JSON.stringify(response.detail)).not.toContain("blocked");
+  });
   it.each(["CREATOR_VIDEO", "MOVIE", "DOCUMENTARY"])(
     "preserves %s from the stored video",
     async (contentType) => {

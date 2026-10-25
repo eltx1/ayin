@@ -11,7 +11,7 @@
     radial-gradient(circle at 68% 26%, rgb(139 24 248 / 42%), transparent 18%),
     linear-gradient(145deg, #171126, #090711 68%);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   box-shadow: var(--shadow-soft);
   isolation: isolate;
   overflow: hidden;
@@ -100,18 +100,17 @@
 }
 
 .badge {
-  backdrop-filter: blur(12px) saturate(135%);
-  background: #100d20;
+  background: rgb(0 0 0 / 85%);
   border: 1px solid var(--border-strong);
-  border-radius: 999px;
+  border-radius: 4px;
   box-shadow: 0 6px 18px rgb(0 0 0 / 20%);
   font-size: var(--text-xs);
   font-weight: 820;
-  inset-inline-start: 0.72rem;
+  inset-inline-end: 0.5rem;
   letter-spacing: 0.02em;
-  padding: 0.42rem 0.58rem;
+  padding: 0.12rem 0.35rem;
   position: absolute;
-  inset-block-start: 0.72rem;
+  inset-block-end: 0.5rem;
   z-index: 2;
 }
 

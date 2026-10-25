@@ -153,6 +153,15 @@ export function DiscoveryHome({
   } else {
     content = (
       <div className={styles.rows} data-private-viewer-state key={stateKey}>
+        {showHero ? (
+          <header className={styles.collectionHeader}>
+            <div>
+              <p>AYIN / {copy("home.browse")}</p>
+              <h2>{copy("home.collection")}</h2>
+            </div>
+            <p>{copy("home.collectionDescription")}</p>
+          </header>
+        ) : null}
         {visibleRows.length > 1 && showHero ? (
           <nav aria-label={copy("home.sections")} className={styles.sectionLinks}>
             {visibleRows.map((row) => (

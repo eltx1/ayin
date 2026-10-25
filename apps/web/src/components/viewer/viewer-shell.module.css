@@ -82,6 +82,42 @@
   scrollbar-width: thin;
 }
 
+.headerSearch {
+  display: flex;
+  align-items: center;
+  width: min(30vw, 420px);
+  margin-inline-start: 1.25rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  overflow: hidden;
+}
+.headerSearch input {
+  min-width: 0;
+  width: 100%;
+  background: transparent;
+  color: var(--foreground);
+  border: 0;
+  padding: 0.65rem 1rem;
+  font-size: 0.85rem;
+  min-height: 44px;
+}
+.headerSearch button {
+  width: 48px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 48px;
+  border: 0;
+  border-inline-start: 1px solid var(--border);
+  background: var(--surface-hover);
+  cursor: pointer;
+}
+.headerSearch svg {
+  width: 20px;
+  height: 20px;
+}
+
 .navLink {
   align-items: center;
   border: 1px solid transparent;

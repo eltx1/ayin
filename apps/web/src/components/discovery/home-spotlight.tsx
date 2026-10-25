@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { mediaAssetUrl } from "@/lib/channel";
 import type { DiscoverySpotlight } from "@/lib/discovery";
-import { formatMediaDuration } from "@/lib/home-presentation";
+import { formatMediaDuration, localizedMediaTitle } from "@/lib/home-presentation";
 import { translatePublicDiscovery } from "@/lib/i18n/public-discovery";
 import { revealCoveredFocus } from "@/lib/viewer-focus";
 
@@ -48,14 +48,27 @@ export function HomeSpotlight({ item, hasMore }: { item: DiscoverySpotlight; has
       data-home-spotlight={item.id}
       onFocusCapture={revealCoveredFocus}
     >
-      <div aria-hidden="true" className={styles.visual}>
+      <Link
+        aria-label={`${t("home.watch")}: ${item.title}`}
+        href={href(item.href)}
+        className={styles.visual}
+        data-tv-focusable="true"
+        data-tv-focus-id="hero-artwork"
+      >
         {artwork ? <SpotlightImage key={artwork} src={artwork} /> : null}
-        <span className={styles.visualMark}>AYIN</span>
-      </div>
+        <span aria-hidden="true" className={styles.visualMark}>
+          AYIN
+        </span>
+        <span aria-hidden="true" className={styles.playOverlay}>
+          ▶
+        </span>
+      </Link>
       <div className={styles.copy}>
         <p className={styles.eyebrow}>{t("home.spotlight")}</p>
         <h1 dir="auto" id="ayin-hero-title" title={item.title}>
-          {item.title}
+          <Link href={href(item.href)} data-tv-focusable="true" data-tv-focus-id="hero-title">
+            {localizedMediaTitle(item.title, locale)}
+          </Link>
         </h1>
         {item.channelName || duration ? (
           <p className={styles.meta}>
