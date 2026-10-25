@@ -1,0 +1,41 @@
+name: Temporary migration queue cleanup
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  cancel-stale-runs:
+    if: github.repository == 'eltx1/ayin' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: eltx1/ayin
+    steps:
+      - name: Cancel only the two pre-migration stale runs
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+          for run_id in 37642379040 37642350746; do
+            state="$(gh api "repos/$GH_REPO/actions/runs/$run_id" --jq '.status')"
+            printf 'Run %s initial status: %s\n' "$run_id" "$state"
+            if [[ "$state" != completed ]]; then
+              gh api --method POST "repos/$GH_REPO/actions/runs/$run_id/force-cancel" || true
+            fi
+          done
+          for attempt in 1 2 3 4 5 6; do
+            pending=0
+            for run_id in 37642379040 37642350746; do
+              state="$(gh api "repos/$GH_REPO/actions/runs/$run_id" --jq '.status')"
+              printf 'Run %s status: %s\n' "$run_id" "$state"
+              [[ "$state" == completed ]] || pending=1
+            done
+            [[ "$pending" == 0 ]] && exit 0
+            sleep 10
+          done
+          echo "GitHub still reports stale runs pending; no server or DNS changes performed."
+          exit 1
