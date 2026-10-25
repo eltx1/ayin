@@ -28,7 +28,7 @@ jobs:
       name: production
       deployment: false
     env:
-      AYIN_ORIGIN_IPV4: 13.52.116.200
+      AYIN_ORIGIN_IPV4: 13.63.216.89
       AYIN_R2_BUCKET_NAME: ayin-production-media
       DEPLOY_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || 'manual' }}
       DEPLOYMENT_WORKFLOW_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
@@ -38,7 +38,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$AYIN_ORIGIN_IPV4" == '13.52.116.200' ]]
+          [[ "$AYIN_ORIGIN_IPV4" == '13.63.216.89' ]]
           [[ "$AYIN_R2_BUCKET_NAME" == 'ayin-production-media' ]]
           [[ "$DEPLOYMENT_WORKFLOW_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
 
