@@ -40,7 +40,7 @@ jobs:
       FIXTURE_RUN_ID: ${{ inputs.run_id }}
       CONFIRM_PREFIX: ${{ inputs.confirm_prefix }}
       CLEANUP_ACK: ${{ inputs.cleanup_ack }}
-      DEPLOY_HOST: 13.52.116.200
+      DEPLOY_HOST: 13.63.216.89
       DEPLOY_USER: ayin
       SSH_PORT: "22"
       REMOTE_HOME: /home/ayin
