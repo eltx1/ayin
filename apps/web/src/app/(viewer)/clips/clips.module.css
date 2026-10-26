@@ -298,6 +298,11 @@
   .actions {
     display: grid;
   }
+  .actionFeedback {
+    /* Feedback wraps inside the action column instead of widening
+       it and pushing the neighboring Watch link below the clipped overlay. */
+    contain: inline-size;
+  }
   .overlay {
     padding: var(--space-2) var(--space-3);
   }
