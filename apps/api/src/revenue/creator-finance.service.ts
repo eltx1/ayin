@@ -2,6 +2,7 @@ import { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
+import { assertAdminFinanceAuthority } from "./admin-finance-authority.js";
 import { AdminPayoutCreationService } from "./admin-payout-creation.service.js";
 import { CreatorComplianceService } from "./creator-compliance.service.js";
 import { assertCreatorFinanceAuthority } from "./creator-finance-authority.js";
@@ -108,11 +109,16 @@ export class CreatorFinanceService {
     const payoutActionsRequired = [
       ...(!profileReady ? ["Complete your payout details."] : []),
       ...(!providerReady ? ["Choose an available payout method."] : []),
-      ...(!thresholdMet ? ["Reach the minimum payout amount."] : []),
+      ...(availableMicros <= 0n
+        ? ["Earn a positive finalized balance before requesting a payout."]
+        : !thresholdMet
+          ? ["Reach the minimum payout amount."]
+          : []),
       ...(openPayout ? ["Wait for your current payout request to finish."] : []),
       ...compliance.actionsRequired,
     ];
     const payoutEligible =
+      availableMicros > 0n &&
       profileReady &&
       thresholdMet &&
       !openPayout &&
@@ -435,6 +441,9 @@ export class CreatorFinanceService {
   async updateAdminDispute(actorAccountId: string, disputeId: string, raw: unknown) {
     const input = revenueDisputeUpdateSchema.parse(raw);
     return this.database.client.$transaction(async (tx) => {
+      // Acquire account/role authority before domain locks, matching financial
+      // contract writes and account lifecycle operations; retain it to commit.
+      await assertAdminFinanceAuthority(tx, actorAccountId);
       const dispute = await this.finance.updateDispute(
         {
           disputeId,

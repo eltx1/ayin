@@ -128,6 +128,12 @@ export class AdminGovernanceService {
       // superadmin. The transaction-scoped advisory lock is automatically released on commit/rollback.
       await lockStaffRoleChanges(tx);
 
+      // Finance authority holds Account before role rows. Acquire the target in
+      // that same order before deleting roles, so revocation cannot hold a role
+      // while waiting for a finance transaction's account lock. NO KEY UPDATE
+      // protects authVersion/status without blocking unrelated FK key-share reads.
+      await tx.$queryRaw`SELECT "id" FROM "Account" WHERE "id" = ${accountId}::uuid FOR NO KEY UPDATE /* ayin-staff-roles-account-lock */`;
+
       // AdminGuard ran before the transaction. Revalidate after acquiring the lock so a queued
       // request from a superadmin who was just demoted cannot commit another role mutation.
       const actorStillSuperadmin = await tx.adminRoleAssignment.findFirst({

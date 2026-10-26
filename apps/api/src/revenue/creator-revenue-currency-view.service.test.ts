@@ -40,6 +40,24 @@ function input(eligible: boolean, available = "150.000000") {
   return { overview, service };
 }
 describe("Creator revenue currency eligibility", () => {
+  it.each(["0.000000", "-1.000000"])(
+    "does not advertise a payable balance of %s when the configured threshold is zero",
+    async (available) => {
+      const { overview, service } = input(true, available);
+      overview.payoutThreshold = "0.000000";
+      const result = await service.normalize(overview);
+      expect(result.canRequestPayout).toBe(false);
+      expect(result.payoutEligibility).toEqual({
+        eligible: false,
+        actionsRequired: ["Earn a positive finalized balance before requesting a payout."],
+      });
+    },
+  );
+  it("allows a positive balance with a zero configured threshold", async () => {
+    const { overview, service } = input(true, "0.000001");
+    overview.payoutThreshold = "0.000000";
+    expect((await service.normalize(overview)).canRequestPayout).toBe(true);
+  });
   it("does not re-enable payouts while actual compliance is pending", async () => {
     const { overview, service } = input(false);
     const result = await service.normalize(overview);
