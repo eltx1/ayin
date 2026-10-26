@@ -1,10 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const databaseUrl = process.env.TEST_DATABASE_URL;
-if (!databaseUrl) throw Error("PWA acceptance requires TEST_DATABASE_URL");
-const parsed = new URL(databaseUrl);
-if (!["localhost", "127.0.0.1"].includes(parsed.hostname) || parsed.pathname !== "/ayin_e2e")
-  throw Error("PWA acceptance requires an isolated local ayin_e2e database");
+import { requireTestDatabase } from "./scripts/test-database-guard.mjs";
+
+const databaseUrl = requireTestDatabase();
 
 export default defineConfig({
   testDir: "tests/pwa",

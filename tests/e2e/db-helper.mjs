@@ -1,7 +1,7 @@
+import { requireTestDatabase } from "../../scripts/test-database-guard.mjs";
 import { createPrismaClient } from "../../packages/db/dist/index.js";
 
-const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-if (!databaseUrl) throw new Error("E2E database URL is required.");
+const databaseUrl = requireTestDatabase();
 
 const prisma = createPrismaClient(databaseUrl);
 const [command, rawPayload = "{}"] = process.argv.slice(2);

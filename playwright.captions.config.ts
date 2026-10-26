@@ -1,7 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-if (!databaseUrl) throw new Error("TEST_DATABASE_URL is required for caption browser acceptance.");
+import { requireTestDatabase } from "./scripts/test-database-guard.mjs";
+
+const databaseUrl = requireTestDatabase();
+
 const environment = {
   ...process.env,
   APP_ENV: "test",

@@ -1,7 +1,8 @@
+import { requireTestDatabase } from "../../scripts/test-database-guard.mjs";
 import { createPrismaClient } from "../../packages/db/dist/index.js";
 import { defaultProductControls } from "../../apps/api/dist/admin/admin-product-config.js";
 
-const prisma = createPrismaClient(process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL);
+const prisma = createPrismaClient(requireTestDatabase());
 const [command, raw = "{}"] = process.argv.slice(2);
 const input = JSON.parse(raw);
 const where = { namespace: "DISCOVERY", key: "productControls" };
