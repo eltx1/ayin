@@ -78,6 +78,33 @@ describe("automatic homepage composition", () => {
     expect(new Set(renderedIds(home)).size).toBe(videos.length);
   });
 
+  it.each([
+    { remainingDuration: 120_000, resumedDuration: 600_000, key: "auto-under-five" },
+    { remainingDuration: 600_000, resumedDuration: 120_000, key: "auto-take-your-time" },
+  ])(
+    "keeps $key useful when resume consumes the other runtime group",
+    ({ remainingDuration, resumedDuration, key }) => {
+      const resumed = Array.from({ length: 4 }, (_, i) =>
+        candidate(`resumed-${i}`, { durationMs: resumedDuration }),
+      );
+      const fresh = Array.from({ length: 3 }, (_, i) =>
+        candidate(`fresh-${i}`, { durationMs: remainingDuration }),
+      );
+      const resume = resumed.map((video) => ({
+        ...video.item,
+        progress: { positionMs: 42_000, completedAt: null },
+      }));
+      const videos = [candidate("hero"), ...resumed, ...fresh];
+      const home = composeAutomaticHome(videos, resume);
+      expect(home.rows.map((row) => row.key)).toEqual(["auto-continue-watching", key]);
+      expect(home.rows[0]?.items).toEqual(resume);
+      expect(home.rows[1]?.items.map((item) => item.id)).toEqual(
+        fresh.map((video) => video.item.id),
+      );
+      expect(new Set(renderedIds(home)).size).toBe(renderedIds(home).length);
+    },
+  );
+
   it("does not hide a populated content category just because another category is sparse", () => {
     const home = composeAutomaticHome(Array.from({ length: 6 }, (_, i) => candidate(`film-${i}`)));
     expect(home.rows[0]?.key).toBe("auto-movies");
@@ -271,7 +298,9 @@ describe("automatic homepage composition", () => {
 
     expect(home.spotlight?.id).toBe(film.item.id);
     expect(home.rows[0]?.items).toEqual([resume]);
-    expect(home.rows[1]?.items).toEqual([sameCreator.item, otherCreator.item]);
+    expect(home.rows[1]?.items).toEqual(
+      [sameCreator.item, otherCreator.item].map((item) => ({ ...item, kicker: "Take your time" })),
+    );
   });
 
   it("can serve progress outside the recency pool without inventing a spotlight", () => {

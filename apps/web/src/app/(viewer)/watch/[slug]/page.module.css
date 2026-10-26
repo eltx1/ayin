@@ -12,6 +12,7 @@
 .watchLayout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(310px, 370px);
+  grid-template-rows: max-content 1fr;
   gap: 2rem;
   align-items: start;
 }

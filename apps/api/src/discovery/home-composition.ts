@@ -161,22 +161,28 @@ export function composeAutomaticHome(
     (item) => item.durationMs !== null && item.durationMs > 0 && item.durationMs < 300_000,
   );
   const longer = available.filter((item) => item.durationMs !== null && item.durationMs >= 300_000);
+  const runtimeShelves = [
+    {
+      key: "auto-under-five",
+      title: "Under five minutes",
+      source: "SHORT_WATCHES",
+      candidates: quick,
+    },
+    {
+      key: "auto-take-your-time",
+      title: "Take your time",
+      source: "LONGER_WATCHES",
+      candidates: longer,
+    },
+  ].filter((section) => section.candidates.length >= 2);
+  // Viewing progress can consume one runtime group in a small catalogue.
+  // Keep the other useful shelf without repeating the viewer's resume entries.
+  const hasResume = rows.some((row) => row.source === "CONTINUE_WATCHING");
   const shelves =
-    !isKids && sections.length < 2 && quick.length >= 2 && longer.length >= 2
-      ? [
-          {
-            key: "auto-under-five",
-            title: "Under five minutes",
-            source: "SHORT_WATCHES",
-            candidates: quick,
-          },
-          {
-            key: "auto-take-your-time",
-            title: "Take your time",
-            source: "LONGER_WATCHES",
-            candidates: longer,
-          },
-        ]
+    !isKids &&
+    sections.length < 2 &&
+    (runtimeShelves.length === 2 || (hasResume && runtimeShelves.length > 0))
+      ? runtimeShelves
       : sections;
 
   if (shelves.length > 0) {
