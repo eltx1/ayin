@@ -1,12 +1,83 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DatabaseService } from "../database/database.service.js";
 import type { MediaProcessingLifecycleService } from "../media/media-processing-lifecycle.service.js";
+import { ObservabilityService } from "../observability/observability.service.js";
+import { LocalTelemetryAdapter } from "../observability/telemetry.adapter.js";
 import type { LiveIngestProvider } from "./live-provider.js";
 import type { LiveRecordingHandoffService } from "./live-recording-handoff.service.js";
 import { LiveRecordingWorkerService } from "./live-recording-worker.service.js";
 
 describe("LiveRecordingWorkerService", () => {
+  afterEach(() => vi.useRealTimers());
+
+  function scheduledWorker(findMany: ReturnType<typeof vi.fn>) {
+    const database = { client: { liveStream: { findMany } } } as unknown as DatabaseService;
+    const event = vi.fn();
+    const observability = new ObservabilityService(
+      database,
+      {} as never,
+      { event } as never,
+      new LocalTelemetryAdapter(),
+    );
+    const worker = new LiveRecordingWorkerService(
+      database,
+      {} as never,
+      {} as never,
+      {} as never,
+      observability,
+    );
+    return { worker, event };
+  }
+
+  it("contains a startup poll failure, redacts its details and retries on the next poll", async () => {
+    vi.useFakeTimers();
+    const findMany = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("database password=synthetic-secret-marker"))
+      .mockResolvedValue([]);
+    const { worker, event } = scheduledWorker(findMany);
+    try {
+      worker.onModuleInit();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(event).toHaveBeenCalledWith(
+        "error",
+        "error.captured",
+        expect.objectContaining({ source: "live.recording.worker", errorName: "Error" }),
+      );
+      expect(JSON.stringify(event.mock.calls)).not.toContain("synthetic-secret-marker");
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(findMany).toHaveBeenCalledTimes(2);
+      expect(event).toHaveBeenCalledTimes(1);
+    } finally {
+      worker.onModuleDestroy();
+    }
+  });
+
+  it("contains interval failures and stops polling after module destruction", async () => {
+    vi.useFakeTimers();
+    const findMany = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error("temporary database outage"))
+      .mockResolvedValue([]);
+    const { worker, event } = scheduledWorker(findMany);
+    try {
+      worker.onModuleInit();
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(findMany).toHaveBeenCalledTimes(2);
+      expect(event).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(findMany).toHaveBeenCalledTimes(3);
+      worker.onModuleDestroy();
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(findMany).toHaveBeenCalledTimes(3);
+    } finally {
+      worker.onModuleDestroy();
+    }
+  });
+
   it("creates a VOD draft, links the R2 source, queues processing, then cleans up Mux", async () => {
     const stream = {
       id: "00000000-0000-4000-8000-000000000001",
@@ -82,7 +153,13 @@ describe("LiveRecordingWorkerService", () => {
       enqueueUploadedAsset: vi.fn(async () => ({ id: "processing-job-1" })),
     } as unknown as MediaProcessingLifecycleService;
 
-    const worker = new LiveRecordingWorkerService(database, provider, handoff, processingLifecycle);
+    const worker = new LiveRecordingWorkerService(
+      database,
+      provider,
+      handoff,
+      processingLifecycle,
+      {} as never,
+    );
 
     await worker.runOnce();
 
