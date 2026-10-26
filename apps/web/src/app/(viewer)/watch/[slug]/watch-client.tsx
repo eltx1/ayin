@@ -297,26 +297,27 @@ export function WatchContent({
     <>
       <div className={styles.watchLayout}>
         <div className={styles.mainColumn}>
-          <AnalyticsAyinPlayer
-            advertisingEnabled={!kidsMode}
-            analytics={analyticsSession?.analytics}
-            completedAdBreaks={analyticsSession?.completedAdBreaks}
-            onContentImpression={analyticsSession?.recordImpression}
-            initialPreferences={initialPreferences}
-            initialPositionMs={initialPositionMs}
-            onPlaybackReleaseReady={onPlaybackReleaseReady}
-            onPositionAuthorityReady={onPositionAuthorityReady}
-            adaptiveSourceUrl={adaptiveSourceUrl}
-            autoPlay={autoPlay}
-            className={styles.playerFrame}
-            captions={captions}
-            chapters={data.video.chapters}
-            durationMs={data.video.durationMs}
-            progressPolicy={data.playerPolicy}
-            sourceUrl={sourceUrl}
-            title={displayTitle}
-            videoId={data.video.id}
-          />
+          <div className={styles.playerFrame}>
+            <AnalyticsAyinPlayer
+              advertisingEnabled={!kidsMode}
+              analytics={analyticsSession?.analytics}
+              completedAdBreaks={analyticsSession?.completedAdBreaks}
+              onContentImpression={analyticsSession?.recordImpression}
+              initialPreferences={initialPreferences}
+              initialPositionMs={initialPositionMs}
+              onPlaybackReleaseReady={onPlaybackReleaseReady}
+              onPositionAuthorityReady={onPositionAuthorityReady}
+              adaptiveSourceUrl={adaptiveSourceUrl}
+              autoPlay={autoPlay}
+              captions={captions}
+              chapters={data.video.chapters}
+              durationMs={data.video.durationMs}
+              progressPolicy={data.playerPolicy}
+              sourceUrl={sourceUrl}
+              title={localizedMediaTitle(displayTitle, locale)}
+              videoId={data.video.id}
+            />
+          </div>
           <section className={styles.details}>
             {seriesContext ? (
               <nav

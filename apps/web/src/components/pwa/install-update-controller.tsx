@@ -6,6 +6,8 @@ interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
+const INSTALL_DISMISSED = "ayin:install-dismissed";
+
 export function InstallUpdateController() {
   const { locale } = useI18n();
   const ar = locale === "ar";
@@ -35,6 +37,11 @@ export function InstallUpdateController() {
     };
     const onInstall = (event: Event) => {
       event.preventDefault();
+      try {
+        if (sessionStorage.getItem(INSTALL_DISMISSED) === "1") return;
+      } catch {
+        // Storage can be unavailable in private or restricted browser contexts.
+      }
       setInstall(event as BeforeInstallPromptEvent);
     };
     const onController = () => {
@@ -157,7 +164,17 @@ export function InstallUpdateController() {
           >
             {ar ? "تثبيت" : "Install"}
           </ActionButton>
-          <ActionButton tone="quiet" onClick={() => setInstall(null)}>
+          <ActionButton
+            tone="quiet"
+            onClick={() => {
+              try {
+                sessionStorage.setItem(INSTALL_DISMISSED, "1");
+              } catch {
+                // Dismiss this prompt even when session persistence is unavailable.
+              }
+              setInstall(null);
+            }}
+          >
             {ar ? "ليس الآن" : "Not now"}
           </ActionButton>
         </>

@@ -921,7 +921,7 @@ export function AyinPlayer({
 
             <button
               aria-label={t("player.pip")}
-              className={styles.iconButton}
+              className={`${styles.iconButton} ${styles.pipButton}`}
               data-tv-focusable="true"
               data-tv-focus-id={`player-pip-${videoId}`}
               onClick={() => void togglePip()}
