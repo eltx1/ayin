@@ -106,7 +106,8 @@ test("one eligible video is sufficient and is not duplicated in a shelf", async 
   await control(page, () => ({ mode: "AUTO", status: "READY", spotlight: feature(), rows: [] }));
   await page.goto("/?lang=en");
   await expect(page.locator("[data-home-spotlight]")).toBeVisible();
-  await expect(page.locator('main a[href="/watch/first"]')).toHaveCount(1);
+  await expect(page.locator('main a[href="/watch/first"]')).toHaveCount(3);
+  await expect(page.locator('#discovery a[href="/watch/first"]')).toHaveCount(0);
   await expect(page.locator("[data-home-artwork]")).toBeVisible();
   await expect(page.locator("[data-tv-focus-id=hero-primary]")).toContainText("Watch now");
   await expect(page.getByRole("heading", { name: "Find something to watch" })).toHaveCount(0);
@@ -155,7 +156,7 @@ for (const view of [
     const prefix = view.locale === "ar" ? "/ar" : "";
     await expect(page.locator("html")).toHaveAttribute("dir", view.locale === "ar" ? "rtl" : "ltr");
     await expect(page.locator("[data-home-spotlight]")).toBeVisible();
-    await expect(page.locator(`main a[href="${prefix}/watch/first"]`)).toHaveCount(1);
+    await expect(page.locator(`main a[href="${prefix}/watch/first"]`)).toHaveCount(3);
     await expect(page.locator(`main a[href="${prefix}/watch/second"]`)).toHaveCount(1);
     await expect(
       page
