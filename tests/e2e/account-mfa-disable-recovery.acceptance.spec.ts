@@ -179,48 +179,29 @@ test("a rejected disable factor remains retryable only after a fresh protected a
   expect(disableAudits(accountId)).toHaveLength(0);
 });
 
-test("an actual mid-flow administrator policy rejection refreshes status and removes the invalid disable form", async ({
+test("granting an administrator role does not remove the authenticated MFA opt-out", async ({
   page,
 }) => {
-  const { accountId } = await prepare(page, "mfa-disable-policy-change");
-  // The user opened the review while disabling was allowed. The server policy changes now.
+  const { accountId, email } = await prepare(page, "mfa-disable-admin-choice");
   db("grant-admin", { accountId });
-  let writes = 0,
-    rejected = false,
-    reviewedStatus = 0;
+  let writes = 0;
   await page.route(API + "/auth/mfa/disable", async (route) => {
     writes++;
     expect(route.request().headers()["x-ayin-expected-account"]).toBe(accountId);
     const response = await route.fetch();
-    expect(response.status()).toBe(409);
-    expect((await response.json()).error.code).toBe("MFA_REQUIRED_BY_POLICY");
-    rejected = true;
-    await route.fulfill({ response });
-  });
-  await page.route(API + "/auth/mfa/status", async (route) => {
-    const response = await route.fetch();
     expect(response.status()).toBe(200);
-    if (rejected) {
-      reviewedStatus++;
-      expect(route.request().headers()["x-ayin-expected-account"]).toBe(accountId);
-      expect(await response.json()).toMatchObject({ accountId, enabled: true, required: true });
-    }
+    expect(await response.json()).toEqual({ disabled: true });
     await route.fulfill({ response });
   });
   await confirm(page);
-  await expect(mfa(page).getByRole("alert")).toContainText("administrator role requires");
-  await expect(
-    mfa(page).getByRole("button", { name: "Confirm and sign out", exact: true }),
-  ).toHaveCount(0);
-  await expect(
-    mfa(page).getByRole("button", { name: "Turn off two-step verification", exact: true }),
-  ).toHaveCount(0);
-  await expect(mfa(page).getByText("Two-step verification is on", { exact: true })).toBeVisible();
-  await expect(
-    mfa(page).getByRole("button", { name: "Replace recovery codes", exact: true }),
-  ).toBeEnabled();
-  expect(reviewedStatus).toBeGreaterThanOrEqual(1);
+  await expect(page).toHaveURL(/\/login/);
   expect(writes).toBe(1);
-  expect(db("account-mfa-evidence", { accountId }).credential.status).toBe("ENABLED");
-  expect(disableAudits(accountId)).toHaveLength(0);
+  expect(db("account-mfa-evidence", { accountId }).credential).toBeNull();
+  expect(disableAudits(accountId)).toHaveLength(1);
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL("/");
+  await page.goto("/admin");
+  await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
 });

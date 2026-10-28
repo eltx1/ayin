@@ -18,6 +18,37 @@ function db(command: string, payload: Record<string, unknown> = {}) {
   );
 }
 
+test("administrator without MFA verifies a sensitive session with the password alone", async ({
+  page,
+}) => {
+  db("reset");
+  const registration = await page.request.post(`${API}/auth/register`, {
+    data: { name: "Password-only Admin", email: "password-only@e2e.ayin.test", password },
+    headers: { origin: WEB },
+  });
+  expect(registration.ok()).toBeTruthy();
+  const identity = await registration.json();
+  db("grant-admin", { accountId: identity.user.account.id });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "Verify session", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Confirm your identity" });
+  await expect(dialog.getByLabel("Password", { exact: true })).toBeEnabled();
+  await expect(dialog.getByLabel("Authenticator code")).toHaveCount(0);
+  await dialog.getByLabel("Password", { exact: true }).fill("incorrect-password");
+  await dialog.getByRole("button", { name: "Verify", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toBeVisible();
+  await expect(dialog.getByLabel("Password", { exact: true })).toHaveValue("");
+  await dialog.getByLabel("Password", { exact: true }).fill(password);
+  await dialog.getByRole("button", { name: "Verify", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: "Session verified. Review and submit your action again." }),
+  ).toBeVisible();
+});
+
 test("admin verification clears secrets, handles failure and verifies through the real MFA API", async ({
   page,
 }) => {

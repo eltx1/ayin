@@ -439,7 +439,7 @@ export function AccountMfa({ onSessionsChanged }: { onSessionsChanged: () => voi
             {snapshot.enabled ? (
               <p>{t("account.mfaRemaining", { count: snapshot.recoveryCodesRemaining })}</p>
             ) : null}
-            {snapshot.required ? <p>{t("account.mfaRequired")}</p> : null}
+            <p>{t(snapshot.required ? "account.mfaRequired" : "account.mfaOptional")}</p>
           </div>
         ) : null}
         {!flow && snapshot ? (

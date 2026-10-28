@@ -86,7 +86,7 @@ export class AdminGuard implements CanActivate {
       throw new AuthHttpError(
         403,
         "STEP_UP_REQUIRED",
-        "Re-enter your password and authentication code before this sensitive operation.",
+        "Verify your identity again before this sensitive operation.",
       );
     }
 

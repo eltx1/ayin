@@ -214,8 +214,8 @@ databaseDescribe("Comments public availability and Kids server boundary", () => 
     });
     for (const request of requests) {
       const response = await app.inject({ ...request, headers });
-      expect(response.statusCode).toBe(401);
-      expect(response.json().error.message).toBe("Administrator MFA verification is required.");
+      expect(response.statusCode).toBe(403);
+      expect(response.json().error.code).toBe("STEP_UP_REQUIRED");
     }
     expect(
       (await prisma.video.findUniqueOrThrow({ where: { id: video.id } })).commentsEnabled,

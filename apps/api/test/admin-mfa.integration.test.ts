@@ -57,19 +57,12 @@ databaseDescribe("Task 47 administrator MFA", () => {
     };
   }
 
-  async function beginEnrollmentFromLogin(email: string) {
-    const login = await app.inject({
-      method: "POST",
-      url: "/auth/login",
-      payload: { email, password },
-    });
-    expect(login.statusCode).toBe(200);
-    expect(login.headers["set-cookie"]).toBeUndefined();
-    expect(login.json()).toMatchObject({ mfaRequired: true, enrollmentRequired: true });
+  async function beginEnrollment(account: { accountId: string; cookie: string }) {
     const start = await app.inject({
       method: "POST",
-      url: "/auth/mfa/enrollment/start",
-      payload: { challengeToken: login.json().challengeToken },
+      url: "/auth/mfa/enrollment/start-authenticated",
+      headers: { cookie: account.cookie },
+      payload: { password, expectedAccountId: account.accountId },
     });
     expect(start.statusCode).toBe(201);
     return start.json() as {
@@ -105,20 +98,87 @@ databaseDescribe("Task 47 administrator MFA", () => {
     };
   }
 
-  it("requires enrollment after password login and never persists or re-exposes the secret", async () => {
+  it.each(["ADMIN", "SUPERADMIN"] as const)(
+    "allows %s without enrolled MFA while retaining password step-up for writes",
+    async (role) => {
+      const account = await register("password-only-admin@example.com");
+      await prisma.adminRoleAssignment.create({ data: { accountId: account.accountId, role } });
+      // An abandoned optional setup must not lock the administrator out either.
+      await beginEnrollment(account);
+      const login = await app.inject({
+        method: "POST",
+        url: "/auth/login",
+        payload: { email: "password-only-admin@example.com", password },
+      });
+      expect(login.statusCode).toBe(200);
+      expect(login.json().mfaRequired).toBeUndefined();
+      const sessionCookie = cookiePair(login.headers["set-cookie"]);
+      const tokens = moduleReference.get(AuthTokenService);
+      const payload = tokens.verifySession(sessionCookie.slice(sessionCookie.indexOf("=") + 1))!;
+      expect(payload.mfaAt).toBeUndefined();
+      const oldToken = tokens.issueSession(
+        payload.sub,
+        payload.av,
+        payload.sid!,
+        new Date(payload.exp * 1_000),
+        { reauthAt: Math.floor(Date.now() / 1_000) - 601 },
+      );
+      const target = await register("reviewed-target@example.com");
+      const write = (headers: Record<string, string>) =>
+        app.inject({
+          method: "PATCH",
+          url: `/admin/control/users/${target.accountId}`,
+          headers,
+          payload: { status: "SUSPENDED", reason: "Reviewed account safety decision" },
+        });
+      const rejected = await write({ authorization: `Bearer ${oldToken}` });
+      expect(rejected.statusCode).toBe(403);
+      expect(rejected.json().error.code).toBe("STEP_UP_REQUIRED");
+      const stepUp = await app.inject({
+        method: "POST",
+        url: "/auth/mfa/step-up",
+        headers: { authorization: `Bearer ${oldToken}` },
+        payload: { password },
+      });
+      expect(stepUp.statusCode).toBe(200);
+      expect(stepUp.json()).toMatchObject({ steppedUp: true });
+      const confirmed = await write({ cookie: cookiePair(stepUp.headers["set-cookie"]) });
+      expect(confirmed.statusCode).toBe(200);
+      expect(
+        (await prisma.account.findUniqueOrThrow({ where: { id: target.accountId } })).status,
+      ).toBe("SUSPENDED");
+      expect(
+        (
+          await prisma.accountMfaCredential.findUniqueOrThrow({
+            where: { accountId: account.accountId },
+          })
+        ).status,
+      ).toBe("PENDING");
+    },
+  );
+
+  it("allows administrator password login and protects an explicitly enabled factor", async () => {
     const account = await register("required-admin@example.com");
     await prisma.adminRoleAssignment.create({
       data: { accountId: account.accountId, role: "ADMIN" },
     });
 
-    const blockedOldSession = await app.inject({
+    const existingSession = await app.inject({
       method: "GET",
       url: "/admin/control/dashboard",
       headers: { cookie: account.cookie },
     });
-    expect(blockedOldSession.statusCode).toBe(401);
+    expect(existingSession.statusCode).toBe(200);
+    const passwordLogin = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      payload: { email: "required-admin@example.com", password },
+    });
+    expect(passwordLogin.statusCode).toBe(200);
+    expect(passwordLogin.json().mfaRequired).toBeUndefined();
+    expect(passwordLogin.headers["set-cookie"]).toBeDefined();
 
-    const enrollment = await beginEnrollmentFromLogin("required-admin@example.com");
+    const enrollment = await beginEnrollment(account);
     expect(enrollment.provisioningUri).toContain("otpauth://totp/");
     expect(enrollment.qrCodeDataUrl).toMatch(/^data:image\/png;base64,/);
     const storedPending = await prisma.accountMfaCredential.findUniqueOrThrow({
@@ -169,7 +229,7 @@ databaseDescribe("Task 47 administrator MFA", () => {
     expect(status.statusCode).toBe(200);
     expect(status.json()).toMatchObject({
       enabled: true,
-      required: true,
+      required: false,
       recoveryCodesRemaining: 10,
     });
     expect(JSON.stringify(status.json())).not.toContain(enrollment.secret);
@@ -193,18 +253,6 @@ databaseDescribe("Task 47 administrator MFA", () => {
       headers: { cookie: adminCookie },
     });
     expect(dashboard.statusCode).toBe(200);
-
-    const disable = await app.inject({
-      method: "POST",
-      url: "/auth/mfa/disable",
-      headers: { cookie: adminCookie },
-      payload: {
-        password,
-        code: generateTotpCode(enrollment.secret, totpCounter() + 1n),
-      },
-    });
-    expect(disable.statusCode).toBe(409);
-    expect(disable.json().error.code).toBe("MFA_REQUIRED_BY_POLICY");
 
     const beforeReset = await prisma.account.findUniqueOrThrow({
       where: { id: account.accountId },
@@ -303,30 +351,65 @@ databaseDescribe("Task 47 administrator MFA", () => {
     expect(reused.statusCode).toBe(401);
   });
 
-  it("keeps MFA optional for ordinary accounts and requires both factors to disable it", async () => {
-    const account = await register("optional-user@example.com");
-    const enrolled = await enrollAuthenticated(account);
-    const disabled = await app.inject({
-      method: "POST",
-      url: "/auth/mfa/disable",
-      headers: { cookie: enrolled.cookie },
-      payload: {
-        password,
-        code: generateTotpCode(enrolled.secret, totpCounter() + 1n),
-      },
-    });
-    expect(disabled.statusCode).toBe(200);
-    expect(disabled.json()).toEqual({ disabled: true });
-    expect(disabled.headers["set-cookie"]).toContain("Max-Age=0");
-    expect(
-      await prisma.accountMfaCredential.findUnique({ where: { accountId: account.accountId } }),
-    ).toBeNull();
-    expect(
-      await prisma.adminAuditLog.count({
-        where: { actorAccountId: account.accountId, action: "auth.mfa_disabled" },
-      }),
-    ).toBe(1);
-  });
+  it.each([null, "ADMIN", "SUPERADMIN"] as const)(
+    "keeps MFA optional for %s and requires both factors to disable it",
+    async (role) => {
+      const account = await register("optional-user@example.com");
+      const enrolled = await enrollAuthenticated(account);
+      if (role)
+        await prisma.adminRoleAssignment.create({ data: { accountId: account.accountId, role } });
+      const code = generateTotpCode(enrolled.secret, totpCounter() + 1n);
+      const wrongPassword = await app.inject({
+        method: "POST",
+        url: "/auth/mfa/disable",
+        headers: { cookie: enrolled.cookie },
+        payload: { password: "wrong-password", code },
+      });
+      expect(wrongPassword.statusCode).toBe(401);
+      const invalidFactor = await app.inject({
+        method: "POST",
+        url: "/auth/mfa/disable",
+        headers: { cookie: enrolled.cookie },
+        payload: { password, code: generateTotpCode(enrolled.secret, totpCounter() - 5n) },
+      });
+      expect(invalidFactor.statusCode).toBe(401);
+      const disabled = await app.inject({
+        method: "POST",
+        url: "/auth/mfa/disable",
+        headers: { cookie: enrolled.cookie },
+        payload: {
+          password,
+          code,
+        },
+      });
+      expect(disabled.statusCode).toBe(200);
+      expect(disabled.json()).toEqual({ disabled: true });
+      expect(disabled.headers["set-cookie"]).toContain("Max-Age=0");
+      expect(
+        await prisma.accountMfaCredential.findUnique({ where: { accountId: account.accountId } }),
+      ).toBeNull();
+      expect(
+        await prisma.adminAuditLog.count({
+          where: { actorAccountId: account.accountId, action: "auth.mfa_disabled" },
+        }),
+      ).toBe(1);
+      const fresh = await app.inject({
+        method: "POST",
+        url: "/auth/login",
+        payload: { email: "optional-user@example.com", password },
+      });
+      expect(fresh.statusCode).toBe(200);
+      expect(fresh.json().mfaRequired).toBeUndefined();
+      if (role) {
+        const dashboard = await app.inject({
+          method: "GET",
+          url: "/admin/control/dashboard",
+          headers: { cookie: cookiePair(fresh.headers["set-cookie"]) },
+        });
+        expect(dashboard.statusCode).toBe(200);
+      }
+    },
+  );
 
   it("allows only a stepped-up superadmin to reset another account and revokes sessions", async () => {
     const actor = await register("superadmin-actor@example.com");

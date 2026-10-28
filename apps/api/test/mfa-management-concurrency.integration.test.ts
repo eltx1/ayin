@@ -148,7 +148,7 @@ databaseDescribe("MFA management concurrency", () => {
       await expect(manage(makeService(), operation, account.id, code)).resolves.toBeDefined();
     });
   }
-  it("rejects disable when an administrator role is assigned after the initial policy check", async () => {
+  it("rejects disable when a role change revokes the account version during verification", async () => {
     const { account, credential, code } = await fixture();
     const { service, selected, proceed } = pausedCredentialRead();
     const attempt = Promise.allSettled([service.disable(account.id, password, code)]);

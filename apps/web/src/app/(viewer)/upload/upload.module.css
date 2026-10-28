@@ -1,10 +1,12 @@
 .page {
   min-inline-size: 0;
-  padding: clamp(16px, 2vw, 24px) var(--shell-gutter) calc(var(--space-8) + var(--ayin-safe-bottom));
+  background: radial-gradient(ellipse at 50% 0, rgb(139 24 248 / 5%), transparent 32rem);
+  padding: clamp(20px, 2.8vw, 36px) var(--shell-gutter)
+    calc(var(--space-8) + var(--ayin-safe-bottom));
 }
 
 .workspace {
-  inline-size: min(100%, 78rem);
+  inline-size: min(100%, 68rem);
   margin-inline: auto;
   min-inline-size: 0;
 }
@@ -16,16 +18,23 @@
 }
 
 .secondaryFlow {
-  border-block-start: 1px solid var(--border);
-  margin-top: 1.5rem;
-  padding-top: 0.8rem;
+  background: rgb(255 255 255 / 1.5%);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  margin-top: 1rem;
+  padding: 0 1.15rem;
 }
 .secondaryFlow > summary {
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 0.9rem;
   font-weight: 650;
-  padding: 0.6rem 0;
+  min-block-size: 56px;
+  padding: 1rem 0;
+  line-height: 1.5;
+}
+.secondaryFlow[open] {
+  padding-block-end: 1rem;
 }
 .secondaryFlow > summary:focus-visible {
   outline: 2px solid var(--action-outline);

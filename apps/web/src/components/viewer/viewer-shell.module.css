@@ -21,16 +21,17 @@
 
 .topbar {
   align-items: center;
-  background: var(--surface-navigation);
+  background: linear-gradient(180deg, #100b1b, var(--surface-navigation));
   border-block-end: 1px solid var(--border);
   display: grid;
-  gap: 24px;
+  gap: clamp(16px, 2vw, 28px);
   grid-template-columns: auto minmax(0, 1fr) auto;
   inset-block-start: 0;
   min-block-size: 72px;
   padding: var(--ayin-safe-top) max(var(--page-gutter), var(--ayin-safe-right)) 0
     max(var(--page-gutter), var(--ayin-safe-left));
   position: sticky;
+  box-shadow: 0 1px 0 rgb(255 255 255 / 2%);
   z-index: var(--layer-chrome);
 }
 
@@ -38,44 +39,38 @@
   align-items: center;
   color: var(--foreground);
   display: inline-flex;
-  gap: 12px;
+  gap: 10px;
   min-block-size: 44px;
   min-inline-size: 44px;
   text-decoration: none;
 }
 
 .brandMark {
-  align-items: flex-start;
-  background: #05030c;
-  border: 1px solid var(--border-strong);
-  border-radius: 12px;
+  align-items: center;
+  background: #f6f3fc;
+  border: 1px solid rgb(255 255 255 / 15%);
+  border-radius: 13px;
   display: inline-flex;
-  flex: 0 0 40px;
-  block-size: 40px;
-  inline-size: 40px;
+  flex: 0 0 56px;
+  block-size: 56px;
+  inline-size: 56px;
   justify-content: center;
-  overflow: hidden;
+  padding: 2px;
 }
 
 .brandMark img {
-  block-size: 52px;
-  inline-size: 52px;
-  max-inline-size: none;
-  object-fit: cover;
-  object-position: 50% 5%;
-  transform: translateY(-1px);
-}
-
-.brandWord {
-  font-size: 1.05rem;
-  font-weight: 850;
-  letter-spacing: 0.2em;
+  display: block;
+  block-size: 100%;
+  inline-size: 100%;
+  object-fit: contain;
+  object-position: center;
+  border-radius: inherit;
 }
 
 .desktopNavigation {
   align-items: center;
   display: flex;
-  gap: 4px;
+  gap: 6px;
   justify-content: center;
   min-inline-size: 0;
   overflow-x: auto;
@@ -85,12 +80,19 @@
 .headerSearch {
   display: flex;
   align-items: center;
-  width: min(30vw, 420px);
-  margin-inline-start: 1.25rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 999px;
-  background: var(--surface-subtle);
+  width: min(28vw, 420px);
+  margin-inline-start: 1rem;
+  border: 1px solid #706578;
+  border-radius: 14px;
+  background: #07050e;
   overflow: hidden;
+  transition:
+    border-color var(--duration-fast),
+    box-shadow var(--duration-fast);
+}
+.headerSearch:focus-within {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 3px rgb(139 24 248 / 12%);
 }
 .headerSearch input {
   min-width: 0;
@@ -121,7 +123,7 @@
 .navLink {
   align-items: center;
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: 12px;
   color: var(--muted-strong);
   display: inline-flex;
   flex: 0 0 auto;
@@ -141,8 +143,8 @@
 }
 
 .navLink[aria-current="page"] {
-  background: var(--surface-selected);
-  border-color: var(--action-outline);
+  background: rgb(139 24 248 / 14%);
+  border-color: rgb(196 145 255 / 24%);
 }
 
 .accountActions {
@@ -159,9 +161,9 @@
 
 .joinAction {
   align-items: center;
-  background: var(--action-fill);
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
+  background: linear-gradient(135deg, #7421dc, #5915bd);
+  border: 1px solid rgb(211 167 255 / 22%);
+  border-radius: 12px;
   color: white;
   display: inline-flex;
   font-size: 0.88rem;
@@ -173,13 +175,14 @@
   overflow-wrap: anywhere;
   text-align: center;
   white-space: normal;
+  box-shadow: 0 3px 12px rgb(88 8 248 / 14%);
 }
 
 .menuButton {
   align-items: center;
   background: var(--surface-subtle);
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
   color: var(--foreground);
   cursor: pointer;
   display: inline-flex;
@@ -288,8 +291,10 @@
     display: none;
   }
 
-  .brandWord {
-    font-size: 0.95rem;
+  .brandMark {
+    flex-basis: 48px;
+    block-size: 48px;
+    inline-size: 48px;
   }
 
   .drawerProductNavigation[data-mobile-visible="true"] {
@@ -347,10 +352,6 @@
 }
 
 @media (max-width: 380px) {
-  .brandWord {
-    display: none;
-  }
-
   .joinAction {
     font-size: 0.82rem;
     padding-inline: 12px;
@@ -388,7 +389,7 @@
 
 @media (min-width: 1600px) {
   .topbar {
-    min-block-size: 92px;
+    min-block-size: 80px;
   }
 
   .navLink,
@@ -399,7 +400,7 @@
 }
 
 .joinAction:hover {
-  background: var(--action-hover);
+  background: linear-gradient(135deg, #8230e9, #6620cc);
 }
 .mobileTab {
   overflow-wrap: anywhere;
@@ -413,6 +414,11 @@
 @media (max-height: 500px) and (max-width: 1100px) {
   .topbar {
     min-block-size: 56px;
+  }
+  .brandMark {
+    flex-basis: 44px;
+    block-size: 44px;
+    inline-size: 44px;
   }
   .mobileTab {
     flex-direction: row;
@@ -433,5 +439,11 @@
   .joinAction,
   .menuButton {
     border-color: ButtonText;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .headerSearch {
+    transition: none;
   }
 }

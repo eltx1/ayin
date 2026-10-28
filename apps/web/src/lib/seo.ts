@@ -8,7 +8,7 @@ export const AYIN_SITE_URL = normalizeOrigin(
 export const AYIN_NAME = "AYIN";
 export const AYIN_DEFAULT_DESCRIPTION =
   "Watch creator videos, streaming, playlists and connected-TV experiences on AYIN.";
-export const AYIN_DEFAULT_IMAGE = `${AYIN_SITE_URL}/brand/ayin-logo.png`;
+export const AYIN_DEFAULT_IMAGE = `${AYIN_SITE_URL}/brand/ayin-logo-restored.png`;
 
 export function absoluteUrl(pathname: string): string {
   if (/^https?:\/\//i.test(pathname)) return pathname;
