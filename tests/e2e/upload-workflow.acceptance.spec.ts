@@ -341,7 +341,9 @@ test("retry after an acknowledged completion only reconciles the saved video", a
   await page
     .locator('input[type="file"][accept^="video/"]')
     .setInputFiles({ name: "confirmed.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(1024) });
-  await expect(page.getByRole("alert")).toContainText("The final confirmation did not arrive");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "The final confirmation did not arrive" }),
+  ).toBeVisible();
   db("mark-media-ready", { videoId });
   failed = false;
   await page.getByRole("button", { name: "Retry this upload", exact: true }).click();
