@@ -71,10 +71,10 @@ jobs:
         run: pnpm --filter @ayin/api exec vitest run --testTimeout=30000 --fileParallelism=false test/media-upload.integration.test.ts test/quick-upload.integration.test.ts test/media-upload-authority.integration.test.ts test/media-upload-privacy.integration.test.ts test/media-creation-privacy.integration.test.ts
       - name: Verify upload, retry, mobile layout and saved history in Chromium
         run: pnpm exec playwright test tests/e2e/upload-workflow.acceptance.spec.ts tests/e2e/upload-transport.acceptance.spec.ts tests/e2e/upload-history.acceptance.spec.ts
-      - name: Preserve failure evidence
-        if: failure()
+      - name: Preserve browser verification evidence
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: upload-reliability-failure-evidence
+          name: upload-reliability-browser-evidence
           path: test-results/
           retention-days: 7
