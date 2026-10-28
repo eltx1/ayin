@@ -28,7 +28,10 @@ import {
   type StoredObjectMetadata,
   type UploadObjectBinding,
 } from "../src/media/media-storage.adapter.js";
-import { loadMediaStorageConfig } from "../src/media/media-storage.config.js";
+import {
+  loadMediaStorageConfig,
+  MAX_UPLOAD_SESSION_TTL_SECONDS,
+} from "../src/media/media-storage.config.js";
 import { MediaUploadService } from "../src/media/media-upload.service.js";
 import { UploadSessionTokenService } from "../src/media/upload-session-token.service.js";
 import { PlatformSettingsService } from "../src/platform-config/platform-settings.service.js";
@@ -2103,7 +2106,7 @@ databaseDescribe("Creator recoverable upload commands", () => {
   it("excludes required-integrity source objects and multipart inventory from the legacy abandoned-upload janitor", async () => {
     const f = await fixture(),
       saved = await source(f.session);
-    const createdAt = new Date(Date.now() - 7200000);
+    const createdAt = new Date(Date.now() - (MAX_UPLOAD_SESSION_TTL_SECONDS + 3600) * 1000);
     await db.mediaAsset.update({ where: { id: f.session.assetId! }, data: { createdAt } });
     const legacy = await db.mediaAsset.create({
       data: {
@@ -2117,10 +2120,27 @@ databaseDescribe("Creator recoverable upload commands", () => {
         createdAt,
       },
     });
+    const activeLegacy = await db.mediaAsset.create({
+      data: {
+        channelId: f.actor.channelId,
+        videoId: f.session.videoId!,
+        kind: "SOURCE_VIDEO",
+        status: "PENDING",
+        r2ObjectKey: `channels/${f.actor.channelId}/media/${randomUUID()}/active-legacy.mp4`,
+        mimeType: "video/mp4",
+        sizeBytes: 1024n,
+        createdAt: new Date(Date.now() - 7200000),
+      },
+    });
     vi.clearAllMocks();
     vi.mocked(storage.listMultipartUploads).mockResolvedValueOnce([
       { key: saved.objectKey, uploadId: saved.providerUploadId!, initiatedAt: createdAt },
       { key: legacy.r2ObjectKey, uploadId: "synthetic-legacy-upload", initiatedAt: createdAt },
+      {
+        key: activeLegacy.r2ObjectKey,
+        uploadId: "synthetic-active-legacy-upload",
+        initiatedAt: activeLegacy.createdAt,
+      },
     ]);
     const result = await app
       .get(MediaUploadService)
@@ -2139,6 +2159,9 @@ databaseDescribe("Creator recoverable upload commands", () => {
       status: "REJECTED",
       removedAt: expect.any(Date),
     });
+    expect(await db.mediaAsset.findUniqueOrThrow({ where: { id: activeLegacy.id } })).toEqual(
+      activeLegacy,
+    );
     expect(await db.privacyMediaDeletionJob.count()).toBe(0);
     expect(await db.mediaProcessingJob.count()).toBe(0);
     expect(storage.createMultipartUpload).not.toHaveBeenCalled();
