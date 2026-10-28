@@ -5,6 +5,9 @@ import { z } from "zod";
 
 import { AuthConfig } from "./auth.config.js";
 
+export const mfaChallengeTtlSeconds = 300;
+export const mfaEnrollmentTtlSeconds = 600;
+
 const tokenPayloadSchema = z.object({
   av: z.number().int().min(0),
   exp: z.number().int().positive(),
@@ -58,14 +61,14 @@ export class AuthTokenService {
     mfaVersion: number,
     intent: "enroll" | "verify",
   ): string {
-    return this.issue("mfa-challenge", accountId, authVersion, 300, {
+    return this.issue("mfa-challenge", accountId, authVersion, mfaChallengeTtlSeconds, {
       intent,
       mv: mfaVersion,
     });
   }
 
   issueMfaEnrollment(accountId: string, authVersion: number, mfaVersion: number): string {
-    return this.issue("mfa-enrollment", accountId, authVersion, 600, {
+    return this.issue("mfa-enrollment", accountId, authVersion, mfaEnrollmentTtlSeconds, {
       intent: "enroll",
       mv: mfaVersion,
     });

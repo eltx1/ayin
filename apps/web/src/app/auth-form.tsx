@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { MfaEnrollmentSecret, MfaRecoveryCodes } from "@/components/auth/mfa-secrets";
 import { apiBaseUrl, readApiError } from "@/lib/api";
+import { requestMfa } from "@/lib/account-mfa";
+import { mustRestartMfa, normalizeLoginMfaCode } from "@/lib/login-mfa";
 
 import styles from "./auth-form.module.css";
 
@@ -16,12 +18,14 @@ interface MfaChallenge {
   challengeToken: string;
   enrollmentRequired: boolean;
   mfaRequired: true;
+  expiresAt?: string;
 }
 
 interface Enrollment {
   enrollmentToken: string;
   qrCodeDataUrl: string;
   secret: string;
+  expiresAt: string;
 }
 
 export function AuthForm({ mode }: { mode: Mode }) {
@@ -36,23 +40,44 @@ export function AuthForm({ mode }: { mode: Mode }) {
   const activeRequest = useRef<AbortController | null>(null);
   const form = useRef<HTMLFormElement | null>(null);
 
+  const restartLogin = useCallback((message: string | null = null) => {
+    activeRequest.current?.abort();
+    activeRequest.current = null;
+    pending.current = false;
+    setSubmitting(false);
+    setChallenge(null);
+    setEnrollment(null);
+    setRecoveryCodes(null);
+    setError(message);
+    form.current?.reset();
+  }, []);
+
   useEffect(() => {
-    const clear = () => {
-      activeRequest.current?.abort();
-      pending.current = false;
-      setSubmitting(false);
-      setChallenge(null);
-      setEnrollment(null);
-      setRecoveryCodes(null);
-      setError(null);
-      form.current?.reset();
-    };
+    const clear = () => restartLogin();
     window.addEventListener("pagehide", clear);
     return () => {
       activeRequest.current?.abort();
       window.removeEventListener("pagehide", clear);
     };
-  }, []);
+  }, [restartLogin]);
+
+  useEffect(() => {
+    if (recoveryCodes) return;
+    const expiresAt = enrollment?.expiresAt ?? challenge?.expiresAt;
+    if (!expiresAt) return;
+    const deadline = Date.parse(expiresAt);
+    if (!Number.isFinite(deadline)) return;
+    const expire = () => {
+      if (Date.now() >= deadline) restartLogin(t("auth.mfaRestartRequired"));
+    };
+    // Mobile browsers suspend timers while the authenticator is in front.
+    const timer = window.setTimeout(expire, Math.max(0, deadline - Date.now()));
+    document.addEventListener("visibilitychange", expire);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", expire);
+    };
+  }, [challenge?.expiresAt, enrollment?.expiresAt, recoveryCodes, restartLogin, t]);
 
   function finishLogin() {
     setRecoveryCodes(null);
@@ -63,17 +88,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
   }
 
   async function startEnrollment(challengeToken: string, signal: AbortSignal) {
-    const response = await fetch(`${apiBaseUrl}/auth/mfa/enrollment/start`, {
-      method: "POST",
-      credentials: "include",
-      cache: "no-store",
-      signal,
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ challengeToken }),
-    });
-    if (!response.ok) throw new Error(await readApiError(response));
-    const result = (await response.json()) as Enrollment;
-    if (!signal.aborted) setEnrollment(result);
+    return (await requestMfa("enrollment/start", signal, { challengeToken })) as Enrollment;
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -117,16 +132,23 @@ export function AuthForm({ mode }: { mode: Mode }) {
       if (controller.signal.aborted) return;
       if (result.mfaRequired && result.challengeToken) {
         const nextChallenge = result as MfaChallenge;
+        const nextEnrollment = nextChallenge.enrollmentRequired
+          ? await startEnrollment(nextChallenge.challengeToken, controller.signal)
+          : null;
+        if (controller.signal.aborted) return;
+        // Enter the enrollment screen only after setup has succeeded. A failed
+        // start must never render a verification form for an enrollment token.
+        setEnrollment(nextEnrollment);
         setChallenge(nextChallenge);
-        if (nextChallenge.enrollmentRequired)
-          await startEnrollment(nextChallenge.challengeToken, controller.signal);
         return;
       }
       router.push(href(mode === "register" ? "/?welcome=1" : "/"));
       router.refresh();
     } catch (cause) {
-      if (!controller.signal.aborted)
-        setError(cause instanceof Error ? cause.message : t("auth.connectionError"));
+      if (!controller.signal.aborted) {
+        if (mustRestartMfa(cause)) restartLogin(t("auth.mfaRestartRequired"));
+        else setError(cause instanceof Error ? cause.message : t("auth.connectionError"));
+      }
     } finally {
       if (activeRequest.current === controller) {
         pending.current = false;
@@ -143,33 +165,22 @@ export function AuthForm({ mode }: { mode: Mode }) {
     activeRequest.current = controller;
     setError(null);
     setSubmitting(true);
-    const value = String(new FormData(event.currentTarget).get("mfaCode") ?? "").trim();
+    const value = normalizeLoginMfaCode(
+      String(new FormData(event.currentTarget).get("mfaCode") ?? ""),
+    );
     event.currentTarget.reset();
 
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/auth/mfa/${enrollment ? "enrollment/verify" : "challenge"}`,
-        {
-          method: "POST",
-          credentials: "include",
-          cache: "no-store",
-          signal: controller.signal,
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(
-            enrollment
-              ? { enrollmentToken: enrollment.enrollmentToken, code: value }
-              : {
-                  challengeToken: challenge.challengeToken,
-                  ...(/^\d{6}$/.test(value) ? { code: value } : { recoveryCode: value }),
-                },
-          ),
-        },
-      );
-      if (!response.ok) {
-        setError(await readApiError(response));
-        return;
-      }
-      const result = (await response.json()) as { recoveryCodes?: string[] };
+      const result = (await requestMfa(
+        enrollment ? "enrollment/verify" : "challenge",
+        controller.signal,
+        enrollment
+          ? { enrollmentToken: enrollment.enrollmentToken, code: value }
+          : {
+              challengeToken: challenge.challengeToken,
+              ...(/^\d{6}$/.test(value) ? { code: value } : { recoveryCode: value }),
+            },
+      )) as { recoveryCodes?: string[] };
       if (controller.signal.aborted) return;
       if (result.recoveryCodes?.length) {
         setEnrollment(null);
@@ -177,8 +188,16 @@ export function AuthForm({ mode }: { mode: Mode }) {
         return;
       }
       finishLogin();
-    } catch {
-      if (!controller.signal.aborted) setError(t("auth.connectionError"));
+    } catch (cause) {
+      if (!controller.signal.aborted) {
+        if (mustRestartMfa(cause)) restartLogin(t("auth.mfaRestartRequired"));
+        else
+          setError(
+            cause instanceof Error && cause.name !== "TypeError"
+              ? cause.message
+              : t("auth.mfaConnectionError"),
+          );
+      }
     } finally {
       if (activeRequest.current === controller) {
         pending.current = false;
@@ -205,6 +224,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
             <p className={styles.eyebrow}>{t("auth.adminSecurity")}</p>
             <h1>{enrollment ? t("auth.secureAdmin") : t("auth.twoStep")}</h1>
             <p className={styles.intro}>{enrollment ? t("auth.scanQr") : t("auth.enterCode")}</p>
+            {enrollment ? <p className={styles.intro}>{t("auth.adminMfaPolicy")}</p> : null}
             {enrollment ? (
               <MfaEnrollmentSecret enrollment={enrollment} label={t("auth.secureAdmin")} />
             ) : null}
@@ -218,6 +238,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
                   dir="ltr"
                   inputMode={enrollment ? "numeric" : "text"}
                   name="mfaCode"
+                  maxLength={32}
                   placeholder={enrollment ? "000000" : "000000 / recovery code"}
                   required
                 />
@@ -233,6 +254,9 @@ export function AuthForm({ mode }: { mode: Mode }) {
                   : enrollment
                     ? t("auth.enableMfa")
                     : t("auth.verify")}
+              </button>
+              <button className={styles.secondary} onClick={() => restartLogin()} type="button">
+                {t("auth.restartSignIn")}
               </button>
             </form>
           </>

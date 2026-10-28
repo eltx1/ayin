@@ -140,6 +140,27 @@ databaseDescribe("Task 47 administrator MFA", () => {
     expect(recoveryCodes).toHaveLength(10);
     const adminCookie = cookiePair(confirm.headers["set-cookie"]);
 
+    // A browser can lose the successful response and retry the old setup form.
+    // Do not replay enrollment or issue a session from that now-stale token.
+    const replay = await app.inject({
+      method: "POST",
+      url: "/auth/mfa/enrollment/verify",
+      payload: {
+        enrollmentToken: enrollment.enrollmentToken,
+        code: generateTotpCode(enrollment.secret, totpCounter()),
+      },
+    });
+    expect(replay.statusCode).toBe(401);
+    expect(replay.json().error.code).toBe("MFA_REQUEST_INVALID");
+    expect(replay.headers["set-cookie"]).toBeUndefined();
+    const freshLogin = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      payload: { email: "required-admin@example.com", password },
+    });
+    expect(freshLogin.json()).toMatchObject({ mfaRequired: true, enrollmentRequired: false });
+    expect(Date.parse(freshLogin.json().expiresAt)).toBeGreaterThan(Date.now());
+
     const status = await app.inject({
       method: "GET",
       url: "/auth/mfa/status",

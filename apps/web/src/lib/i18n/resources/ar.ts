@@ -256,6 +256,12 @@ export const arMessages = {
   "auth.verify": "تحقق",
   "auth.verifying": "جارٍ التحقق…",
   "auth.enableMfa": "تفعيل التحقق بخطوتين",
+  "auth.restartSignIn": "بدء تسجيل الدخول من جديد",
+  "auth.adminMfaPolicy": "التحقق بخطوتين مطلوب لحسابات الإدارة.",
+  "auth.mfaRestartRequired":
+    "انتهت صلاحية طلب التحقق أو اكتمل بالفعل. سجّل الدخول من جديد. إذا اكتمل التفعيل، فأدخل الرمز الحالي من تطبيق المصادقة.",
+  "auth.mfaConnectionError":
+    "تعذّر تأكيد رد الخادم. يمكنك إعادة المحاولة، أو بدء تسجيل الدخول من جديد إذا كان التفعيل قد اكتمل بالفعل.",
   "account.metaTitle": "الحساب | AYIN",
   "account.eyebrow": "حسابك على AYIN",
   "account.title": "الحساب",
