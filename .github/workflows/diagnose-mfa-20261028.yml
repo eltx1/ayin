@@ -27,37 +27,24 @@ jobs:
           mv "$HOME/.ssh/candidate" "$HOME/.ssh/known_hosts"
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes ayin@"$DEPLOY_HOST" 'cd /home/ayin/htdocs/current && git rev-parse HEAD && node deploy/run-with-env.cjs /home/ayin/env/api.env node --input-type=module' <<'JS'
           import { createPrismaClient } from './packages/db/dist/index.js';
-          import { readdir,stat } from 'node:fs/promises';
-          import { createReadStream } from 'node:fs';
-          import { createInterface } from 'node:readline';
+          import { statfs } from 'node:fs/promises';
+          import { freemem, loadavg } from 'node:os';
           const db=createPrismaClient();
-          try{
-            const data=await db.$transaction(async tx=>{
-              await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
-              const rows=await tx.mediaAsset.findMany({where:{kind:'SOURCE_VIDEO',status:'PENDING',removedAt:null,sizeBytes:3735538284n,createdAt:{gte:new Date('2026-10-28T00:00:00Z'),lt:new Date('2026-10-29T00:00:00Z')}},select:{videoId:true},take:2});
-              if(rows.length!==1)return{matched:rows.length};
-              const item=await tx.contentSeedItem.findUnique({where:{videoId:rows[0].videoId},select:{status:true}});
-              return{matched:1,adminSeed:!!item,seedStatus:item?.status??null};
-            });
-            console.log('SAFE_UPLOAD_ROUTE',JSON.stringify(data));
-            const dir='/home/ayin/.pm2/logs';
-            const allowed=new Set(['/media/uploads/sessions','/media/uploads/sessions/authorize-part','/media/uploads/sessions/resume','/media/uploads/sessions/complete','/creator/videos/drafts','/admin/content-seeding/items/:itemId/upload-session']);
-            const stats=new Map();
-            let files=0;
-            for(const name of await readdir(dir)){
-              if(!/^ayin-api-(?:out|error)(?:-[0-9]+)?[.]log$/.test(name))continue;
-              const p=dir+'/'+name,s=await stat(p);files++;
-              const lines=createInterface({input:createReadStream(p,{start:Math.max(0,s.size-64*1024*1024)}),crlfDelay:Infinity});
-              for await(const line of lines){
-                const k=line.indexOf('{');if(k<0)continue;
-                let x;try{x=JSON.parse(line.slice(k));}catch{continue;}
-                if(x.event!=='http.request'||x.timestamp<'2026-10-28T12:49:00Z'||x.timestamp>'2026-10-28T13:35:00Z'||!allowed.has(x.path))continue;
-                const key=x.path+' '+x.statusCode;
-                const old=stats.get(key)??{path:x.path,status:x.statusCode,count:0,first:x.timestamp,last:x.timestamp};
-                old.count++;old.first=old.first<x.timestamp?old.first:x.timestamp;old.last=old.last>x.timestamp?old.last:x.timestamp;stats.set(key,old);
-              }
+          try {
+           const result=await db.$transaction(async tx=>{
+            await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
+            const sources=await tx.mediaAsset.findMany({where:{kind:'SOURCE_VIDEO',sizeBytes:3736813160n,createdAt:{gte:new Date('2026-10-28T16:00:00Z')}},select:{videoId:true,status:true,createdAt:true,updatedAt:true,uploadIntegrityRequired:true},take:3});
+            const rows=[];
+            for(const s of sources){
+             const jobs=await tx.mediaProcessingJob.findMany({where:{videoId:s.videoId},select:{status:true,stage:true,progressPercent:true,attempt:true,errorCode:true,queuedAt:true,startedAt:true,completedAt:true,heartbeatAt:true,leaseExpiresAt:true,updatedAt:true,sourceSizeBytes:true,outputSizeBytes:true},orderBy:{createdAt:'desc'},take:2});
+             const video=await tx.video.findUnique({where:{id:s.videoId},select:{status:true,visibility:true}});
+             rows.push({source:{status:s.status,createdAt:s.createdAt,updatedAt:s.updatedAt,integrity:s.uploadIntegrityRequired},video,jobs});
             }
-            console.log('SAFE_UPLOAD_REQUESTS',JSON.stringify({files,requests:[...stats.values()]}));
-          }catch(e){console.log('SAFE_UPLOAD_ROUTE',JSON.stringify({inspected:false,code:/^[A-Za-z0-9_]{1,60}$/.test(e?.name??'')?e.name:'REDACTED'}));}
+            return {matched:sources.length,rows};
+           });
+           console.log('SAFE_LARGE_UPLOAD',JSON.stringify(result,(_,v)=>typeof v==='bigint'?String(v):v));
+           const disk=await statfs('/home/ayin');
+           console.log('SAFE_HOST_CAPACITY',JSON.stringify({freeMemoryBytes:freemem(),load:loadavg(),diskAvailableBytes:disk.bavail*disk.bsize}));
+          }catch(e){console.log('SAFE_LARGE_UPLOAD',JSON.stringify({inspected:false,errorType:e?.name??'UNKNOWN'}));}
           finally{await db.$disconnect();}
           JS
