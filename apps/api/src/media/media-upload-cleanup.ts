@@ -96,13 +96,80 @@ export async function registerUploadCleanupInTransaction(
     now: Date;
   },
 ) {
+  return registerUploadCleanup(tx, input);
+}
+
+/** Explicit creator removal is a processing retirement, not upload cancellation.
+ * Caller holds current custody, generation, source, job and video locks. The
+ * recorded tombstone/cancelled jobs/frozen attempts are checked before allowing
+ * a completed source into cleanup. Unknown write outcomes are never rewritten.
+ */
+export async function registerRemovedVideoUploadCleanup(
+  tx: Prisma.TransactionClient,
+  input: { sessionId: string; videoId: string; channelId: string; now: Date },
+) {
+  const [video, session, liveJobs, liveAttempts] = await Promise.all([
+    tx.video.findUnique({
+      where: { id: input.videoId },
+      select: { channelId: true, status: true, removedAt: true },
+    }),
+    tx.mediaUploadSession.findUnique({ where: { id: input.sessionId } }),
+    tx.mediaProcessingJob.count({
+      where: { videoId: input.videoId, status: { not: "CANCELLED" } },
+    }),
+    tx.mediaProcessingOutputAttempt.count({
+      where: { videoId: input.videoId, protocolVersion: 2, writesFrozenAt: null },
+    }),
+  ]);
+  if (
+    !video ||
+    video.channelId !== input.channelId ||
+    video.status !== "REMOVED" ||
+    !video.removedAt ||
+    !session ||
+    session.sourceProtocolVersion !== 2 ||
+    session.channelId !== input.channelId ||
+    session.videoId !== input.videoId ||
+    liveJobs ||
+    liveAttempts
+  )
+    throw new Error("The video must be retired before completed-source cleanup.");
+  if (
+    session.cleanupRequestedAt &&
+    session.grantsRevokedAt &&
+    ["ABORTED", "REVOKED", "EXPIRED"].includes(session.state)
+  )
+    return false;
+  return registerUploadCleanup(
+    tx,
+    {
+      sessionId: input.sessionId,
+      accountId: null,
+      state: "REVOKED",
+      now: input.now,
+    },
+    true,
+  );
+}
+
+async function registerUploadCleanup(
+  tx: Prisma.TransactionClient,
+  input: {
+    sessionId: string;
+    accountId: string | null;
+    requestId?: string;
+    state: "REVOKED" | "EXPIRED" | "ABORTED";
+    now: Date;
+  },
+  removedVideo = false,
+) {
   await tx.$queryRaw`SELECT id FROM "MediaUploadSession" WHERE id=${input.sessionId}::uuid FOR UPDATE /* ayin-upload-cleanup-session-lock */`;
   const previous = await tx.mediaUploadSession.findUnique({ where: { id: input.sessionId } });
   if (!previous) return false;
   await assertUploadCleanupContract(tx, previous);
   // Transfer acceptance is a boundary. Cancelling a completed processing job
   // needs output-write cleanup, not just this original-upload obligation.
-  if (previous.state === "COMPLETED" && !input.requestId)
+  if (previous.state === "COMPLETED" && !input.requestId && !removedVideo)
     throw new Error("Completed uploads require the processing/privacy lifecycle for removal.");
   const session = await tx.mediaUploadSession.update({
     where: { id: previous.id },

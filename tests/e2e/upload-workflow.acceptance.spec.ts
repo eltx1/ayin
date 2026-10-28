@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Dialog, type Locator, type Page } from "@playwright/test";
 const API = "http://127.0.0.1:3001",
   WEB = "http://127.0.0.1:3000";
 test.use({ serviceWorkers: "block" });
@@ -78,6 +78,73 @@ async function uploadReady(page: Page, locale = "en") {
   ).toBeEnabled();
   return draft.video as { id: string; channelId: string };
 }
+async function expectUnobscured(element: Locator) {
+  await expect(element).toBeVisible();
+  await expect
+    .poll(() =>
+      element.evaluate((node) => {
+        const box = node.getBoundingClientRect();
+        if (
+          box.width <= 0 ||
+          box.height <= 0 ||
+          box.left < 0 ||
+          box.right > innerWidth ||
+          box.top < 0 ||
+          box.bottom > innerHeight
+        )
+          return false;
+        const chrome = [...document.querySelectorAll("header, nav")]
+          .filter(
+            (item) =>
+              !item.contains(node) && ["fixed", "sticky"].includes(getComputedStyle(item).position),
+          )
+          .map((item) => item.getBoundingClientRect())
+          .filter((rect) => rect.width > 0 && rect.height > 0);
+        if (
+          chrome.some(
+            (rect) =>
+              box.bottom > rect.top &&
+              box.top < rect.bottom &&
+              box.right > rect.left &&
+              box.left < rect.right,
+          )
+        )
+          return false;
+        // Check the actual painted hit target, including lower corners. Being
+        // technically in the viewport does not prove that navigation is clear.
+        return [
+          [0.5, 0.5],
+          [0.1, 0.1],
+          [0.9, 0.1],
+          [0.1, 0.9],
+          [0.9, 0.9],
+        ].every(([x, y]) => {
+          const hit = document.elementFromPoint(
+            box.left + box.width * x!,
+            box.top + box.height * y!,
+          );
+          return hit !== null && (hit === node || node.contains(hit));
+        });
+      }),
+    )
+    .toBe(true);
+}
+async function expectMobileLogo(page: Page) {
+  const logo = page.locator('header img[src*="ayin-logo-restored"]');
+  await expect(logo).toHaveCount(1);
+  await expect
+    .poll(() =>
+      logo.evaluate(
+        (image) =>
+          (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0,
+      ),
+    )
+    .toBe(true);
+  await expectUnobscured(logo);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+    true,
+  );
+}
 for (const locale of ["en", "ar"]) {
   test(`owned upload serializes save/publish and keeps localized controls in ${locale}`, async ({
     page,
@@ -152,7 +219,7 @@ for (const locale of ["en", "ar"]) {
     ).toBeVisible();
     expect(thumbnails).toBe(0);
     await title.fill("Published workflow title");
-    const cancelNavigation = (dialog: import("@playwright/test").Dialog) => dialog.dismiss();
+    const cancelNavigation = (dialog: Dialog) => dialog.dismiss();
     page.once("dialog", cancelNavigation);
     await page
       .getByRole("link", {
@@ -169,9 +236,44 @@ for (const locale of ["en", "ar"]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
       true,
     );
+    // A full-page capture at this retained scroll position places sticky chrome
+    // over unrelated rows. Capture and verify the viewport a creator can use.
+    const alert = page
+      .getByRole("region", {
+        name: locale === "ar" ? "رفع الفيديو" : "Creator upload",
+        exact: true,
+      })
+      .getByRole("alert")
+      .filter({
+        hasText: locale === "ar" ? "لم تُحفظ الصورة المصغرة" : "Thumbnail was not saved",
+      });
+    await alert.evaluate((element) =>
+      element.scrollIntoView({ block: "center", behavior: "instant" }),
+    );
+    await alert.click();
+    await expectUnobscured(alert);
+    await expectUnobscured(
+      page.getByRole("link", {
+        name:
+          locale === "ar"
+            ? "مراجعة الفيديوهات المحفوظة في الاستوديو"
+            : "Review saved uploads in Studio",
+        exact: true,
+      }),
+    );
+    await expectMobileLogo(page);
     await page.screenshot({
-      path: info.outputPath(`design-upload-workflow-390-${locale}.png`),
-      fullPage: true,
+      path: info.outputPath(`design-upload-workflow-390-${locale}-error.png`),
+    });
+    await publish.evaluate((element) =>
+      element.scrollIntoView({ block: "center", behavior: "instant" }),
+    );
+    await expectUnobscured(save);
+    await expectUnobscured(publish);
+    await publish.click({ trial: true });
+    await expectMobileLogo(page);
+    await page.screenshot({
+      path: info.outputPath(`design-upload-workflow-390-${locale}-actions.png`),
     });
     await publish.evaluate((button) => {
       (button as HTMLButtonElement).click();
@@ -271,51 +373,77 @@ test("file eligibility is visible and rejects an oversized file before creating 
   expect(drafts).toBe(0);
 });
 
-test("details remain editable during transfer and a failed transfer retries the same draft", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await setup(page);
-  let release = () => {};
-  const gate = new Promise<void>((resolve) => {
-    release = resolve;
+for (const locale of ["en", "ar"])
+  test(`details remain editable during transfer and a failed transfer retries the same draft ${locale}`, async ({
+    page,
+  }, info) => {
+    const copy = (en: string, ar: string) => (locale === "ar" ? ar : en);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await setup(page, locale);
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let puts = 0,
+      drafts = 0;
+    page.on("request", (request) => {
+      if (request.url().endsWith("/creator/videos/drafts")) drafts++;
+    });
+    await page.route("https://e2e-upload.invalid/**", async (route) => {
+      if (route.request().method() !== "PUT") return route.fallback();
+      puts++;
+      if (puts > 1) return route.fallback();
+      await gate;
+      await route.fulfill({
+        status: 403,
+        body: "",
+        headers: { "access-control-allow-origin": WEB },
+      });
+    });
+    try {
+      await page
+        .locator('input[type="file"][accept^="video/"]')
+        .setInputFiles({ name: "retry.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(1024) });
+      const title = page.getByLabel(copy("Title", "العنوان"), { exact: true });
+      await expect(title).toBeEnabled();
+      await title.fill("Edited while uploading");
+      await expect(
+        page.getByRole("button", { name: copy("Save details", "حفظ التفاصيل"), exact: true }),
+      ).toBeDisabled();
+      await expect(
+        page.getByRole("button", { name: copy("Pause upload", "إيقاف الرفع مؤقتًا"), exact: true }),
+      ).toBeEnabled();
+      release();
+      const alert = page
+        .getByRole("alert")
+        .filter({ hasText: copy("Upload needs attention", "الرفع يحتاج إلى إجراء") });
+      await expect(alert).toBeInViewport();
+      await expect(alert).toContainText(
+        copy("Storage rejected the transfer", "رفضت خدمة التخزين نقل الملف"),
+      );
+      await alert.evaluate((element) =>
+        element.scrollIntoView({ block: "center", behavior: "instant" }),
+      );
+      const retry = page.getByRole("button", {
+        name: copy("Retry this upload", "إعادة محاولة هذا الرفع"),
+        exact: true,
+      });
+      await expectUnobscured(alert);
+      await expectUnobscured(retry);
+      await expectMobileLogo(page);
+      await retry.click({ trial: true });
+      await page.screenshot({ path: info.outputPath(`design-upload-retry-390-${locale}.png`) });
+      await retry.click();
+      await expect(
+        page.getByRole("progressbar", { name: copy("Upload progress", "تقدم الرفع"), exact: true }),
+      ).toHaveAttribute("aria-valuenow", "100");
+      await expect(title).toHaveValue("Edited while uploading");
+      expect(drafts).toBe(1);
+      expect(puts).toBe(2);
+    } finally {
+      release();
+    }
   });
-  let puts = 0,
-    drafts = 0;
-  page.on("request", (request) => {
-    if (request.url().endsWith("/creator/videos/drafts")) drafts++;
-  });
-  await page.route("https://e2e-upload.invalid/**", async (route) => {
-    if (route.request().method() !== "PUT") return route.fallback();
-    puts++;
-    if (puts > 1) return route.fallback();
-    await gate;
-    await route.fulfill({ status: 403, body: "", headers: { "access-control-allow-origin": WEB } });
-  });
-  try {
-    await page
-      .locator('input[type="file"][accept^="video/"]')
-      .setInputFiles({ name: "retry.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(1024) });
-    const title = page.getByLabel("Title", { exact: true });
-    await expect(title).toBeEnabled();
-    await title.fill("Edited while uploading");
-    await expect(page.getByRole("button", { name: "Save details", exact: true })).toBeDisabled();
-    await expect(page.getByRole("button", { name: "Pause upload", exact: true })).toBeEnabled();
-    release();
-    const alert = page.getByRole("alert").filter({ hasText: "Upload needs attention" });
-    await expect(alert).toBeInViewport();
-    await expect(alert).toContainText("Storage rejected the transfer");
-    await page.getByRole("button", { name: "Retry this upload", exact: true }).click();
-    await expect(
-      page.getByRole("progressbar", { name: "Upload progress", exact: true }),
-    ).toHaveAttribute("aria-valuenow", "100");
-    await expect(title).toHaveValue("Edited while uploading");
-    expect(drafts).toBe(1);
-    expect(puts).toBe(2);
-  } finally {
-    release();
-  }
-});
 
 test("retry after an acknowledged completion only reconciles the saved video", async ({ page }) => {
   await setup(page);

@@ -256,7 +256,7 @@ export const enMessages = {
   "auth.verifying": "Verifying…",
   "auth.enableMfa": "Enable MFA",
   "auth.restartSignIn": "Start sign-in again",
-  "auth.adminMfaPolicy": "Two-step verification is required for administrator accounts.",
+  "auth.adminMfaPolicy": "Two-step verification is optional. Enable it when you are ready.",
   "auth.mfaRestartRequired":
     "This verification request expired or was already completed. Sign in again. If setup finished, enter the current code from your authenticator.",
   "auth.mfaConnectionError":
@@ -361,6 +361,8 @@ export const enMessages = {
   "account.mfaDisabled": "Two-step verification is off",
   "account.mfaRequired":
     "Your administrator role requires two-step verification. It cannot be turned off here.",
+  "account.mfaOptional":
+    "Two-step verification is optional, including for administrators. You can turn it on or off here.",
   "account.mfaRemaining": "{count} recovery codes remaining",
   "account.mfaEnable": "Set up two-step verification",
   "account.mfaRegenerate": "Replace recovery codes",

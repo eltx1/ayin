@@ -4,7 +4,13 @@ on:
   push:
     paths:
       - "apps/api/src/auth/**"
+      - "apps/api/src/admin/admin.guard.ts"
+      - "apps/api/src/admin/admin-account-write-authority.ts"
       - "apps/api/test/*mfa*"
+      - "apps/api/test/admin-account-write-authority.integration.test.ts"
+      - "apps/api/test/comments-availability.integration.test.ts"
+      - "apps/web/src/components/account/account-mfa.tsx"
+      - "apps/web/src/components/admin/admin-reauthentication.tsx"
       - "apps/web/src/app/auth-form*"
       - "apps/web/src/lib/login-mfa*"
       - "apps/web/src/lib/account-mfa*"
@@ -65,7 +71,7 @@ jobs:
       - name: Build release candidate
         run: pnpm build
       - name: Verify MFA enrollment, account changes, recovery and concurrency
-        run: pnpm --filter @ayin/api exec vitest run --testTimeout=30000 --fileParallelism=false test/admin-mfa.integration.test.ts test/mfa-enrollment-concurrency.integration.test.ts test/mfa-recovery-concurrency.integration.test.ts test/mfa-management-concurrency.integration.test.ts
+        run: pnpm --filter @ayin/api exec vitest run --testTimeout=30000 --fileParallelism=false src/auth/mfa-optional-policy.test.ts test/admin-mfa.integration.test.ts test/mfa-enrollment-concurrency.integration.test.ts test/mfa-recovery-concurrency.integration.test.ts test/mfa-management-concurrency.integration.test.ts test/admin-account-write-authority.integration.test.ts test/comments-availability.integration.test.ts
       - name: Verify administrator sign-in and recovery in Chromium
         run: pnpm exec playwright test tests/e2e/admin-mfa.acceptance.spec.ts tests/e2e/account-mfa.acceptance.spec.ts tests/e2e/account-mfa-disable-recovery.acceptance.spec.ts tests/e2e/admin-reauthentication.acceptance.spec.ts
       - name: Preserve failure evidence

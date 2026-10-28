@@ -9,6 +9,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { AppModule } from "../src/app.module.js";
 import { AdminAuditLogService } from "../src/admin/admin-audit-log.service.js";
 import { AdminGuard } from "../src/admin/admin.guard.js";
+import { AuthTokenService } from "../src/auth/auth-token.service.js";
 import { enrollTestMfa } from "./mfa-test-helper.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -635,14 +636,50 @@ databaseDescribe(
         expect((await facts(f)).audits).toHaveLength(3);
       });
 
-    for (const role of ["ADMIN", "SUPERADMIN", "FINANCE_MANAGER"] as const)
-      it(`keeps existing ${role} authority requirements`, async () => {
-        const f = await fixture(role, false),
+    for (const role of ["ADMIN", "SUPERADMIN"] as const) {
+      it(`permits password-assured ${role} writes when MFA is not enabled`, async () => {
+        const f = await fixture(role, false);
+        expect(
+          await prisma.accountMfaCredential.findUnique({ where: { accountId: f.id } }),
+        ).toBeNull();
+        for (const command of commands) expect((await send(f, command)).statusCode).toBe(200);
+        expect((await facts(f)).audits).toHaveLength(3);
+      });
+
+      it(`requires MFA assurance for ${role} when a factor is enabled`, async () => {
+        const f = await fixture(role),
           before = await facts(f);
+        const tokens = app.get(AuthTokenService);
+        const separator = f.cookie.indexOf("=");
+        const payload = tokens.verifySession(f.cookie.slice(separator + 1))!;
+        const passwordOnly = tokens.issueSession(
+          payload.sub,
+          payload.av,
+          payload.sid!,
+          new Date(payload.exp * 1000),
+          { reauthAt: Math.floor(Date.now() / 1000) },
+        );
+        const unassured = { ...f, cookie: f.cookie.slice(0, separator + 1) + passwordOnly };
         for (const command of commands)
-          expect((await send(f, command)).statusCode).toBe(role === "FINANCE_MANAGER" ? 403 : 401);
+          expect((await send(unassured, command)).statusCode).toBe(401);
         expect(await facts(f)).toEqual(before);
       });
+
+      it(`rejects stale ${role} MFA assurance after its credential is removed`, async () => {
+        const f = await fixture(role),
+          before = await facts(f);
+        await prisma.accountMfaCredential.delete({ where: { accountId: f.id } });
+        for (const command of commands) expect((await send(f, command)).statusCode).toBe(401);
+        expect(await facts(f)).toEqual(before);
+      });
+    }
+
+    it("denies FINANCE_MANAGER policy writes without changing policy or audit state", async () => {
+      const f = await fixture("FINANCE_MANAGER", false),
+        before = await facts(f);
+      for (const command of commands) expect((await send(f, command)).statusCode).toBe(403);
+      expect(await facts(f)).toEqual(before);
+    });
 
     it("keeps strict GENERAL/NONE Kids validation with no policy or audit effects", async () => {
       const f = await fixture(),

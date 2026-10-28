@@ -4,6 +4,21 @@ import { loadMediaStorageConfig } from "./media-storage.config.js";
 import { R2SigV4 } from "./r2-sigv4.js";
 
 describe("media storage configuration", () => {
+  it("bounds large-file recovery independently from ordinary settings and leaves rollout disabled by default", () => {
+    const config = loadMediaStorageConfig({
+      APP_ENV: "test",
+      AYIN_UPLOAD_RECOVERY_SOURCE_MAX_BYTES: String(5 * 1024 ** 3),
+      AYIN_UPLOAD_RECOVERY_OUTPUT_ENVELOPE_BYTES: String(16 * 1024 ** 3),
+    });
+    expect(config.recoverySourceMaxBytes).toBe(5 * 1024 ** 3);
+    expect(config.recoveryOutputEnvelopeBytes).toBe(16 * 1024 ** 3);
+    expect(config.recoveryV2Enabled).toBe(false);
+    for (const [key, value] of [
+      ["AYIN_UPLOAD_RECOVERY_SOURCE_MAX_BYTES", 5 * 1024 ** 3 + 1],
+      ["AYIN_UPLOAD_RECOVERY_OUTPUT_ENVELOPE_BYTES", 16 * 1024 ** 3 + 1],
+    ])
+      expect(() => loadMediaStorageConfig({ APP_ENV: "test", [key!]: String(value) })).toThrow();
+  });
   it("separates a bounded upload session from short-lived provider URLs", () => {
     const config = loadMediaStorageConfig({ APP_ENV: "test" });
     expect(config.uploadUrlTtlSeconds).toBe(900);

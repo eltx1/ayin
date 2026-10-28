@@ -23,7 +23,6 @@ import {
   verifyTotpCode,
 } from "./totp.js";
 
-const privilegedRoles = new Set(["SUPERADMIN", "ADMIN"]);
 const pendingTtlMs = mfaEnrollmentTtlSeconds * 1_000;
 
 function invalidMfaRequest() {
@@ -54,25 +53,21 @@ export class MfaService {
   ) {}
 
   async loginChallenge(accountId: string, authVersion: number) {
-    const [roles, credential] = await Promise.all([
-      this.database.client.adminRoleAssignment.findMany({
-        where: { accountId },
-        select: { role: true },
-      }),
-      this.database.client.accountMfaCredential.findUnique({ where: { accountId } }),
-    ]);
-    const required = roles.some(({ role }) => privilegedRoles.has(role));
-    if (!required && credential?.status !== "ENABLED") return null;
-    const enrollmentRequired = credential?.status !== "ENABLED";
+    const credential = await this.database.client.accountMfaCredential.findUnique({
+      where: { accountId },
+    });
+    // Enrollment is an account choice, including for administrators. Once a
+    // factor is enabled it remains required until an authenticated opt-out.
+    if (credential?.status !== "ENABLED") return null;
     const challengeToken = this.tokens.issueMfaChallenge(
       accountId,
       authVersion,
       credential?.version ?? 0,
-      enrollmentRequired ? "enroll" : "verify",
+      "verify",
     );
     return {
       mfaRequired: true as const,
-      enrollmentRequired,
+      enrollmentRequired: false,
       challengeToken,
       expiresAt: new Date(
         (Math.floor(Date.now() / 1_000) + mfaChallengeTtlSeconds) * 1_000,
@@ -90,20 +85,14 @@ export class MfaService {
   }
 
   async status(accountId: string) {
-    const [credential, roles] = await Promise.all([
-      this.database.client.accountMfaCredential.findUnique({
-        where: { accountId },
-        select: { status: true, enabledAt: true, recoveryCodeHashes: true },
-      }),
-      this.database.client.adminRoleAssignment.findMany({
-        where: { accountId },
-        select: { role: true },
-      }),
-    ]);
+    const credential = await this.database.client.accountMfaCredential.findUnique({
+      where: { accountId },
+      select: { status: true, enabledAt: true, recoveryCodeHashes: true },
+    });
     return {
       accountId,
       enabled: credential?.status === "ENABLED",
-      required: roles.some(({ role }) => privilegedRoles.has(role)),
+      required: false,
       enabledAt: credential?.status === "ENABLED" ? credential.enabledAt : null,
       recoveryCodesRemaining:
         credential?.status === "ENABLED" ? credential.recoveryCodeHashes.length : 0,
@@ -233,11 +222,6 @@ export class MfaService {
       await this.consumeTotp(credential, code);
       mfaAt = Math.floor(Date.now() / 1_000);
       mfaVersion = credential.version;
-    } else if (await this.isPrivileged(accountId)) {
-      throw conflict(
-        "MFA_ENROLLMENT_REQUIRED",
-        "MFA enrollment is required for this administrator.",
-      );
     }
     const reauthAt = Math.floor(Date.now() / 1_000);
     return {
@@ -283,12 +267,6 @@ export class MfaService {
   }
 
   async disable(accountId: string, password: string, code: string) {
-    if (await this.isPrivileged(accountId)) {
-      throw conflict(
-        "MFA_REQUIRED_BY_POLICY",
-        "MFA cannot be disabled while this account has an administrator role.",
-      );
-    }
     const account = await this.verifyPassword(accountId, password);
     const credential = await this.database.client.accountMfaCredential.findUnique({
       where: { accountId },
@@ -297,11 +275,6 @@ export class MfaService {
       throw conflict("MFA_NOT_ENABLED", "MFA is not enabled.");
     await this.database.client.$transaction(async (tx) => {
       await lockStaffRoleChanges(tx);
-      if (await this.isPrivileged(accountId, tx))
-        throw conflict(
-          "MFA_REQUIRED_BY_POLICY",
-          "MFA cannot be disabled while this account has an administrator role.",
-        );
       await this.consumeTotp(credential, code, tx);
       await tx.accountMfaCredential.delete({ where: { accountId } });
       const changed = await tx.account.updateMany({
@@ -361,13 +334,14 @@ export class MfaService {
   }
 
   async assertAdminMfa(accountId: string, mfaAt?: number, mfaVersion?: number) {
-    if (!mfaAt || mfaVersion === undefined)
-      throw unauthorized("Administrator MFA verification is required.");
     const credential = await this.database.client.accountMfaCredential.findUnique({
       where: { accountId },
       select: { status: true, version: true },
     });
-    if (!credential || credential.status !== "ENABLED" || credential.version !== mfaVersion) {
+    if (credential?.status !== "ENABLED" && !mfaAt && mfaVersion === undefined) return;
+    // A credential removed/replaced since this session was verified is still
+    // stale authority. Optional enrollment must not revive an old MFA session.
+    if (!mfaAt || credential?.status !== "ENABLED" || credential.version !== mfaVersion) {
       throw unauthorized("Administrator MFA verification is required.");
     }
   }
@@ -520,17 +494,6 @@ export class MfaService {
       where: { id: payload.sub, authVersion: payload.av, status: "ACTIVE" },
     });
     if (count !== 1) throw invalidMfaRequest();
-  }
-
-  private async isPrivileged(
-    accountId: string,
-    client: Pick<Prisma.TransactionClient, "adminRoleAssignment"> = this.database.client,
-  ) {
-    return (
-      (await client.adminRoleAssignment.count({
-        where: { accountId, role: { in: [...privilegedRoles] } },
-      })) > 0
-    );
   }
 
   private generateRecoveryCodes() {

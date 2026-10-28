@@ -104,9 +104,8 @@ function ViewerChrome({ children }: { children: ReactNode }) {
           href={href("/")}
         >
           <span aria-hidden="true" className={styles.brandMark}>
-            <Image alt="" height={64} priority src="/brand/ayin-logo.png" width={64} />
+            <Image alt="" height={64} priority src="/brand/ayin-logo-restored.png" width={64} />
           </span>
-          <span className={styles.brandWord}>AYIN</span>
         </Link>
         <nav
           aria-label={t("shell.primaryNavigation")}

@@ -6,6 +6,7 @@ import { UploadProtocolError } from "./upload-session";
 import { identifyUploadFile } from "./upload-file-identity";
 import { titleFromFilename } from "./title-from-filename";
 import { isSupportedVideoFile, videoMimeTypeForUpload } from "./video-inspection";
+import { UploadBlobError } from "./direct-video-upload";
 import {
   parseRecoveryInspection,
   parseRecoveryScope,
@@ -38,6 +39,7 @@ export interface RecoveryView {
   busy: boolean;
   progress: number;
   uploadProgress: number;
+  uploadedBytes: number;
   message: string;
 }
 type RecoveryDependencies = {
@@ -45,11 +47,19 @@ type RecoveryDependencies = {
   fetch?: typeof fetch;
   identify?: typeof identifyUploadFile;
   requestId?: () => string;
+  transfer?: (
+    url: string,
+    blob: Blob,
+    headers: Record<string, string>,
+    progress: (loaded: number) => void,
+    signal: AbortSignal,
+  ) => Promise<unknown>;
   changed: (view: RecoveryView) => void;
 };
 const rejectedBeforeDispatch = new Set([
   "UPLOAD_COMPLETE_PREFLIGHT",
   "UPLOAD_CANARY_BUSY",
+  "UPLOAD_CAPACITY_BUSY",
   "UPLOAD_OUTPUT_ENVELOPE_UNAVAILABLE",
   "UPLOAD_PHYSICAL_DEBT_LIMIT",
   "UPLOAD_FILE_CHANGED",
@@ -87,15 +97,21 @@ export class UploadRecoveryClient {
     busy: false,
     progress: 0,
     uploadProgress: 0,
+    uploadedBytes: 0,
     message: "INITIAL",
   };
   private file: File | null = null;
   private identity: UploadFileIdentity | null = null;
   private operation: AbortController | null = null;
+  private operationSettled: Promise<void> = Promise.resolve();
+  private terminalExitConfirmed = false;
   private loginSessionId: string | null = null;
   private readonly fetcher: typeof fetch;
   constructor(private readonly dependencies: RecoveryDependencies) {
     this.fetcher = (dependencies.fetch ?? globalThis.fetch).bind(globalThis);
+  }
+  getSnapshot(): RecoveryView {
+    return { ...this.view };
   }
   private publish() {
     this.dependencies.changed({ ...this.view });
@@ -105,6 +121,7 @@ export class UploadRecoveryClient {
     this.view.saved = saved;
   }
   private discardAuthority() {
+    this.terminalExitConfirmed = false;
     this.loginSessionId = null;
     this.file = null;
     this.identity = null;
@@ -125,6 +142,7 @@ export class UploadRecoveryClient {
   }
   /** Hide private facts immediately on pagehide/background; require a fresh authenticated read. */
   suspend(verifiedViewerScope?: RecoveryScope) {
+    this.terminalExitConfirmed = false;
     this.loginSessionId = null;
     this.operation?.abort();
     this.operation = null;
@@ -140,6 +158,7 @@ export class UploadRecoveryClient {
       busy: false,
       progress: 0,
       uploadProgress: 0,
+      uploadedBytes: 0,
       message: "INITIAL",
     };
     if (verifiedViewerScope) {
@@ -250,6 +269,8 @@ export class UploadRecoveryClient {
     if (this.operation) return;
     const controller = new AbortController();
     this.operation = controller;
+    let settled!: () => void;
+    this.operationSettled = new Promise<void>((resolve) => (settled = resolve));
     this.view.busy = true;
     this.view.message = "WORKING";
     this.publish();
@@ -285,6 +306,7 @@ export class UploadRecoveryClient {
         this.view.busy = false;
         this.publish();
       }
+      settled();
     }
   }
   async open() {
@@ -293,6 +315,7 @@ export class UploadRecoveryClient {
     });
   }
   private async openWorkspace(signal: AbortSignal, keepFile = false) {
+    this.terminalExitConfirmed = false;
     const previousSessionId = this.view.saved?.session?.sessionId;
     if (!keepFile) {
       this.file = null;
@@ -335,6 +358,7 @@ export class UploadRecoveryClient {
     if (previousSessionId !== this.view.saved?.session?.sessionId) {
       this.view.fileMatched = false;
       this.view.uploadProgress = 0;
+      this.view.uploadedBytes = 0;
     }
     this.view.message = this.view.saved
       ? "SAVED"
@@ -391,7 +415,9 @@ export class UploadRecoveryClient {
       this.view.message = this.view.saved ? "FILE_CHECKED" : "CREATE_READY";
     });
   }
-  async create() {
+  async create(
+    options: { title?: string; durationMs?: number | null; videoForm?: "LONG_FORM" | "CLIP" } = {},
+  ) {
     await this.run(async (signal) => {
       if (
         !this.file ||
@@ -416,10 +442,12 @@ export class UploadRecoveryClient {
         raw = await this.request("/creator/videos/recoverable-drafts", signal, {
           requestId,
           channelId: saved.scope.channelId,
-          title: titleFromFilename(this.file.name),
+          title: options.title ?? titleFromFilename(this.file.name),
           sizeBytes: this.file.size,
           mimeType: videoMimeTypeForUpload(this.file),
           fileIdentity: this.identity,
+          ...(options.durationMs !== undefined ? { durationMs: options.durationMs } : {}),
+          ...(options.videoForm ? { videoForm: options.videoForm } : {}),
         });
       } catch (error) {
         if (error instanceof RecoveryError && rejectedBeforeDispatch.has(error.code)) {
@@ -449,6 +477,13 @@ export class UploadRecoveryClient {
     saved: SavedRecovery,
     keepPending = false,
   ) {
+    const terminal = ["ABORTED", "REVOKED", "EXPIRED"].includes(response.session.state);
+    this.terminalExitConfirmed =
+      (response.session.state === "COMPLETED" && response.operation.status === "SUCCEEDED") ||
+      (terminal &&
+        (response.cleanup?.authorityRevoked === true ||
+          (response.operation.status === "SUCCEEDED" &&
+            (response.session.state !== "EXPIRED" || saved.pending?.kind === "CANCEL"))));
     this.retain({
       ...saved,
       session: response.session,
@@ -473,24 +508,49 @@ export class UploadRecoveryClient {
     if (!saved) throw new RecoveryError("NOT_READY");
     await this.scope(signal);
     {
-      const requestId = saved.pending?.requestId ?? saved.creationRequestId;
+      let requestId = saved.pending?.requestId ?? saved.creationRequestId;
       const path =
         saved.session && saved.pending
           ? `/media/uploads/sessions/${saved.session.sessionId}/operations/${saved.pending.requestId}`
           : `/creator/videos/recoverable-drafts/${saved.creationRequestId}`;
-      const response = parseRecoveryResponse(
-        await this.request(path, signal),
-        saved.scope,
-        requestId,
-        saved.session,
-      );
+      let raw: unknown;
+      let unusedAuthorization = false;
+      try {
+        raw = await this.request(path, signal);
+      } catch (error) {
+        if (
+          !(error instanceof RecoveryError) ||
+          error.status !== 404 ||
+          error.code !== "UPLOAD_RECOVERY_NOT_FOUND" ||
+          saved.pending?.kind !== "AUTHORIZE" ||
+          !saved.session
+        )
+          throw error;
+        // The tab may close after persisting a grant request, before dispatch.
+        // An unused authorization cannot itself send file bytes. Inspect this
+        // same session through its known CREATE outcome; never retry CREATE or
+        // COMPLETE, and never recover or reuse the missing grant URL.
+        requestId = saved.creationRequestId;
+        raw = await this.request(`/creator/videos/recoverable-drafts/${requestId}`, signal);
+        unusedAuthorization = true;
+      }
+      const response = parseRecoveryResponse(raw, saved.scope, requestId, saved.session);
       if (!response.operation.replayed) throw new UploadProtocolError();
+      if (
+        unusedAuthorization &&
+        !(
+          (response.operation.status === "SUCCEEDED" && response.session.state === "OPEN") ||
+          (["ABORTED", "REVOKED", "EXPIRED"].includes(response.session.state) &&
+            response.cleanup?.authorityRevoked === true)
+        )
+      )
+        throw new RecoveryError("UNCERTAIN");
       await this.scope(signal);
       signal.throwIfAborted();
       this.accept(response, saved);
       saved = this.view.saved!;
       if (response.operation.status !== "SUCCEEDED") {
-        this.view.message = "UNCERTAIN";
+        this.view.message = this.terminalExitConfirmed ? "CANCELLED_PENDING" : "UNCERTAIN";
         return;
       }
     }
@@ -501,7 +561,11 @@ export class UploadRecoveryClient {
           ? "COMPLETED"
           : saved.session.state === "ABORTED"
             ? "CANCELLED_PENDING"
-            : "UNRESOLVED";
+            : this.terminalExitConfirmed
+              ? "CLOSED"
+              : saved.session.state === "EXPIRED"
+                ? "EXPIRED"
+                : "UNRESOLVED";
       return;
     }
     const inspection = parseRecoveryInspection(
@@ -516,6 +580,7 @@ export class UploadRecoveryClient {
     this.view.uploadProgress = Math.floor(
       (100 * this.observedBytes()) / inspection.session.sizeBytes,
     );
+    this.view.uploadedBytes = this.observedBytes();
     this.view.message =
       Date.parse(inspection.session.expiresAt) <= Date.now()
         ? "EXPIRED"
@@ -548,6 +613,7 @@ export class UploadRecoveryClient {
       if (
         error instanceof RecoveryError &&
         (rejectedBeforeDispatch.has(error.code) ||
+          (kind === "CANCEL" && error.code === "UPLOAD_ALREADY_ACCEPTED") ||
           (["RESUME", "CANCEL"].includes(kind) && atomicRejections.has(error.code)))
       )
         this.retain(saved);
@@ -659,7 +725,7 @@ export class UploadRecoveryClient {
         ? observation.sizeBytes
         : 0;
   }
-  async continueUpload() {
+  async continueUpload(options: { concurrency?: 1 | 3; complete?: boolean } = {}) {
     // One explicit creator intent owns one latch/controller across every part.
     await this.run(async (signal) => {
       if (
@@ -680,10 +746,16 @@ export class UploadRecoveryClient {
         if (!this.view.fileMatched) return;
         await this.inspectSaved(signal);
       }
+      if (options.concurrency === 3) {
+        await this.uploadBatches(signal);
+        if (options.complete && this.canComplete()) await this.completeCurrent(signal);
+        return;
+      }
       for (let count = 0; count < partLimit; count++) {
         signal.throwIfAborted();
         if (this.canComplete()) {
           this.view.message = "READY_COMPLETE";
+          if (options.complete) await this.completeCurrent(signal);
           return;
         }
         const partNumber = this.nextPart(),
@@ -708,7 +780,214 @@ export class UploadRecoveryClient {
       }
       if (!this.canComplete()) throw new RecoveryError("TRANSFER_UNCERTAIN");
       this.view.message = "READY_COMPLETE";
+      if (options.complete) await this.completeCurrent(signal);
     });
+  }
+  private async uploadBatches(signal: AbortSignal) {
+    const attempts = new Map<number, number>();
+    let highestBytes = this.observedBytes();
+    while (!this.canComplete()) {
+      signal.throwIfAborted();
+      const session = this.view.saved?.session;
+      const observation = this.view.inspection?.observation;
+      const file = this.file;
+      if (!session || !observation || !file || !this.view.fileMatched)
+        throw new RecoveryError("NOT_READY");
+      const observed = new Set(
+        observation.kind === "PARTS_OBSERVED"
+          ? observation.parts.map((part) => part.partNumber)
+          : [],
+      );
+      if (session.mode === "MULTIPART" && observation.kind !== "PARTS_OBSERVED")
+        throw new RecoveryError("TRANSFER_UNCERTAIN");
+      const missing: number[] = [];
+      for (let part = 1; part <= session.partCount && missing.length < 3; part++) {
+        if (!observed.has(part)) missing.push(part);
+      }
+      if (!missing.length) throw new RecoveryError("TRANSFER_UNCERTAIN");
+      if (missing.some((part) => (attempts.get(part) ?? 0) >= 4))
+        throw new RecoveryError("UPLOAD_NETWORK_FAILED");
+      const before = this.observedBytes();
+      const prepared: {
+        partNumber: number;
+        blob: Blob;
+        grant: NonNullable<UploadRecoveryCommandResponse["grant"]>;
+      }[] = [];
+      for (const partNumber of missing) {
+        const response = await this.command("AUTHORIZE", signal, { partNumber });
+        if (!response.grant) {
+          this.view.message = "UNCERTAIN";
+          return;
+        }
+        // This command is acknowledged and its one-use URL stays in memory.
+        // On reload the provider inventory, never this marker, decides which
+        // bytes survived. Unknown authorization outcomes remain persisted.
+        this.retain({ ...this.view.saved!, pending: null });
+        const start = session.mode === "SINGLE" ? 0 : (partNumber - 1) * session.partSizeBytes;
+        prepared.push({
+          partNumber,
+          blob: file.slice(
+            start,
+            session.mode === "SINGLE"
+              ? file.size
+              : Math.min(file.size, start + session.partSizeBytes),
+          ),
+          grant: response.grant,
+        });
+      }
+      await this.scope(signal);
+      signal.throwIfAborted();
+      const batch = new AbortController();
+      const abort = () => batch.abort(signal.reason);
+      signal.addEventListener("abort", abort, { once: true });
+      const bytes = new Map<number, number>();
+      this.view.uploadedBytes = Math.max(highestBytes, before);
+      this.view.uploadProgress = Math.min(
+        99,
+        Math.floor((100 * this.view.uploadedBytes) / session.sizeBytes),
+      );
+      this.view.message = "UPLOADING";
+      this.publish();
+      let transferError: unknown;
+      try {
+        await Promise.allSettled(
+          prepared.map(async ({ partNumber, blob, grant }) => {
+            try {
+              batch.signal.throwIfAborted();
+              attempts.set(partNumber, (attempts.get(partNumber) ?? 0) + 1);
+              await this.transferGrant(grant, blob, batch.signal, (loaded) => {
+                if (batch.signal.aborted) return;
+                bytes.set(
+                  partNumber,
+                  Math.max(bytes.get(partNumber) ?? 0, Math.min(blob.size, loaded)),
+                );
+                highestBytes = Math.max(
+                  highestBytes,
+                  before + [...bytes.values()].reduce((sum, value) => sum + value, 0),
+                );
+                this.view.uploadedBytes = highestBytes;
+                this.view.uploadProgress = Math.min(
+                  99,
+                  Math.floor((100 * this.view.uploadedBytes) / session.sizeBytes),
+                );
+                this.publish();
+              });
+            } catch (error) {
+              if (!batch.signal.aborted) batch.abort(error);
+              throw error;
+            }
+          }),
+        );
+        batch.signal.throwIfAborted();
+      } catch (error) {
+        signal.throwIfAborted();
+        transferError = error;
+      } finally {
+        signal.removeEventListener("abort", abort);
+      }
+      await this.scope(signal);
+      await this.inspectSaved(signal);
+      if (this.view.saved?.pending || this.view.saved?.session?.state !== "OPEN") return;
+      const next = this.view.inspection?.observation;
+      const missingAfter = missing.filter(
+        (partNumber) =>
+          next?.kind !== "STORED_UNVERIFIED" &&
+          (next?.kind !== "PARTS_OBSERVED" ||
+            !next.parts.some((part) => part.partNumber === partNumber)),
+      );
+      if (transferError && missingAfter.length) {
+        const retryable =
+          transferError instanceof UploadBlobError
+            ? transferError.retryable
+            : transferError instanceof TypeError ||
+              (transferError instanceof RecoveryError &&
+                transferError.code === "TRANSFER_UNCERTAIN") ||
+              (transferError instanceof DOMException && transferError.name === "TimeoutError");
+        if (!retryable) throw new RecoveryError("UPLOAD_STORAGE_REJECTED");
+        const attempt = Math.max(
+          ...missingAfter.map((partNumber) => attempts.get(partNumber) ?? 1),
+        );
+        if (attempt >= 4) throw new RecoveryError("UPLOAD_NETWORK_FAILED");
+        this.view.message = "RETRYING";
+        this.publish();
+        await new Promise<void>((resolve, reject) => {
+          const abort = () => {
+            clearTimeout(timer);
+            signal.removeEventListener("abort", abort);
+            reject(signal.reason);
+          };
+          const timer = setTimeout(
+            () => {
+              signal.removeEventListener("abort", abort);
+              resolve();
+            },
+            500 * 2 ** Math.max(0, attempt - 1),
+          );
+          signal.addEventListener("abort", abort, { once: true });
+          if (signal.aborted) abort();
+        });
+        continue;
+      }
+      if (
+        next?.kind !== "STORED_UNVERIFIED" &&
+        (next?.kind !== "PARTS_OBSERVED" ||
+          missing.some((partNumber) => !next.parts.some((part) => part.partNumber === partNumber)))
+      )
+        throw new RecoveryError("TRANSFER_UNCERTAIN");
+      this.publish();
+    }
+    this.view.message = "READY_COMPLETE";
+  }
+  private async transferGrant(
+    grant: NonNullable<UploadRecoveryCommandResponse["grant"]>,
+    blob: Blob,
+    signal: AbortSignal,
+    progress: (bytes: number) => void,
+  ) {
+    signal.throwIfAborted();
+    if (Date.parse(grant.expiresAt) <= Date.now()) throw new RecoveryError("TRANSFER_UNCERTAIN");
+    const controller = new AbortController();
+    const abort = () => controller.abort(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    if (signal.aborted) abort();
+    const deadline = setTimeout(
+      () => controller.abort(new RecoveryError("TRANSFER_UNCERTAIN")),
+      Math.max(1, Date.parse(grant.expiresAt) - Date.now()),
+    );
+    try {
+      controller.signal.throwIfAborted();
+      if (this.dependencies.transfer) {
+        await this.dependencies.transfer(
+          grant.url,
+          blob,
+          grant.headers,
+          progress,
+          controller.signal,
+        );
+      } else {
+        const response = await this.fetcher(grant.url, {
+          method: "PUT",
+          headers: grant.headers,
+          body: blob,
+          credentials: "omit",
+          redirect: "error",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        void response.body?.cancel().catch(() => undefined);
+        if (!response.ok)
+          throw new UploadBlobError("Storage rejected this upload part.", {
+            status: response.status,
+            retryable: [408, 425, 429].includes(response.status) || response.status >= 500,
+          });
+      }
+      controller.signal.throwIfAborted();
+      progress(blob.size);
+    } finally {
+      clearTimeout(deadline);
+      signal.removeEventListener("abort", abort);
+      controller.abort();
+    }
   }
   canComplete() {
     const observation = this.view.inspection?.observation,
@@ -721,13 +1000,18 @@ export class UploadRecoveryClient {
   }
   async complete() {
     await this.run(async (signal) => {
-      if (!this.view.fileMatched || !this.canComplete()) throw new RecoveryError("NOT_READY");
-      await this.command("COMPLETE", signal);
-      this.file = null;
-      this.identity = null;
-      this.view.fileName = null;
-      this.view.fileMatched = false;
+      await this.completeCurrent(signal);
     });
+  }
+  private async completeCurrent(signal: AbortSignal) {
+    if (!this.view.fileMatched || !this.canComplete()) throw new RecoveryError("NOT_READY");
+    this.view.message = "FINALIZING";
+    this.publish();
+    await this.command("COMPLETE", signal);
+    this.file = null;
+    this.identity = null;
+    this.view.fileName = null;
+    this.view.fileMatched = false;
   }
   async reconcileCompletion() {
     await this.run(async (signal) => {
@@ -784,6 +1068,8 @@ export class UploadRecoveryClient {
     });
   }
   async cancel() {
+    this.stop();
+    await this.operationSettled;
     await this.run(async (signal) => {
       if (
         !this.view.saved?.session ||
@@ -797,13 +1083,11 @@ export class UploadRecoveryClient {
       this.view.fileMatched = false;
     });
   }
+  canForgetFinished() {
+    return !this.operation && this.terminalExitConfirmed && Boolean(this.view.saved?.session);
+  }
   forgetFinished() {
-    if (
-      this.operation ||
-      !this.view.saved?.session ||
-      !["COMPLETED", "CANCELLED_PENDING"].includes(this.view.message)
-    )
-      return;
+    if (!this.canForgetFinished()) return;
     try {
       clearSavedRecovery(this.dependencies.storage);
       this.file = null;
@@ -813,6 +1097,8 @@ export class UploadRecoveryClient {
       this.view.fileName = null;
       this.view.fileMatched = false;
       this.view.uploadProgress = 0;
+      this.view.uploadedBytes = 0;
+      this.terminalExitConfirmed = false;
       this.view.message = this.view.supported ? "CHOOSE_FILE" : "UPLOAD_RECOVERY_UNSUPPORTED";
     } catch {
       this.view.message = "STORAGE_UNAVAILABLE";

@@ -183,7 +183,7 @@ test("reviewed disable requires both factors and signs out every session", async
   ).toHaveLength(1);
 });
 
-test("Arabic mobile account recovers failed status reads and honors administrator MFA policy", async ({
+test("Arabic mobile account recovers failed status reads and offers administrator MFA opt-out", async ({
   page,
 }) => {
   const accountId = await register(page, "account-mfa-admin");
@@ -199,10 +199,10 @@ test("Arabic mobile account recovers failed status reads and honors administrato
   const region = page.getByRole("region", { name: "التحقق بخطوتين", exact: true });
   await expect(region.getByText(/تعذر تحميل إعدادات التحقق/)).toBeVisible();
   await region.getByRole("button", { name: "إعادة تحميل الإعدادات", exact: true }).click();
-  await expect(region.getByText(/دورك الإداري يتطلب التحقق بخطوتين/)).toBeVisible();
+  await expect(region.getByText(/التحقق بخطوتين اختياري، بما في ذلك حسابات الإدارة/)).toBeVisible();
   await expect(
     region.getByRole("button", { name: "إيقاف التحقق بخطوتين", exact: true }),
-  ).toHaveCount(0);
+  ).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),

@@ -68,7 +68,11 @@ export function StudioContentManager() {
       key: "title",
       heading: t("content.title"),
       rowHeader: true,
-      render: (video) => <strong dir="auto">{video.title}</strong>,
+      render: (video) => (
+        <strong dir="auto" title={video.title}>
+          {video.title}
+        </strong>
+      ),
     },
     {
       key: "status",
@@ -112,6 +116,8 @@ export function StudioContentManager() {
     <>
       {!selected ? (
         <PageHeader
+          className={styles.pageHeader ?? ""}
+          density="compact"
           title={t("studio.content")}
           description={t("content.intro")}
           actions={<ActionLink href={href("/upload")}>{t("content.upload")}</ActionLink>}
@@ -130,6 +136,7 @@ export function StudioContentManager() {
       ) : (
         <div className={styles.library}>
           <form
+            className={styles.filters}
             onSubmit={(event) => {
               event.preventDefault();
               setNotice(null);
@@ -202,7 +209,7 @@ export function StudioContentManager() {
             </StatusNotice>
           ) : null}
           {state.status === "ready" && !state.data.videos.length ? (
-            <StatusNotice>{t("content.empty")}</StatusNotice>
+            <StatusNotice className={styles.emptyState ?? ""}>{t("content.empty")}</StatusNotice>
           ) : null}
           {state.status === "ready" && state.data.videos.length > 0 ? (
             <>

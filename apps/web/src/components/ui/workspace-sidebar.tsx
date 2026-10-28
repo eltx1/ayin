@@ -35,10 +35,9 @@ export function WorkspaceSidebar({
           href={href(studio ? "/studio" : "/admin")}
         >
           <span className={styles.brandLogo}>
-            <Image alt="" height={72} priority src="/brand/ayin-logo.png" width={72} />
+            <Image alt="" height={72} priority src="/brand/ayin-logo-restored.png" width={72} />
           </span>
           <span>
-            <strong>AYIN</strong>
             <small>{t(studio ? "studio.brand" : "navigation.adminBrand")}</small>
           </span>
         </Link>

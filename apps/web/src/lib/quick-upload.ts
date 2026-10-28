@@ -279,6 +279,7 @@ export interface UploadCapabilities {
   partSizeBytes: number;
   uploadSessionTtlSeconds: number;
   storageAvailable: boolean;
+  durableRecovery: { supported: boolean; maxFileSizeBytes: number | null } | null;
 }
 
 export async function getUploadCapabilities(
@@ -313,6 +314,18 @@ export async function getUploadCapabilities(
   }
   if (!row.maxFileSizeBytes || !row.partSizeBytes || !row.uploadSessionTtlSeconds)
     throw new UploadProtocolError();
+  if (row.durableRecovery !== undefined) {
+    const recovery = uploadRecord(row.durableRecovery);
+    if (
+      typeof recovery.supported !== "boolean" ||
+      (recovery.supported
+        ? typeof recovery.maxFileSizeBytes !== "number" ||
+          !Number.isSafeInteger(recovery.maxFileSizeBytes) ||
+          recovery.maxFileSizeBytes < 1
+        : recovery.maxFileSizeBytes !== null)
+    )
+      throw new UploadProtocolError();
+  } else row.durableRecovery = null;
   return row as unknown as UploadCapabilities;
 }
 

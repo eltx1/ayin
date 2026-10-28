@@ -25,8 +25,8 @@ export const metadata: Metadata = {
   category: "entertainment",
   description: AYIN_DEFAULT_DESCRIPTION,
   icons: {
-    icon: "/brand/ayin-logo.png",
-    apple: "/brand/ayin-logo.png",
+    icon: "/brand/ayin-logo-restored.png",
+    apple: "/brand/ayin-logo-restored.png",
   },
   manifest: "/manifest.webmanifest",
   openGraph: {
@@ -72,7 +72,7 @@ const siteStructuredData = {
       url: AYIN_SITE_URL,
       logo: {
         "@type": "ImageObject",
-        url: absoluteUrl("/brand/ayin-logo.png"),
+        url: absoluteUrl("/brand/ayin-logo-restored.png"),
       },
     },
     {

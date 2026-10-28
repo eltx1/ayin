@@ -8,10 +8,12 @@ on:
       - "apps/api/src/config/**"
       - "apps/api/test/*upload*"
       - "apps/api/test/*media*"
+      - "apps/api/test/support/upload-recovery-browser-server.ts"
       - "apps/web/src/app/(viewer)/upload/**"
       - "apps/web/src/components/upload/**"
       - "apps/web/src/lib/*upload*"
       - "tests/e2e/upload*"
+      - "playwright.upload-large-recovery.config.ts"
       - ".github/workflows/upload-reliability.yml"
 
 permissions:
@@ -66,13 +68,19 @@ jobs:
           pnpm db:migrate:deploy
           pnpm db:seed
       - name: Build release candidate
+        id: upload_build
         run: pnpm build
+      - name: Verify bounded recovery configuration and production rate classes
+        run: pnpm --filter @ayin/api exec vitest run src/media/media-storage.config.test.ts src/media/media-upload-rollout.test.ts src/media/media-upload-canary.test.ts src/media/media-upload-admission.test.ts src/media/upload-rate-limiter.test.ts src/media/media-output-reservation.test.ts
       - name: Verify upload lifetime, quota, ownership and session revocation
         id: upload_api
-        run: pnpm --filter @ayin/api exec vitest run --testTimeout=30000 --fileParallelism=false test/media-upload.integration.test.ts test/quick-upload.integration.test.ts test/media-upload-authority.integration.test.ts test/media-upload-privacy.integration.test.ts test/media-creation-privacy.integration.test.ts
+        run: pnpm --filter @ayin/api exec vitest run --testTimeout=30000 --fileParallelism=false test/media-upload.integration.test.ts test/quick-upload.integration.test.ts test/media-upload-authority.integration.test.ts test/media-upload-privacy.integration.test.ts test/media-creation-privacy.integration.test.ts test/finite-media-cleanup-v2.integration.test.ts
       - name: Verify upload, retry, mobile layout and saved history in Chromium
         if: success() || steps.upload_api.outcome == 'failure'
-        run: pnpm exec playwright test tests/e2e/upload-workflow.acceptance.spec.ts tests/e2e/upload-transport.acceptance.spec.ts tests/e2e/upload-history.acceptance.spec.ts
+        run: pnpm exec playwright test tests/e2e/upload-workflow.acceptance.spec.ts tests/e2e/upload-transport.acceptance.spec.ts tests/e2e/upload-history.acceptance.spec.ts tests/e2e/arabic-rtl.acceptance.spec.ts tests/e2e/navigation-spacing.acceptance.spec.ts tests/e2e/viewport-feedback.acceptance.spec.ts
+      - name: Verify actual 129 MiB multipart transfer and reload recovery
+        if: (success() || failure()) && steps.upload_build.outcome == 'success'
+        run: pnpm exec playwright test --config playwright.upload-large-recovery.config.ts
       - name: Preserve browser verification evidence
         if: always()
         uses: actions/upload-artifact@v7

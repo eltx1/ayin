@@ -3,30 +3,38 @@
   inline-size: 100%;
   overflow-wrap: anywhere;
 }
+.shell[dir="rtl"] .pageHeader h1,
+.shell[dir="rtl"] .stepHeading h2,
+.shell[dir="rtl"] .typeCopy strong {
+  letter-spacing: normal;
+}
 
 .pageHeader {
-  margin-bottom: 1.1rem;
+  margin-bottom: 1.4rem;
 }
 .pageHeader h1 {
-  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-size: clamp(1.55rem, 2.8vw, 2rem);
+  letter-spacing: -0.025em;
 }
 .pageHeader p {
-  font-size: 0.86rem;
-  margin-top: 0.35rem;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin-top: 0.45rem;
 }
 
 .workspace {
   display: grid;
-  gap: 1rem;
+  gap: 1.25rem;
 }
 
 .stepCard {
-  background: var(--surface-raised);
+  background: linear-gradient(145deg, #121020, #0d0b16);
   border: 1px solid var(--border);
-  border-radius: var(--radius-panel);
+  border-radius: 20px;
   min-inline-size: 0;
   overflow: hidden;
-  padding: clamp(1rem, 2.5vw, 1.5rem);
+  padding: clamp(1.1rem, 2.5vw, 1.75rem);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 12%);
 }
 
 .stepHeading {
@@ -34,7 +42,7 @@
   display: flex;
   gap: 1.25rem;
   justify-content: space-between;
-  margin-bottom: 1.2rem;
+  margin-bottom: 1.4rem;
 }
 
 .stepHeading > div {
@@ -58,7 +66,7 @@
 }
 
 .stepHeading h2 {
-  font-size: clamp(1.15rem, 2vw, 1.55rem);
+  font-size: clamp(1.1rem, 2vw, 1.35rem);
   letter-spacing: -0.025em;
   line-height: 1.15;
   margin: 0;
@@ -98,7 +106,7 @@
   align-items: center;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: 14px;
   color: var(--text-primary);
   cursor: pointer;
   display: grid;
@@ -113,12 +121,11 @@
 .typeCard:hover:not(:disabled) {
   background: rgb(255 255 255 / 4.5%);
   border-color: rgb(220 25 232 / 28%);
-  transform: translateY(-1px);
 }
 
 .typeCardSelected {
-  background: var(--status-info-bg);
-  border-color: var(--action-outline);
+  background: linear-gradient(110deg, rgb(139 24 248 / 15%), rgb(139 24 248 / 6%));
+  border-color: rgb(191 137 255 / 55%);
 }
 
 .typeCard:disabled {
@@ -220,13 +227,13 @@
   align-items: center;
   background:
     radial-gradient(circle at 50% -20%, rgb(139 24 248 / 14%), transparent 48%), rgb(3 2 10 / 48%);
-  border: 1px dashed rgb(220 25 232 / 34%);
-  border-radius: 22px;
+  border: 1px dashed rgb(186 140 244 / 42%);
+  border-radius: 16px;
   cursor: pointer;
   display: grid;
   gap: 1rem;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  min-height: 12rem;
+  min-height: 15.5rem;
   padding: clamp(1.25rem, 3vw, 2rem);
   position: relative;
   transition:
@@ -271,12 +278,12 @@
   align-items: center;
   background: var(--brand-gradient-soft);
   border: 1px solid rgb(220 25 232 / 22%);
-  border-radius: 20px;
-  box-shadow: var(--brand-glow);
+  border-radius: 16px;
+  box-shadow: 0 0 32px rgb(139 24 248 / 12%);
   display: flex;
-  height: 4.8rem;
+  height: 3.5rem;
   justify-content: center;
-  width: 4.8rem;
+  width: 3.5rem;
 }
 
 .uploadGlyph svg {
@@ -310,11 +317,11 @@
 .browseButton {
   align-items: center;
   background: var(--text-primary);
-  border-radius: 999px;
+  border-radius: 11px;
   color: #090711;
   display: inline-flex;
   font-size: 0.82rem;
-  font-weight: 880;
+  font-weight: 750;
   justify-content: center;
   min-height: 2.8rem;
   padding: 0.65rem 1rem;
@@ -322,11 +329,10 @@
 }
 
 .pickerMeta {
-  bottom: 1rem;
   color: var(--text-muted);
   font-size: 0.7rem;
-  inset-inline-start: clamp(1.25rem, 3vw, 2rem);
-  position: absolute;
+  grid-column: 1 / -1;
+  line-height: 1.6;
 }
 
 .compatible,
@@ -362,6 +368,9 @@
 .editor {
   overflow: visible;
 }
+.editor .stepNumber {
+  display: none;
+}
 
 .statusPill > span,
 .message > span {
@@ -387,7 +396,7 @@
 .editorTopGrid {
   display: grid;
   gap: 0.9rem;
-  grid-template-columns: minmax(0, 1.45fr) minmax(17rem, 0.55fr);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .titleField,
@@ -400,22 +409,25 @@
 .advancedGrid label > span,
 .fieldLabel {
   color: var(--text-secondary);
-  font-size: 0.76rem;
-  font-weight: 780;
+  font-size: 0.84rem;
+  font-weight: 650;
 }
 
 .editor input:not([type="checkbox"]):not([type="file"]),
 .editor textarea,
 .editor select {
-  background: rgb(3 2 10 / 66%);
-  border: 1px solid var(--border-strong);
-  border-radius: 13px;
+  background: #08060f;
+  border: 1px solid #706578;
+  border-radius: 11px;
   color: var(--text-primary);
   font: inherit;
   min-height: var(--control-height);
   outline: none;
   padding: 0.82rem 0.9rem;
   width: 100%;
+  transition:
+    border-color var(--duration-fast),
+    box-shadow var(--duration-fast);
 }
 
 .editor textarea {
@@ -426,15 +438,15 @@
 .editor input:not([type="checkbox"]):not([type="file"]):focus,
 .editor textarea:focus,
 .editor select:focus {
-  border-color: rgb(220 25 232 / 50%);
-  box-shadow: 0 0 0 3px rgb(139 24 248 / 10%);
+  border-color: #c885f1;
+  box-shadow: 0 0 0 3px rgb(139 24 248 / 14%);
 }
 
 .progressCard {
   background: rgb(255 255 255 / 2.7%);
   border: 1px solid var(--border);
   border-radius: 16px;
-  display: grid;
+  display: none;
   gap: 0.9rem;
   padding: 0.85rem 0.95rem;
 }
@@ -491,10 +503,10 @@
 }
 
 .advanced {
-  background: rgb(255 255 255 / 2%);
+  background: transparent;
   border: 1px solid var(--border);
-  border-radius: 18px;
-  margin-top: 0.95rem;
+  border-radius: 14px;
+  margin-top: 1.25rem;
   min-width: 0;
   overflow: hidden;
 }
@@ -506,8 +518,11 @@
   gap: 1rem;
   justify-content: space-between;
   list-style: none;
-  min-height: 4.4rem;
-  padding: 0.9rem 1rem;
+  min-height: 4rem;
+  padding: 0.9rem 1.1rem;
+}
+.advanced summary:hover {
+  background: rgb(255 255 255 / 2%);
 }
 
 .advanced summary::-webkit-details-marker {
@@ -548,9 +563,9 @@
 .advancedGrid {
   border-top: 1px solid var(--border);
   display: grid;
-  gap: 1rem;
+  gap: 1.35rem;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  padding: 1rem;
+  padding: 1.25rem;
 }
 
 .fullWidth {
@@ -670,14 +685,21 @@
 
 .publishDock {
   align-items: center;
-  background: rgb(3 2 10 / 52%);
-  border: 1px solid var(--border);
-  border-radius: 18px;
+  background: transparent;
+  border-block-start: 1px solid var(--border);
   display: grid;
-  gap: 1rem;
-  grid-template-columns: minmax(0, 1fr) auto;
-  margin-top: 0.95rem;
-  padding: 0.85rem;
+  gap: 0.9rem;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  margin-top: 1.5rem;
+  padding: 1.25rem 0 0;
+}
+.publishDock > .hint {
+  grid-column: 1;
+  grid-row: 2;
+  margin: 0;
+}
+.publishDock:has(.hint) > .publishConsent {
+  grid-column: 1 / -1;
 }
 
 .rights {
@@ -806,7 +828,7 @@
   font-size: 0.78rem;
   line-height: 1.55;
   margin: 0;
-  max-width: 52rem;
+  max-width: 38rem;
 }
 
 @media (max-width: 640px) {
@@ -849,23 +871,23 @@
 }
 
 .transferPanel {
-  background: rgb(17 14 30 / 97%);
-  border: 1px solid var(--action-outline);
-  border-radius: 20px;
-  box-shadow: 0 12px 32px rgb(0 0 0 / 22%);
-  margin-block: 0 1.2rem;
+  background: #13101f;
+  border: 1px solid rgb(190 145 245 / 27%);
+  border-radius: 16px;
+  box-shadow: 0 5px 20px rgb(0 0 0 / 15%);
+  margin-block: 0 1.25rem;
   padding: 1rem 1.2rem;
-  position: sticky;
-  top: calc(4.5rem + var(--ayin-safe-top));
+  position: relative;
   z-index: 15;
-  scroll-margin-top: calc(5rem + var(--ayin-safe-top));
+  scroll-margin-block-start: calc(var(--ayin-shell-top, 72px) + 16px);
 }
 .transferPanel:focus {
   outline: 2px solid var(--action-outline);
   outline-offset: 3px;
 }
 .transferProblem {
-  border-color: rgb(255 96 117 / 65%);
+  border-color: rgb(255 96 117 / 55%);
+  background: #21111c;
 }
 .transferHeading {
   align-items: center;
@@ -875,7 +897,7 @@
 }
 .transferHeading > div {
   display: grid;
-  gap: 0.25rem;
+  gap: 0.2rem;
   min-width: 0;
 }
 .transferHeading small {
@@ -891,8 +913,12 @@
 .transferBadge {
   color: var(--text-secondary);
   font-size: 0.75rem;
-  font-weight: 800;
+  font-weight: 700;
   flex-shrink: 0;
+  background: rgb(255 255 255 / 5%);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.35rem 0.65rem;
 }
 .transferProblem .transferBadge {
   color: #ffc4cd;
@@ -901,14 +927,14 @@
   display: flex;
   gap: 0.6rem;
   list-style: none;
-  margin: 0.85rem 0;
+  margin: 0.75rem 0;
   padding: 0;
 }
 .phaseSteps li {
   flex: 1;
   color: var(--text-muted);
-  border-block-end: 2px solid var(--border);
-  padding-block-end: 0.5rem;
+  border-block-end: 1px solid var(--border);
+  padding-block-end: 0.4rem;
   font-size: 0.75rem;
 }
 .phaseSteps li[data-state="current"] {
@@ -922,7 +948,7 @@
 }
 .transferTrack {
   background: rgb(255 255 255 / 9%);
-  height: 0.4rem;
+  height: 0.3rem;
   overflow: hidden;
   border-radius: 999px;
 }
@@ -943,6 +969,11 @@
   font-size: 0.72rem;
   color: var(--text-muted);
   margin-top: 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+.transferMetrics > span:first-child {
+  direction: ltr;
+  unicode-bidi: isolate;
 }
 .transferMessage {
   color: var(--text-secondary);
@@ -966,6 +997,10 @@
   gap: 0.6rem 1rem;
   margin-top: 0.8rem;
 }
+.transferActions button,
+.transferActions a {
+  min-block-size: 44px;
+}
 .transferActions:empty {
   display: none;
 }
@@ -973,6 +1008,11 @@
   font-size: 0.8rem;
   color: var(--text-secondary);
   text-underline-offset: 0.2rem;
+}
+.transferActions > a:last-child {
+  display: inline-flex;
+  align-items: center;
+  margin-inline-start: auto;
 }
 .limitHint {
   color: var(--text-muted);
@@ -982,9 +1022,18 @@
 }
 .limitHint strong {
   color: var(--text-secondary);
+  direction: ltr;
+  unicode-bidi: isolate;
+  display: inline-block;
 }
 .formatCard .stepNumber {
   display: none;
+}
+.formatCard .selectionPill {
+  display: none;
+}
+.formatCard .typeGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .formatCard .stepHeading {
   margin-bottom: 0.65rem;
@@ -996,7 +1045,7 @@
   display: none;
 }
 .formatCard .typeCard {
-  min-block-size: 4.8rem;
+  min-block-size: 5.3rem;
   padding: 0.7rem 0.9rem;
   border-radius: 14px;
 }
@@ -1027,13 +1076,83 @@
   display: none;
 }
 .fileCard .picker {
-  min-height: 10rem;
+  min-height: 14rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1rem;
+}
+.fileCard .browseButton {
+  grid-column: 1 / -1;
+  justify-self: start;
+  min-inline-size: 10rem;
+}
+
+@media (min-width: 900px) {
+  .workspace:has(.fileCard):not(:has(> [role="alert"])) {
+    grid-template-columns: minmax(17rem, 0.85fr) minmax(0, 1.65fr);
+    align-items: stretch;
+  }
+  .formatCard .typeGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .formatCard .typeCard {
+    min-block-size: 6.1rem;
+    padding-inline-end: 2.1rem;
+  }
+  .fileCard .picker {
+    min-block-size: 16rem;
+  }
+  .transferPanel[data-phase="uploading"]:not(.transferProblem),
+  .transferPanel[data-phase="retrying"]:not(.transferProblem) {
+    position: sticky;
+    inset-block-start: calc(var(--ayin-shell-top, 72px) + 8px);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 1.5rem;
+  }
+  .transferPanel:is([data-phase="uploading"], [data-phase="retrying"]) .transferHeading {
+    grid-column: 1 / -1;
+    margin-block-end: 0.65rem;
+  }
+  .transferPanel:is([data-phase="uploading"], [data-phase="retrying"]) .phaseSteps {
+    display: none;
+  }
+  .transferPanel:is([data-phase="uploading"], [data-phase="retrying"]) .transferTrack {
+    grid-column: 1;
+    align-self: end;
+  }
+  .transferPanel:is([data-phase="uploading"], [data-phase="retrying"]) .transferMetrics {
+    grid-column: 1;
+  }
+  .transferPanel:is([data-phase="uploading"], [data-phase="retrying"]) .transferMessage {
+    grid-column: 1 / -1;
+    margin-block-start: 0.5rem;
+    font-size: 0.76rem;
+  }
+  .transferPanel:is([data-phase="uploading"], [data-phase="retrying"]) .transferActions {
+    grid-column: 2;
+    grid-row: 2 / 4;
+    margin: 0;
+  }
+}
+.transferPanel[data-phase="ready"] .transferTrack,
+.transferPanel[data-phase="ready"] .transferMetrics {
+  display: none;
+}
+.transferPanel[data-phase="ready"] .transferBadge {
+  background: rgb(104 216 165 / 8%);
+  border-color: rgb(104 216 165 / 20%);
+  color: #b2edcd;
 }
 @media (max-width: 640px) {
+  .pageHeader {
+    margin-bottom: 1rem;
+  }
+  .pageHeader p {
+    font-size: 0.84rem;
+  }
   .transferPanel {
     padding: 0.85rem;
     border-radius: 16px;
-    top: calc(4rem + var(--ayin-safe-top));
   }
   .transferHeading {
     gap: 0.5rem;
@@ -1053,6 +1172,37 @@
   }
   .transferActions {
     gap: 0.5rem;
+  }
+  .transferActions > a:last-child {
+    margin-inline-start: 0;
+  }
+  .transferActions button {
+    flex: 1 1 auto;
+  }
+  .editor .stepHeading {
+    flex-direction: row;
+    gap: 0.75rem;
+  }
+  .editor .stepHeading p {
+    font-size: 0.8rem;
+  }
+  .fileCard .picker {
+    padding: 1rem;
+  }
+  .fileCard .browseButton {
+    inline-size: 100%;
+  }
+  .publishDock {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .publishConsent {
+    grid-column: 1 / -1;
+  }
+  .publishDock > .hint {
+    grid-column: 1 / -1;
+  }
+  .actionLayout {
+    min-inline-size: 0;
   }
   .formatCard .typeCopy small {
     display: none;
@@ -1076,7 +1226,10 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .transferTrack span {
+  .transferTrack span,
+  .editor input,
+  .editor textarea,
+  .editor select {
     transition: none;
   }
 }

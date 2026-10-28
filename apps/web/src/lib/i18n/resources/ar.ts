@@ -257,7 +257,7 @@ export const arMessages = {
   "auth.verifying": "جارٍ التحقق…",
   "auth.enableMfa": "تفعيل التحقق بخطوتين",
   "auth.restartSignIn": "بدء تسجيل الدخول من جديد",
-  "auth.adminMfaPolicy": "التحقق بخطوتين مطلوب لحسابات الإدارة.",
+  "auth.adminMfaPolicy": "التحقق بخطوتين اختياري. يمكنك تفعيله عندما تكون مستعدًا.",
   "auth.mfaRestartRequired":
     "انتهت صلاحية طلب التحقق أو اكتمل بالفعل. سجّل الدخول من جديد. إذا اكتمل التفعيل، فأدخل الرمز الحالي من تطبيق المصادقة.",
   "auth.mfaConnectionError":
@@ -360,6 +360,8 @@ export const arMessages = {
   "account.mfaEnabled": "التحقق بخطوتين مفعّل",
   "account.mfaDisabled": "التحقق بخطوتين غير مفعّل",
   "account.mfaRequired": "دورك الإداري يتطلب التحقق بخطوتين، ولا يمكن إيقافه من هنا.",
+  "account.mfaOptional":
+    "التحقق بخطوتين اختياري، بما في ذلك حسابات الإدارة. يمكنك تفعيله أو إيقافه من هنا.",
   "account.mfaRemaining": "رموز الاسترداد المتبقية: {count}",
   "account.mfaEnable": "إعداد التحقق بخطوتين",
   "account.mfaRegenerate": "استبدال رموز الاسترداد",

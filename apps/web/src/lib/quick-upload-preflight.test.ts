@@ -22,7 +22,7 @@ const limits = {
   partSizeBytes: 16 * 1024 ** 2,
   uploadSessionTtlSeconds: 86400,
   storageAvailable: true,
-  durableRecovery: { supported: true, maxFileSizeBytes: 128 * 1024 ** 2 },
+  durableRecovery: { supported: true, maxFileSizeBytes: 5 * 1024 ** 3 },
 };
 afterEach(() => vi.unstubAllGlobals());
 function respond(body: unknown, status = 200) {
@@ -31,11 +31,12 @@ function respond(body: unknown, status = 200) {
   return fetch;
 }
 describe("upload eligibility and account binding", () => {
-  it("uses the authenticated legacy limit, separate from the smaller durable recovery limit", async () => {
+  it("accepts durable recovery up to the authenticated 5 GiB upload limit", async () => {
     const fetch = respond(limits);
     expect(await getUploadCapabilities(accountId, channelId)).toMatchObject({
       maxFileSizeBytes: 5 * 1024 ** 3,
       availableStorageBytes: limits.availableStorageBytes,
+      durableRecovery: { supported: true, maxFileSizeBytes: 5 * 1024 ** 3 },
     });
     expect(fetch.mock.calls[0]?.[1]).toMatchObject({
       method: "GET",
@@ -50,6 +51,10 @@ describe("upload eligibility and account binding", () => {
     { partSizeBytes: 0 },
     { availableStorageBytes: 1.5 },
     { storageAvailable: "true" },
+    { durableRecovery: { supported: "true", maxFileSizeBytes: 5 * 1024 ** 3 } },
+    { durableRecovery: { supported: true, maxFileSizeBytes: null } },
+    { durableRecovery: { supported: true, maxFileSizeBytes: -1 } },
+    { durableRecovery: { supported: false, maxFileSizeBytes: 1024 } },
   ])("rejects mismatched or malformed admission data %j", async (change) => {
     respond({ ...limits, ...change });
     await expect(getUploadCapabilities(accountId, channelId)).rejects.toBeInstanceOf(

@@ -7,6 +7,11 @@ interface Counter {
   resetAt: number;
 }
 
+// A 5 GiB source has at most 1,024 parts at the minimum 5 MiB part size.
+// Keep grants bounded independently of low-volume create/complete/cancel work.
+export const UPLOAD_PART_AUTHORIZATIONS_PER_MINUTE = 1_200;
+export const UPLOAD_RECOVERY_READS_PER_MINUTE = 600;
+
 @Injectable()
 export class UploadRateLimiter {
   private readonly counters = new Map<string, Counter>();

@@ -1,6 +1,6 @@
 .section {
-  padding-block: clamp(0.8rem, 2vw, 1.5rem);
-  scroll-margin-top: 6rem;
+  padding-block: clamp(0.6rem, 1.5vw, 1.1rem);
+  scroll-margin-block-start: calc(var(--ayin-shell-top) + 1rem);
 }
 
 .heading {
@@ -8,7 +8,7 @@
   display: flex;
   gap: 1rem;
   justify-content: space-between;
-  margin-bottom: 1rem;
+  margin-bottom: 0.85rem;
   padding: 0 var(--shell-gutter);
 }
 
@@ -22,8 +22,8 @@
 }
 
 .heading h2 {
-  font-size: clamp(1.15rem, 1.8vw, 1.65rem);
-  letter-spacing: -0.035em;
+  font-size: clamp(1.08rem, 1.5vw, 1.4rem);
+  letter-spacing: -0.02em;
   line-height: var(--leading-heading);
   margin: 0;
 }
@@ -39,10 +39,9 @@
 
 .controls button {
   align-items: center;
-  backdrop-filter: blur(12px);
   background: var(--surface-subtle);
   border: 1px solid var(--border);
-  border-radius: 50%;
+  border-radius: 11px;
   color: var(--foreground);
   cursor: pointer;
   display: inline-flex;
@@ -54,22 +53,24 @@
 .controls button:hover {
   background: var(--surface-hover);
   border-color: var(--border-brand);
-  box-shadow: 0 8px 22px rgb(88 8 248 / 14%);
-  transform: translateY(-1px);
 }
 
 .scroller {
   display: grid;
-  gap: clamp(0.85rem, 1.5vw, 1.25rem);
+  gap: clamp(0.85rem, 1.3vw, 1.1rem);
   grid-auto-columns: clamp(10.8rem, 17vw, 14.8rem);
   grid-auto-flow: column;
   overflow-x: auto;
   overscroll-behavior-inline: contain;
-  padding: 0 var(--shell-gutter) 1.35rem;
+  padding: 0 var(--shell-gutter) 1.1rem;
   scroll-padding-inline: var(--shell-gutter);
   scroll-snap-type: x proximity;
   scrollbar-width: none;
   touch-action: pan-x pan-y;
+}
+:global([dir="rtl"]) .heading h2,
+:global([dir="rtl"]) .heading p {
+  letter-spacing: normal;
 }
 
 .scroller > * {

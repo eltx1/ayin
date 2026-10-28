@@ -3,6 +3,8 @@ import { z } from "zod";
 const MIB = 1024 * 1024;
 const GIB = 1024 * MIB;
 export const MAX_UPLOAD_SESSION_TTL_SECONDS = 86_400;
+export const MAX_RECOVERABLE_SOURCE_BYTES = 5 * GIB;
+export const MAX_RECOVERABLE_OUTPUT_ENVELOPE_BYTES = 16 * GIB;
 
 const environmentSchema = z.object({
   APP_ENV: z.enum(["development", "test", "staging", "production"]).default("development"),
@@ -30,7 +32,7 @@ const environmentSchema = z.object({
     .number()
     .int()
     .min(0)
-    .max(512 * MIB)
+    .max(MAX_RECOVERABLE_OUTPUT_ENVELOPE_BYTES)
     .default(0),
   AYIN_UPLOAD_RECOVERY_V2_ENABLED: z.enum(["0", "1"]).default("0"),
   AYIN_UPLOAD_RECOVERY_AUDIENCE: z.enum(["canary", "all"]).default("canary"),
@@ -38,7 +40,7 @@ const environmentSchema = z.object({
     .number()
     .int()
     .min(0)
-    .max(128 * MIB)
+    .max(MAX_RECOVERABLE_SOURCE_BYTES)
     .default(0),
   AYIN_UPLOAD_RECOVERY_MAX_OUTSTANDING_SOURCES: z.coerce.number().int().min(1).max(8).default(1),
   AYIN_E2E_STORAGE: z.enum(["0", "1"]).default("0"),

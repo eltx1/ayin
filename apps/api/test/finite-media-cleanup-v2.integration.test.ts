@@ -46,6 +46,7 @@ import {
   conservativeMultipartExposure,
 } from "../src/media/media-upload-admission.js";
 import { registerUploadCleanupInTransaction } from "../src/media/media-upload-cleanup.js";
+import { assertUploadRecoverySlot } from "../src/media/media-upload-rollout.js";
 import { R2HttpError } from "../src/media/r2-sigv4.js";
 import { PrivacyLifecycleService } from "../src/privacy/privacy-lifecycle.service.js";
 import {
@@ -152,6 +153,7 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
     grantSeconds = 900;
     Object.assign(app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG), {
       recoveryAudience: "canary",
+      partSizeBytes,
       recoverySourceMaxBytes: 0,
       recoveryMaxOutstandingSources: 1,
       recoveryV2Enabled: true,
@@ -801,29 +803,34 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
     expect(await claimMediaCleanupJob(db, new Date())).toBeNull();
   });
 
-  it("accepts more than fifty completed source/output/cleanup turnovers without active-slot lockout", async () => {
-    grantSeconds = 2;
-    const actor = await register();
-    for (let index = 0; index < 51; index++) {
-      const f = await claimed(actor);
-      await finalize(f.job);
-      const saved = await source(f.session);
-      await new Promise((resolve) =>
-        setTimeout(resolve, Math.max(0, saved.lastGrantExpiresAt!.getTime() - Date.now() + 5)),
-      );
-      await cleanup();
-      await due();
-      await cleanup();
-      expect(
-        await db.privacyMediaDeletionJob.count({
-          where: { uploadSessionId: saved.id, status: { not: "DONE" } },
-        }),
-      ).toBe(0);
-    }
-    expect(await db.mediaUploadSession.count({ where: { state: "COMPLETED" } })).toBe(51);
-    expect(await db.mediaProcessingJob.count({ where: { status: "READY" } })).toBe(51);
-    expect((await fixture(actor)).session.state).toBe("OPEN");
-  }, 180_000);
+  it.each(["canary", "all"] as const)(
+    "accepts more than fifty %s source/output/cleanup turnovers without active-slot lockout",
+    async (audience) => {
+      if (audience === "all") enableCreatorRollout(1);
+      grantSeconds = 2;
+      const actor = await register();
+      for (let index = 0; index < 51; index++) {
+        const f = await claimed(actor);
+        await finalize(f.job);
+        const saved = await source(f.session);
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.max(0, saved.lastGrantExpiresAt!.getTime() - Date.now() + 5)),
+        );
+        await cleanup();
+        await due();
+        await cleanup();
+        expect(
+          await db.privacyMediaDeletionJob.count({
+            where: { uploadSessionId: saved.id, status: { not: "DONE" } },
+          }),
+        ).toBe(0);
+      }
+      expect(await db.mediaUploadSession.count({ where: { state: "COMPLETED" } })).toBe(51);
+      expect(await db.mediaProcessingJob.count({ where: { status: "READY" } })).toBe(51);
+      expect((await fixture(actor)).session.state).toBe("OPEN");
+    },
+    180_000,
+  );
 
   it("blocks further canary allocation on one unknown CREATE even after rotating the allowed tuple", async () => {
     const actor = await register();
@@ -2128,12 +2135,494 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
       recoveryMaxOutstandingSources: maximum,
     });
   }
+  function removeVideo(actor: Actor, session: RecoverableUploadSession) {
+    return app.inject({
+      method: "DELETE",
+      url: `/creator/studio/videos/${session.videoId}`,
+      headers: { cookie: actor.cookie },
+    });
+  }
+  async function drainRemovedSource(session: RecoverableUploadSession) {
+    const saved = await source(session);
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.max(0, saved.lastGrantExpiresAt!.getTime() - Date.now() + 20)),
+    );
+    await due();
+    await cleanup();
+    await due();
+    await cleanup();
+  }
+
+  it("retires a failed accepted upload only after authorized removal, respects grant expiry and restores its slot after verified cleanup", async () => {
+    enableCreatorRollout(1);
+    grantSeconds = 4;
+    const f = await claimed();
+    const receipt = await dispatch(f.job);
+    await app.get(MediaOutputWriteJournalService).acknowledge(receipt);
+    await freeze(f.job);
+    await db.mediaProcessingJob.update({
+      where: { id: f.job.id },
+      data: { status: "FAILED", leaseOwner: null, leaseWorkerId: null, leaseExpiresAt: null },
+    });
+    expect((await source(f.session)).cleanupRequestedAt).toBeNull();
+    expect((await create(f.actor)).statusCode).toBe(429);
+    const stranger = await register();
+    expect((await removeVideo(stranger, f.session)).statusCode).toBe(404);
+    expect((await source(f.session)).state).toBe("COMPLETED");
+    const removed = await removeVideo(f.actor, f.session);
+    expect(removed.statusCode, removed.body).toBe(200);
+    expect((await source(f.session)).state).toBe("REVOKED");
+    expect(
+      (await db.mediaProcessingJob.findUniqueOrThrow({ where: { id: f.job.id } })).status,
+    ).toBe("CANCELLED");
+    const before = await source(f.session);
+    expect(before.lastGrantExpiresAt!.getTime()).toBeGreaterThan(Date.now());
+    await cleanup();
+    expect(
+      await db.privacyMediaDeletionJob.count({
+        where: { uploadSessionId: f.session.sessionId, status: { not: "DONE" } },
+      }),
+    ).toBeGreaterThan(0);
+    // Early deletion is allowed, but the source cannot settle while a grant is live.
+    await drainRemovedSource(f.session);
+    expect(await db.privacyMediaDeletionJob.count({ where: { status: { not: "DONE" } } })).toBe(0);
+    const jobs = await db.privacyMediaDeletionJob.count();
+    expect((await removeVideo(f.actor, f.session)).statusCode).toBe(200);
+    expect((await source(f.session)).revision).toBe(before.revision);
+    expect(await db.privacyMediaDeletionJob.count()).toBe(jobs);
+    expect(await db.privacyMediaDeletionJob.count({ where: { status: { not: "DONE" } } })).toBe(0);
+    expect((await fixture(f.actor)).session.state).toBe("OPEN");
+    expect(
+      (await db.mediaProcessingOutputWrite.findUniqueOrThrow({ where: { id: receipt.id } })).status,
+    ).toBe("ACKNOWLEDGED");
+  });
+
+  it("retires winning playback references even for an already-removed video and permits exact output cleanup", async () => {
+    enableCreatorRollout(1);
+    grantSeconds = 2;
+    const f = await claimed();
+    await finalize(f.job);
+    expect(
+      (await db.mediaAsset.findUniqueOrThrow({ where: { r2ObjectKey: f.job.outputR2ObjectKey } }))
+        .status,
+    ).toBe("VALIDATED");
+    await db.video.update({
+      where: { id: f.session.videoId! },
+      data: { status: "REMOVED", removedAt: new Date() },
+    });
+    const removed = await removeVideo(f.actor, f.session);
+    expect(removed.statusCode, removed.body).toBe(200);
+    expect(
+      (await db.mediaAsset.findUniqueOrThrow({ where: { r2ObjectKey: f.job.outputR2ObjectKey } }))
+        .status,
+    ).toBe("REMOVED");
+    expect(
+      await db.mediaPlaybackGeneration.count({
+        where: { videoId: f.session.videoId!, status: { not: "SUPERSEDED" } },
+      }),
+    ).toBe(0);
+    await drainRemovedSource(f.session);
+    expect(objects.has(f.job.outputR2ObjectKey)).toBe(false);
+    expect(await db.privacyMediaDeletionJob.count({ where: { status: { not: "DONE" } } })).toBe(0);
+    expect((await fixture(f.actor)).session.state).toBe("OPEN");
+  });
+
+  it("reports owner-only terminal outcomes after Studio removal without allowing upload mutations", async () => {
+    enableCreatorRollout();
+    const f = await accepted();
+    const stranger = await register();
+    expect((await removeVideo(f.actor, f.session)).statusCode).toBe(200);
+    const removed = await source(f.session);
+    const operationCount = await db.mediaUploadOperation.count();
+    const outcomes = [
+      `/creator/videos/recoverable-drafts/${f.request.requestId}`,
+      `/media/uploads/sessions/${f.session.sessionId}/operations/${f.request.requestId}`,
+    ];
+    for (const url of outcomes) {
+      const response = await app.inject({
+        method: "GET",
+        url,
+        headers: { cookie: f.actor.cookie },
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      expect(response.json()).toMatchObject({
+        session: { sessionId: f.session.sessionId, state: "REVOKED", revision: removed.revision },
+        cleanup: { authorityRevoked: true, settlement: "PENDING" },
+        operation: { replayed: true },
+      });
+      expect(response.json()).not.toHaveProperty("grant");
+      expect(
+        (await app.inject({ method: "GET", url, headers: { cookie: stranger.cookie } })).statusCode,
+      ).toBe(404);
+    }
+    for (const name of ["authorize", "complete", "cancel"] as const) {
+      const response = await command(
+        f.actor,
+        f.session,
+        name,
+        name === "authorize" ? { partNumber: 1 } : {},
+      );
+      expect(response.statusCode, response.body).toBe(409);
+      expect(response.json()).toMatchObject({ error: { code: "UPLOAD_RECOVERY_CHANGED" } });
+    }
+    const resumed = await app.inject({
+      method: "POST",
+      url: `/media/uploads/sessions/${f.session.sessionId}/resume`,
+      headers: { cookie: f.actor.cookie },
+      payload: {
+        requestId: randomUUID(),
+        expectedRevision: removed.revision,
+        fileIdentity: identity(),
+      },
+    });
+    expect(resumed.statusCode, resumed.body).toBe(409);
+    expect(await db.mediaUploadOperation.count()).toBe(operationCount);
+    expect((await source(f.session)).revision).toBe(removed.revision);
+    await db.channelMember.updateMany({
+      where: { accountId: f.actor.accountId, channelId: f.actor.channelId },
+      data: { role: "EDITOR" },
+    });
+    for (const url of outcomes)
+      expect(
+        (await app.inject({ method: "GET", url, headers: { cookie: f.actor.cookie } })).statusCode,
+      ).toBe(403);
+    await db.channelMember.updateMany({
+      where: { accountId: f.actor.accountId, channelId: f.actor.channelId },
+      data: { role: "OWNER" },
+    });
+    await db.accountSession.updateMany({
+      where: { accountId: f.actor.accountId },
+      data: { revokedAt: new Date() },
+    });
+    for (const url of outcomes)
+      expect(
+        (await app.inject({ method: "GET", url, headers: { cookie: f.actor.cookie } })).statusCode,
+      ).toBe(401);
+  });
+
+  it("does not treat a video tombstone without revoked upload authority as a terminal outcome", async () => {
+    const f = await fixture();
+    await db.video.update({
+      where: { id: f.session.videoId! },
+      data: { status: "REMOVED", removedAt: new Date() },
+    });
+    for (const url of [
+      `/creator/videos/recoverable-drafts/${f.request.requestId}`,
+      `/media/uploads/sessions/${f.session.sessionId}/operations/${f.request.requestId}`,
+    ]) {
+      const response = await app.inject({
+        method: "GET",
+        url,
+        headers: { cookie: f.actor.cookie },
+      });
+      expect(response.statusCode, response.body).toBe(409);
+      expect(response.json()).toMatchObject({ error: { code: "UPLOAD_RECOVERY_CHANGED" } });
+    }
+    expect((await source(f.session)).state).toBe("OPEN");
+  });
+
+  it("keeps UNKNOWN output receipts and cleanup debt charged after owner removal", async () => {
+    enableCreatorRollout(1);
+    grantSeconds = 2;
+    const f = await claimed();
+    const receipt = await dispatch(f.job);
+    await app.get(MediaOutputWriteJournalService).markUnknown(receipt);
+    objects.set(f.job.outputR2ObjectKey, {
+      sizeBytes: bytes,
+      contentType: "video/mp4",
+      etag: '"uncertain-output"',
+    });
+    expect((await removeVideo(f.actor, f.session)).statusCode).toBe(200);
+    await drainRemovedSource(f.session);
+    expect(
+      (await db.mediaProcessingOutputWrite.findUniqueOrThrow({ where: { id: receipt.id } })).status,
+    ).toBe("UNKNOWN");
+    // Observed bytes may be removed; an UNKNOWN write still prevents settlement.
+    expect(
+      await db.privacyMediaDeletionJob.count({
+        where: { outputAttemptId: f.job.currentOutputAttemptId!, status: { not: "DONE" } },
+      }),
+    ).toBeGreaterThan(0);
+    expect((await create(f.actor)).statusCode).toBe(429);
+  });
+
+  it("rechecks session revocation after the creator-removal account lock wait before retiring media", async () => {
+    enableCreatorRollout();
+    const f = await claimed();
+    const entered = deferred(),
+      release = deferred();
+    const holder = db.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Account" WHERE id=${f.actor.accountId}::uuid FOR UPDATE`;
+        entered.resolve();
+        await release.promise;
+        await tx.accountSession.updateMany({
+          where: { accountId: f.actor.accountId },
+          data: { revokedAt: new Date() },
+        });
+      },
+      { timeout: 15_000 },
+    );
+    await entered.promise;
+    const pending = Promise.resolve(removeVideo(f.actor, f.session));
+    try {
+      await vi.waitFor(
+        async () => {
+          const rows = await db.$queryRaw<
+            Array<{ count: bigint }>
+          >`SELECT COUNT(*)::bigint AS count FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%ayin-media-owner-account-lock%'`;
+          expect(Number(rows[0]?.count ?? 0)).toBeGreaterThan(0);
+        },
+        { timeout: 4000, interval: 25 },
+      );
+    } finally {
+      release.resolve();
+    }
+    await holder;
+    expect((await pending).statusCode).toBe(401);
+    expect((await source(f.session)).state).toBe("COMPLETED");
+    expect(await db.privacyMediaDeletionJob.count()).toBe(0);
+    expect(
+      (await db.video.findUniqueOrThrow({ where: { id: f.session.videoId! } })).removedAt,
+    ).toBeNull();
+  });
+  it("permits repeated recovery reads under production rate limits without consuming control commands", async () => {
+    enableCreatorRollout();
+    const f = await fixture();
+    const environment = process.env.APP_ENV;
+    process.env.APP_ENV = "production";
+    try {
+      for (let batch = 0; batch < 13; batch++) {
+        for (const url of [
+          `/creator/videos/recoverable-drafts/${f.request.requestId}`,
+          `/media/uploads/sessions/${f.session.sessionId}/operations/${f.request.requestId}`,
+          `/media/uploads/sessions/${f.session.sessionId}/inspection`,
+        ]) {
+          const observed = await app.inject({
+            method: "GET",
+            url,
+            headers: { cookie: f.actor.cookie },
+          });
+          expect(observed.statusCode, observed.body).toBe(200);
+        }
+      }
+      expect(
+        success(await command(f.actor, f.session, "authorize", { partNumber: 1 })).grant,
+      ).toBeDefined();
+      expect(success(await command(f.actor, f.session, "cancel")).session.state).toBe("ABORTED");
+    } finally {
+      process.env.APP_ENV = environment;
+    }
+  });
+  it.each([3_736_813_160, 5 * 1024 ** 3])(
+    "recovers a %s-byte source with all part grants, exact identity and one immutable output reservation",
+    async (sizeBytes) => {
+      enableCreatorRollout();
+      const chunkBytes = 16 * 1024 ** 2;
+      Object.assign(app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG), {
+        recoverySourceMaxBytes: 5 * 1024 ** 3,
+        recoveryOutputEnvelopeBytes: 16 * 1024 ** 3,
+        recoveryDebtAccountBytes: 1616 * 1024 ** 3,
+        recoveryDebtChannelBytes: 1616 * 1024 ** 3,
+        partSizeBytes: chunkBytes,
+      });
+      const actor = await register();
+      const capability = await app.inject({
+        method: "GET",
+        url: `/media/uploads/sessions/capability?channelId=${actor.channelId}`,
+        headers: { cookie: actor.cookie },
+      });
+      expect(capability.json()).toMatchObject({ supported: true, maxSourceBytes: 5 * 1024 ** 3 });
+      let session = success(
+        await create(actor, { ...draft(actor), sizeBytes, fileIdentity: identity(sizeBytes) }),
+      ).session;
+      const initial = await source(session);
+      expect(initial.providerExposureBytes).toBe(0n);
+      // Independent grants share a revision and remain safe when up to three PUTs overlap.
+      const first = await Promise.all(
+        [1, 2, 3].map((partNumber) => command(actor, session, "authorize", { partNumber })),
+      );
+      for (const result of first) expect(success(result).grant).toBeDefined();
+      session = success(first[2]!).session;
+      const allocation = allocations.get(initial.providerUploadId!)!;
+      allocation.parts = [1, 2, 3].map((partNumber) => ({
+        partNumber,
+        sizeBytes: chunkBytes,
+        etag: `"large-${partNumber}"`,
+      }));
+      const resume = (fileIdentity: UploadFileIdentity) =>
+        app.inject({
+          method: "POST",
+          url: `/media/uploads/sessions/${session.sessionId}/resume`,
+          headers: { cookie: actor.cookie },
+          payload: { requestId: randomUUID(), expectedRevision: session.revision, fileIdentity },
+        });
+      const wrong = await resume({ ...identity(sizeBytes), rootSha256: "b".repeat(64) });
+      expect(wrong.statusCode).toBe(409);
+      expect(wrong.json()).toMatchObject({ error: { code: "UPLOAD_FILE_CHANGED" } });
+      session = success(await resume(identity(sizeBytes))).session;
+      const inspected = await app.inject({
+        method: "GET",
+        url: `/media/uploads/sessions/${session.sessionId}/inspection`,
+        headers: { cookie: actor.cookie },
+      });
+      expect(inspected.statusCode).toBe(200);
+      expect(inspected.json().observation).toMatchObject({ uploadedBytes: 3 * chunkBytes });
+      for (let partNumber = 4; partNumber <= session.partCount; partNumber++) {
+        session = success(await command(actor, session, "authorize", { partNumber })).session;
+        allocation.parts.push({
+          partNumber,
+          sizeBytes:
+            partNumber === session.partCount
+              ? sizeBytes - (partNumber - 1) * chunkBytes
+              : chunkBytes,
+          etag: `"large-${partNumber}"`,
+        });
+      }
+      expect(storage.authorizeMultipartPart).toHaveBeenCalledTimes(session.partCount);
+      expect(storage.authorizeMultipartPart).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          partNumber: session.partCount,
+          expectedSizeBytes: sizeBytes - (session.partCount - 1) * chunkBytes,
+          expiresInSeconds: 900,
+        }),
+      );
+      const reserved = await db.mediaProcessingOutputReservation.findUniqueOrThrow({
+        where: { uploadSessionId: session.sessionId },
+      });
+      expect(reserved.envelopeBytes).toBe(16n * 1024n ** 3n);
+      expect((await source(session)).providerExposureBytes).toBe(
+        BigInt(session.partCount) * 5n * 1024n ** 3n,
+      );
+      session = success(await command(actor, session, "complete")).session;
+      expect(session.state).toBe("COMPLETED");
+      expect(storage.createMultipartUpload).toHaveBeenCalledOnce();
+      expect(storage.completeMultipartUpload).toHaveBeenCalledOnce();
+      expect(await db.mediaUploadSession.count()).toBe(1);
+      expect(await db.mediaProcessingJob.count()).toBe(1);
+      expect(await db.mediaProcessingOutputReservation.count()).toBe(1);
+      expect(storage.authorizeSinglePut).not.toHaveBeenCalled();
+    },
+    60_000,
+  );
+
+  it("continues another upload while accepted source processing occupies one global slot", async () => {
+    enableCreatorRollout();
+    const first = await accepted();
+    const second = await fixture();
+    expect(
+      success(await command(second.actor, second.session, "authorize", { partNumber: 1 })).grant,
+    ).toBeDefined();
+    expect(await db.mediaProcessingJob.count({ where: { videoId: first.session.videoId! } })).toBe(
+      1,
+    );
+    const third = await register();
+    const blocked = await create(third);
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.json()).toMatchObject({ error: { code: "UPLOAD_CAPACITY_BUSY" } });
+  });
+
+  it("retains derived output-only UNKNOWN debt globally while admitted sources continue after a slot-limit reduction", async () => {
+    enableCreatorRollout(3);
+    const f = await claimed();
+    await finalize(f.job);
+    const other = await fixture();
+    const derived = await db.$transaction((tx) =>
+      app.get(MediaProcessingLifecycleService).createReprocessJob(tx, f.job.videoId),
+    );
+    expect(derived).not.toBeNull();
+    const job = (await app.get(MediaProcessingQueueService).claimNext("large-derived-worker"))!;
+    expect(job.id).toBe(derived!.id);
+    expect(
+      await app.get(MediaProcessingLifecycleService).recordInputVerification({
+        jobId: job.id,
+        workerId: job.leaseOwner!,
+        ...capturedMediaClaim(job),
+        identity: identity(),
+      }),
+    ).toBe(true);
+    const receipt = await dispatch(job);
+    await app.get(MediaOutputWriteJournalService).markUnknown(receipt);
+    await freeze(job);
+    await db.mediaProcessingJob.update({
+      where: { id: job.id },
+      data: { status: "CANCELLED", leaseOwner: null, leaseWorkerId: null, leaseExpiresAt: null },
+    });
+    const config = app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG);
+    config.recoveryMaxOutstandingSources = 2;
+    expect(
+      success(await command(other.actor, other.session, "authorize", { partNumber: 1 })).grant,
+    ).toBeDefined();
+    config.recoveryMaxOutstandingSources = 3;
+    await expect(
+      db.$transaction((tx) => assertUploadRecoverySlot(tx, config)),
+    ).rejects.toMatchObject({ code: "UPLOAD_CAPACITY_BUSY" });
+    expect(
+      (await db.mediaProcessingOutputWrite.findUniqueOrThrow({ where: { id: receipt.id } })).status,
+    ).toBe("UNKNOWN");
+    expect(
+      (
+        await db.mediaProcessingOutputReservation.findUniqueOrThrow({
+          where: { processingJobId: job.id },
+        })
+      ).uploadSessionId,
+    ).toBeNull();
+    await db.mediaProcessingJob.delete({ where: { id: job.id } });
+    await expect(
+      db.$transaction((tx) => assertUploadRecoverySlot(tx, config)),
+    ).rejects.toMatchObject({ code: "UPLOAD_CAPACITY_BUSY" });
+  });
+
+  it("counts whole-job output settlement without an attempt id after a derived job reaches READY", async () => {
+    enableCreatorRollout();
+    const f = await claimed();
+    await finalize(f.job);
+    const derived = await db.$transaction((tx) =>
+      app.get(MediaProcessingLifecycleService).createReprocessJob(tx, f.job.videoId),
+    );
+    const job = (await app.get(MediaProcessingQueueService).claimNext("whole-job-debt-worker"))!;
+    expect(job.id).toBe(derived!.id);
+    expect(
+      await app.get(MediaProcessingLifecycleService).recordInputVerification({
+        jobId: job.id,
+        workerId: job.leaseOwner!,
+        ...capturedMediaClaim(job),
+        identity: identity(),
+      }),
+    ).toBe(true);
+    await finalize(job);
+    const config = app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG);
+    await expect(
+      db.$transaction((tx) => assertUploadRecoverySlot(tx, config)),
+    ).resolves.toBeUndefined();
+    const request = await db.accountDeletionRequest.create({
+      data: { accountId: f.actor.accountId, state: "REQUESTED" },
+    });
+    await db.privacyMediaDeletionJob.create({
+      data: {
+        operationKey: `whole-job:${job.id}`,
+        scope: "PRIVACY",
+        requestId: request.id,
+        accountId: f.actor.accountId,
+        kind: "OUTPUT_SETTLEMENT",
+        channelId: f.actor.channelId,
+        processingJobId: job.id,
+        outputAttemptId: null,
+        target: job.outputR2ObjectKey,
+        cleanupContractVersion: 2,
+        outputAddresses: { version: 3, attemptIds: [job.currentOutputAttemptId!] },
+      },
+    });
+    await expect(
+      db.$transaction((tx) => assertUploadRecoverySlot(tx, config)),
+    ).rejects.toMatchObject({ code: "UPLOAD_CAPACITY_BUSY" });
+  });
   it("serializes rollout admission across different creators and permits existing sources to drain at capacity", async () => {
     enableCreatorRollout();
     const actors = await Promise.all([register(), register(), register()]);
     const requests = actors.map(draft);
-    // A pending provider ACK intentionally blocks all new admission, even with
-    // spare slots. Start this capacity race after the first CREATE is settled.
+    // The first source occupies one global slot while the remaining creators
+    // race for the only remaining slot.
     const session = success(await create(actors[0]!, requests[0]!)).session;
     expect(session.state).toBe("OPEN");
     const attempts = await Promise.all(
@@ -2147,25 +2636,24 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
     expect(success(admitted).session.state).toBe("OPEN");
     const rejectedIndex = attempts.findIndex((r) => r.statusCode === 429);
     expect(attempts[rejectedIndex]!.json()).toMatchObject({
-      error: { code: "UPLOAD_CANARY_BUSY" },
+      error: { code: "UPLOAD_CAPACITY_BUSY" },
     });
     expect(
       await db.mediaUploadOperation.count({
         where: { kind: "CREATE", providerOutcome: "UNKNOWN" },
       }),
     ).toBe(0);
-    // With both ACKs committed, this retry proves the full-capacity rejection
-    // independently from the transient global uncertainty barrier.
+    // A retry cannot exceed the same finite global source count.
     const retry = await create(actors[rejectedIndex + 1]!, requests[rejectedIndex + 1]!);
     expect(retry.statusCode, retry.body).toBe(429);
-    expect(retry.json()).toMatchObject({ error: { code: "UPLOAD_CANARY_BUSY" } });
+    expect(retry.json()).toMatchObject({ error: { code: "UPLOAD_CAPACITY_BUSY" } });
     expect(storage.createMultipartUpload).toHaveBeenCalledTimes(2);
     const grant = success(await command(actors[0]!, session, "authorize", { partNumber: 1 }));
     expect(grant.grant).toBeDefined();
     expect(await db.mediaUploadSession.count()).toBe(2);
     expect(await db.mediaProcessingOutputReservation.count()).toBe(1);
   });
-  it("blocks new rollout admission during an in-flight successful CREATE until its acknowledgement", async () => {
+  it("charges an in-flight CREATE against one slot without freezing other creators or forgetting uncertainty", async () => {
     enableCreatorRollout();
     const actors = await Promise.all([register(), register(), register()]);
     const requests = actors.map(draft);
@@ -2181,20 +2669,21 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
     const pending = Promise.resolve(create(actors[0]!, requests[0]!));
     await entered.promise;
     try {
+      const second = success(await create(actors[1]!, requests[1]!)).session;
+      expect(second.state).toBe("OPEN");
+      const blocked = await create(actors[2]!, requests[2]!);
+      expect(blocked.statusCode, blocked.body).toBe(429);
+      expect(blocked.json()).toMatchObject({ error: { code: "UPLOAD_CAPACITY_BUSY" } });
+      expect(
+        success(await command(actors[1]!, second, "authorize", { partNumber: 1 })).grant,
+      ).toBeDefined();
       expect(
         await db.mediaUploadOperation.count({
           where: { kind: "CREATE", providerOutcome: "UNKNOWN" },
         }),
       ).toBe(1);
-      const blocked = await Promise.all(
-        actors.slice(1).map((actor, index) => create(actor, requests[index + 1]!)),
-      );
-      for (const attempt of blocked) {
-        expect(attempt.statusCode, attempt.body).toBe(429);
-        expect(attempt.json()).toMatchObject({ error: { code: "UPLOAD_CANARY_BUSY" } });
-      }
-      expect(storage.createMultipartUpload).toHaveBeenCalledTimes(1);
-      expect(await db.mediaUploadSession.count()).toBe(1);
+      expect(storage.createMultipartUpload).toHaveBeenCalledTimes(2);
+      expect(await db.mediaUploadSession.count()).toBe(2);
     } finally {
       release.resolve();
       await pending;
@@ -2205,9 +2694,6 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
         where: { kind: "CREATE", providerOutcome: "UNKNOWN" },
       }),
     ).toBe(0);
-    expect(success(await create(actors[1]!, requests[1]!)).session.state).toBe("OPEN");
-    expect(storage.createMultipartUpload).toHaveBeenCalledTimes(2);
-    expect(await db.mediaUploadSession.count()).toBe(2);
   });
   it("keeps current channel authority and visible source size limits under the all-creators audience", async () => {
     enableCreatorRollout();
@@ -2255,14 +2741,19 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
     expect(await db.mediaProcessingJob.count()).toBe(1);
     expect(await db.mediaProcessingOutputReservation.count()).toBe(1);
   });
-  it("preserves the global unknown-write barrier even when unused rollout slots remain", async () => {
+  it("retains unknown-write debt while admitting another creator into an unused rollout slot", async () => {
     enableCreatorRollout(8);
     const first = await register(),
       second = await register();
     vi.mocked(storage.createMultipartUpload).mockRejectedValueOnce(Error("lost create receipt"));
     await create(first);
-    expect((await create(second)).statusCode).toBe(429);
-    expect(storage.createMultipartUpload).toHaveBeenCalledTimes(1);
+    expect((await create(second)).statusCode).toBe(201);
+    expect(storage.createMultipartUpload).toHaveBeenCalledTimes(2);
+    expect(
+      await db.mediaUploadOperation.count({
+        where: { kind: "CREATE", providerOutcome: "UNKNOWN" },
+      }),
+    ).toBe(1);
   });
   it("reserves derived output against the current owner in the public audience without a canary tuple", async () => {
     enableCreatorRollout();

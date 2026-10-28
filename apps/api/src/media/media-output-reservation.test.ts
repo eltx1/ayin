@@ -84,6 +84,7 @@ it.each([
   "UPLOAD_RECOVERY_UNSUPPORTED",
   "UPLOAD_OUTPUT_ADMISSION_BUSY",
   "UPLOAD_CANARY_BUSY",
+  "UPLOAD_CAPACITY_BUSY",
   "UPLOAD_PHYSICAL_DEBT_LIMIT",
 ])("identifies only the expected %s admission policy as safe to skip", (code) => {
   expect(isOutputAdmissionPolicyError(new MediaUploadError(code, "policy"))).toBe(true);

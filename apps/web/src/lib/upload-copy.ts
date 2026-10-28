@@ -1,5 +1,56 @@
 import type { Locale } from "./i18n/config";
 const arabic: Record<string, string> = {
+  "Saved upload": "الرفع المحفوظ",
+  "Resume your saved upload": "استكمل رفع الفيديو المحفوظ",
+  "Reselect original video": "أعد اختيار الفيديو الأصلي",
+  "Check saved upload": "تحقق من الرفع المحفوظ",
+  "Start another upload": "ابدأ رفع فيديو آخر",
+  "Checking the original video": "جارٍ التحقق من الفيديو الأصلي",
+  "You can pause or reopen this page. Keep the original video to resume with the saved parts.":
+    "يمكنك إيقاف الرفع مؤقتًا أو إعادة فتح الصفحة. احتفظ بالفيديو الأصلي لاستكمال الأجزاء المتبقية.",
+  "This is not the original video. Reselect the exact original file to resume the saved upload.":
+    "هذا ليس الفيديو الأصلي. أعد اختيار نفس الملف الأصلي لاستكمال الرفع المحفوظ.",
+  "A saved upload is waiting. Resume it below before starting another video.":
+    "لديك رفع محفوظ لم يكتمل. استكمله أدناه قبل بدء فيديو آخر.",
+  "This browser cannot save upload recovery details. Allow site storage, then choose the video again.":
+    "لا يستطيع المتصفح حفظ بيانات استئناف الرفع. اسمح للموقع بالتخزين ثم اختر الفيديو مجددًا.",
+  "Uploads are busy right now. Your saved upload is safe; wait briefly and try again.":
+    "خدمة الرفع مشغولة حاليًا. بيانات رفعك محفوظة؛ انتظر قليلًا ثم أعد المحاولة.",
+  "Sign in to the account that started this upload, then check the saved upload.":
+    "سجّل الدخول بالحساب الذي بدأ هذا الرفع، ثم تحقق من الرفع المحفوظ.",
+  "Your current account could not be verified. Check your connection and sign in again.":
+    "تعذر التحقق من حسابك الحالي. تحقق من اتصالك وسجّل الدخول مجددًا.",
+  "This saved upload has expired. Review it in Studio before starting another upload.":
+    "انتهت صلاحية هذا الرفع المحفوظ. راجعه في الاستوديو قبل بدء رفع آخر.",
+  "The transfer needs checking. Retry will inspect the saved parts and continue this same video.":
+    "يحتاج الرفع إلى التحقق. ستفحص إعادة المحاولة الأجزاء المحفوظة وتستكمل نفس الفيديو.",
+  "Upload paused. You can reopen this page and reselect the original video to continue.":
+    "توقف الرفع مؤقتًا. يمكنك إعادة فتح الصفحة واختيار الفيديو الأصلي لاستكماله.",
+  "Your upload was already received. Review the same video in Studio.":
+    "تم استلام رفعك بالفعل. راجع نفس الفيديو في الاستوديو.",
+  "Reselect the original video. AYIN will verify it and upload only the missing parts. The video file is not copied into browser storage.":
+    "أعد اختيار الفيديو الأصلي. سيتحقق عين منه ويرفع الأجزاء المتبقية فقط، دون نسخ ملف الفيديو إلى تخزين المتصفح.",
+  "Last checked": "آخر تحديث",
+  "Cancel upload": "إلغاء الرفع",
+  "The upload was already accepted. Review or remove the saved video in Studio.":
+    "تم قبول الرفع بالفعل. راجع الفيديو المحفوظ في الاستوديو أو احذفه من هناك.",
+  "Cancel this upload? Saved upload parts will be scheduled for removal. This cannot be undone.":
+    "هل تريد إلغاء الرفع؟ ستُجدول الأجزاء المحفوظة للحذف. لا يمكن التراجع عن هذا الإجراء.",
+  "This upload can no longer continue. Check or cancel it before starting another upload.":
+    "لا يمكن استكمال هذا الرفع. تحقق منه أو ألغِه قبل بدء رفع آخر.",
+  "This upload is closed. Cleanup may continue in the background. You can start another video.":
+    "أُغلقت عملية الرفع. قد يستمر تنظيف الملفات في الخلفية، ويمكنك بدء فيديو آخر.",
+  "Connection interrupted. Checking saved parts and retrying automatically…":
+    "انقطع الاتصال. جارٍ التحقق من الأجزاء المحفوظة وإعادة المحاولة تلقائيًا…",
+  "The connection or upload stalled after four attempts. Check your connection, then retry; saved parts will be reused.":
+    "توقف الاتصال أو الرفع بعد أربع محاولات. تحقق من اتصالك ثم أعد المحاولة؛ ستُستخدم الأجزاء المحفوظة.",
+  "Storage rejected this upload. Retry to request a new connection; if it still fails, review the upload in Studio.":
+    "رفض التخزين الرفع. أعد المحاولة للحصول على اتصال جديد؛ وإذا استمر الرفض، راجع الرفع في الاستوديو.",
+  "Leaving pauses the upload. Saved parts remain; reselect the original video to resume. Unsaved detail changes may be lost.":
+    "مغادرة الصفحة توقف الرفع مؤقتًا. تبقى الأجزاء المحفوظة؛ أعد اختيار الفيديو الأصلي لاستكماله. قد تفقد تعديلات التفاصيل غير المحفوظة.",
+  "Upload paused": "توقف الرفع مؤقتًا",
+  "Choose the original video again to continue its file check.":
+    "اختر الفيديو الأصلي مجددًا لاستكمال فحصه.",
   "Keep this page open until the upload finishes. You can edit the details below.":
     "أبقِ هذه الصفحة مفتوحة حتى يكتمل الرفع. يمكنك تعديل التفاصيل أدناه.",
   "Check your video details": "راجع تفاصيل الفيديو",

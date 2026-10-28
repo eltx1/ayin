@@ -19,6 +19,7 @@ import {
   type UploadObjectBinding,
 } from "../../src/media/media-storage.adapter.js";
 import { loadMediaStorageConfig } from "../../src/media/media-storage.config.js";
+import { UploadRateLimiter } from "../../src/media/upload-rate-limiter.js";
 import {
   applyApiSecurityHeaders,
   isAllowedCookieMutationOrigin,
@@ -37,19 +38,32 @@ const PART = 5 * 1024 * 1024;
 // Optional local transport measurement only. Reuses this exact synthetic store;
 // never imported by AppModule or enabled by production API bootstrap.
 const directTransfer = process.env.AYIN_LAB_DIRECT_TRANSFER === "1";
-const finiteV2 = process.env.AYIN_RECOVERY_TEST_V2 === "1";
+const largeRecovery = process.env.AYIN_LARGE_RECOVERY_TEST === "1";
+if (largeRecovery && !directTransfer)
+  throw Error("Large recovery acceptance requires actual direct synthetic byte transfer.");
+const finiteV2 = process.env.AYIN_RECOVERY_TEST_V2 === "1" || largeRecovery;
+class ProductionDefaultUploadRateLimiter extends UploadRateLimiter {
+  override consume(key: string, limit = 12) {
+    // APP_ENV=test normally relaxes every unspecified limit to 1,000. The large
+    // acceptance must expose production control/read throttles instead.
+    super.consume(key, limit);
+  }
+}
 const directPrefix = "/_test/recovery-byte-store/";
 const received: Array<{
+  partNumber: number | null;
   bytes: number;
   sha256: string;
   bodyReceiveMs: number;
   cookiePresent: boolean;
   authorizationPresent: boolean;
 }> = [];
+const rejectedPuts: Array<{ partNumber: number; bytes: number; status: number }> = [];
 const requestStarts = new WeakMap<object, number>();
 let supported = true,
   failAuthorize = false,
   failCompleteAfterStore = false;
+let failPutPartOnce: number | null = null;
 let counters = { allocations: 0, authorizations: 0, puts: 0, completes: 0 };
 const uploads = new Map<
   string,
@@ -248,16 +262,20 @@ const module = await Test.createTestingModule({ imports: [AppModule] })
       ? {
           recoveryV2Enabled: true,
           recoveryAudience: "all",
-          recoverySourceMaxBytes: 16 * 1024 ** 2,
+          // The large acceptance fixture has real 129 MiB bodies, not a forged
+          // File.size. This local-only ceiling remains smaller than production.
+          recoverySourceMaxBytes: (largeRecovery ? 160 : 16) * 1024 ** 2,
           recoveryMaxOutstandingSources: 8,
           recoveryOutputEnvelopeBytes: 32 * 1024 ** 2,
-          recoveryDebtAccountBytes: 21 * 1024 ** 3,
-          recoveryDebtChannelBytes: 21 * 1024 ** 3,
+          recoveryDebtAccountBytes: (largeRecovery ? 161 : 21) * 1024 ** 3,
+          recoveryDebtChannelBytes: (largeRecovery ? 161 : 21) * 1024 ** 3,
         }
       : {}),
   })
   .overrideProvider(MediaProcessingStorageService)
   .useValue({ headObject: storage.headObject })
+  .overrideProvider(UploadRateLimiter)
+  .useValue(largeRecovery ? new ProductionDefaultUploadRateLimiter() : new UploadRateLimiter())
   .overrideProvider(DURABLE_UPLOAD_SETTLEMENT)
   .useValue(
     finiteV2 ? new FiniteMultipartDurableUploadSettlement() : { admissionEvidence: evidence },
@@ -271,6 +289,7 @@ app.enableCors({
   origin: "http://127.0.0.1:3000",
   credentials: true,
   allowedHeaders: ["content-type", "x-ayin-expected-account", "x-ayin-expected-session"],
+  exposedHeaders: ["etag"],
   methods: ["GET", "POST", "OPTIONS", ...(directTransfer ? ["PUT"] : [])],
 });
 app
@@ -299,14 +318,24 @@ if (directTransfer) {
       const startedAt = requestStarts.get(request);
       if (startedAt === undefined) throw Error("Missing synthetic receiver timing start");
       const bodyReceiveMs = performance.now() - startedAt;
+      const partNumber = grants.get(token)?.partNumber ?? null;
+      if (partNumber !== null && partNumber === failPutPartOnce) {
+        // Receive the actual HTTP body, but fail before committing it to storage.
+        // No browser route mock or replacement response is involved.
+        failPutPartOnce = null;
+        rejectedPuts.push({ partNumber, bytes: request.body.length, status: 503 });
+        return reply.code(503).send({ error: "Synthetic transient provider failure" });
+      }
       storeGrantedBytes(token, request.body);
       received.push({
+        partNumber,
         bytes: request.body.length,
         sha256: createHash("sha256").update(request.body).digest("hex"),
         bodyReceiveMs,
         cookiePresent: Boolean(request.headers.cookie),
         authorizationPresent: Boolean(request.headers.authorization),
       });
+      reply.header("etag", `"synthetic-${partNumber ?? "single"}"`);
       return { ok: true };
     } catch {
       return reply.code(409).send({ error: "Synthetic provider rejection" });
@@ -327,6 +356,14 @@ const provider = createServer(async (request, reply) => {
           ...(directTransfer
             ? {
                 received,
+                rejectedPuts,
+                // Only safe inventory is exposed: never signed grants, object
+                // addresses, credentials or account/session identifiers.
+                multipartInventory: [...uploads.values()].map(({ parts }) =>
+                  [...parts]
+                    .map(([partNumber, bytes]) => ({ partNumber, bytes: bytes.length }))
+                    .sort((left, right) => left.partNumber - right.partNumber),
+                ),
                 storedObjects: [...objects.values()].map(({ bytes, contentType }) => ({
                   bytes: bytes.length,
                   sha256: createHash("sha256").update(bytes).digest("hex"),
@@ -365,24 +402,32 @@ const provider = createServer(async (request, reply) => {
         supported?: boolean;
         failAuthorize?: boolean;
         failCompleteAfterStore?: boolean;
+        failPutPartOnce?: number;
       };
       if (input.reset) {
         await db.$executeRawUnsafe(
           'TRUNCATE TABLE "Account", "Channel", "MediaUploadSession", "AccountDeletionRequest", "PrivacyMediaDeletionJob", "MediaProcessingOutputAttempt" CASCADE',
         );
         received.length = 0;
+        rejectedPuts.length = 0;
         uploads.clear();
         objects.clear();
         grants.clear();
         supported = true;
         failAuthorize = false;
         failCompleteAfterStore = false;
+        failPutPartOnce = null;
         counters = { allocations: 0, authorizations: 0, puts: 0, completes: 0 };
       }
       if (typeof input.supported === "boolean") supported = input.supported;
       if (typeof input.failAuthorize === "boolean") failAuthorize = input.failAuthorize;
       if (typeof input.failCompleteAfterStore === "boolean")
         failCompleteAfterStore = input.failCompleteAfterStore;
+      if (input.failPutPartOnce !== undefined) {
+        if (!Number.isSafeInteger(input.failPutPartOnce) || input.failPutPartOnce < 1)
+          throw Error("Invalid synthetic failing part");
+        failPutPartOnce = input.failPutPartOnce;
+      }
       reply.end('{"ok":true}');
       return;
     }

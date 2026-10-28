@@ -53,7 +53,12 @@ export async function lockAdminAccountWrite(
       AND "revokedAt" IS NULL AND "expiresAt" > (clock_timestamp() AT TIME ZONE 'UTC') FOR SHARE`,
   );
   if (!sessions.length) throw unauthorized();
-  if (roles.some((row) => row.role === "SUPERADMIN" || row.role === "ADMIN")) {
+  if (
+    roles.some((row) => row.role === "SUPERADMIN" || row.role === "ADMIN") &&
+    (credentials.some((row) => row.status === "ENABLED") ||
+      actor.mfaAt !== undefined ||
+      actor.mfaVersion !== undefined)
+  ) {
     if (!actor.mfaAt || actor.mfaVersion === undefined) throw unauthorized();
     if (!credentials.some((row) => row.status === "ENABLED" && row.version === actor.mfaVersion))
       throw unauthorized();

@@ -46,8 +46,8 @@ export async function prepareDerivedOutputReservation(
   const [channel] = await tx.$queryRaw<Array<{ locked: boolean }>>`
     SELECT pg_try_advisory_xact_lock(86192044, hashtext(${channelId.toLowerCase()})) AS locked`;
   if (!channel?.locked) busy();
-  // The original source in this exact lineage may still await its normal
-  // post-grant cleanup. No different unretired source or output work is allowed.
+  // The canary retains its exact-lineage exception. Under the all-creator
+  // policy a derived job needs its own slot; it is not a source continuation.
   await assertUploadRecoverySlot(tx, config, lineage.inputIntegritySessionId ?? null);
   for (const owner of owners)
     await assertUploadDebtByteCapacity(tx, owner, channelId, BigInt(canary.outputEnvelopeBytes), {
@@ -79,6 +79,7 @@ export function isOutputAdmissionPolicyError(error: unknown): error is MediaUplo
       "UPLOAD_RECOVERY_UNSUPPORTED",
       "UPLOAD_OUTPUT_ADMISSION_BUSY",
       "UPLOAD_CANARY_BUSY",
+      "UPLOAD_CAPACITY_BUSY",
       "UPLOAD_PHYSICAL_DEBT_LIMIT",
     ].includes(error.code)
   );
