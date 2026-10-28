@@ -235,7 +235,7 @@ export class MediaUploadRecoveryCommandsService {
       });
       if (!observed)
         error("UPLOAD_RECOVERY_NOT_FOUND", "No current saved upload outcome could be found.", 404);
-      const session = await this.lockSession(tx, actor, observed.id, true, true);
+      const session = await this.lockSession(tx, actor, observed.id, true, "terminal-outcome");
       const operation = await tx.mediaUploadOperation.findUnique({
         where: { sessionId_requestId: { sessionId: session.id, requestId } },
       });
@@ -255,7 +255,7 @@ export class MediaUploadRecoveryCommandsService {
     requestId: string,
   ): Promise<UploadRecoveryOutcomeResponse> {
     return this.transaction(async (tx) => {
-      const session = await this.lockSession(tx, actor, sessionId, true, true);
+      const session = await this.lockSession(tx, actor, sessionId, true, "terminal-outcome");
       const operation = await tx.mediaUploadOperation.findUnique({
         where: { sessionId_requestId: { sessionId, requestId } },
       });
@@ -1298,7 +1298,7 @@ export class MediaUploadRecoveryCommandsService {
     actor: UploadActor,
     id: string,
     allowExpired = false,
-    readOnly = false,
+    readOnly: boolean | "terminal-outcome" = false,
   ) {
     const observed = await tx.mediaUploadSession.findUnique({ where: { id } });
     if (
@@ -1325,12 +1325,10 @@ export class MediaUploadRecoveryCommandsService {
           Array<{ channelId: string; status: string; removedAt: Date | null }>
         >`SELECT "channelId", status, "removedAt" FROM "Video" WHERE id=${observed.videoId}::uuid FOR NO KEY UPDATE /* ayin-recovery-command-video-lock */`;
     const [video] = videos;
-    if (
-      !video ||
-      video.channelId !== observed.channelId ||
-      video.status === "REMOVED" ||
-      video.removedAt
-    )
+    if (!video || video.channelId !== observed.channelId)
+      error("UPLOAD_RECOVERY_CHANGED", "The saved video is no longer available.");
+    const videoRemoved = video.status === "REMOVED" || !!video.removedAt;
+    if (videoRemoved && readOnly !== "terminal-outcome")
       error("UPLOAD_RECOVERY_CHANGED", "The saved video is no longer available.");
     await this.lockChannel(tx, observed.channelId);
     if (readOnly)
@@ -1347,6 +1345,17 @@ export class MediaUploadRecoveryCommandsService {
       current.objectKey !== observed.objectKey
     )
       error("UPLOAD_RECOVERY_CHANGED", "The saved upload changed while waiting.");
+    // Only authenticated outcome reads may report a removed video's terminal
+    // state. This proves local recovery metadata can be forgotten; it grants no
+    // storage authority and never reports physical cleanup as settled.
+    if (
+      videoRemoved &&
+      (current.sourceProtocolVersion !== 2 ||
+        !terminal.has(current.state) ||
+        !current.grantsRevokedAt ||
+        !current.cleanupRequestedAt)
+    )
+      error("UPLOAD_RECOVERY_CHANGED", "The saved video is no longer available.");
     if (
       !asset ||
       asset.videoId !== current.videoId ||

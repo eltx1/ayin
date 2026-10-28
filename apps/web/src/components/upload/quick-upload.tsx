@@ -2,6 +2,7 @@
 import { uploadText } from "@/lib/upload-copy";
 import { UploadRecoveryClient, RecoveryError, type RecoveryView } from "@/lib/upload-recovery";
 import { RECOVERY_STORAGE_KEY } from "@/lib/upload-recovery-storage";
+import { watchUploadRecoveryLifecycle } from "@/lib/upload-recovery-lifecycle";
 import { useViewerProduct } from "@/components/viewer/viewer-product-context";
 
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
@@ -88,12 +89,7 @@ type PreparedUpload = {
 export function QuickUpload() {
   const router = useRouter();
   const { href, locale, direction } = useI18n();
-  const {
-    onBeforeIdentitySuspend,
-    identity: viewerIdentity,
-    identityRevision,
-    isIdentityCurrent,
-  } = useViewerProduct();
+  const { identity: viewerIdentity, identityRevision, isIdentityCurrent } = useViewerProduct();
   const copy = useCallback((value: string) => uploadText(value, locale), [locale]);
   const [identity, setIdentity] = useState<{
     account: { id: string };
@@ -359,31 +355,22 @@ export function QuickUpload() {
       client.suspend();
     };
     const restore = () => {
-      if (!document.hidden && active) recoveryOpening.current = client.check();
+      if (active && !client.getSnapshot().busy) recoveryOpening.current = client.check();
     };
-    const changedStorage = (event: StorageEvent) => {
-      if (event.key === RECOVERY_STORAGE_KEY || event.key === null) {
-        suspend();
-        restore();
-      }
-    };
-    const unsubscribe = onBeforeIdentitySuspend(suspend);
-    window.addEventListener("pagehide", suspend);
-    window.addEventListener("pageshow", restore);
-    window.addEventListener("focus", restore);
-    window.addEventListener("storage", changedStorage);
+    const stopWatching = watchUploadRecoveryLifecycle({
+      target: window,
+      isVisible: () => !document.hidden,
+      suspend,
+      restore,
+    });
     return () => {
       active = false;
-      unsubscribe();
+      stopWatching();
       client.suspend();
       if (recoveryClient.current === client) recoveryClient.current = null;
       recoveryOpening.current = null;
-      window.removeEventListener("pagehide", suspend);
-      window.removeEventListener("pageshow", restore);
-      window.removeEventListener("focus", restore);
-      window.removeEventListener("storage", changedStorage);
     };
-  }, [identity, capabilities, copy, onBeforeIdentitySuspend]);
+  }, [identity, capabilities, copy]);
 
   useEffect(() => {
     const client = recoveryClient.current;

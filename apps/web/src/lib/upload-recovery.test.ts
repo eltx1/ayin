@@ -10,6 +10,7 @@ import {
   type SavedRecovery,
 } from "./upload-recovery-contract";
 import { RECOVERY_STORAGE_KEY, loadSavedRecovery, saveRecovery } from "./upload-recovery-storage";
+import { watchUploadRecoveryLifecycle } from "./upload-recovery-lifecycle";
 
 const scope: RecoveryScope = {
   accountId: randomUUID(),
@@ -797,6 +798,133 @@ describe("explicit recoverable upload controller", () => {
     expect(view.uploadedBytes).toBe(11);
     expect(writes().filter(([url]) => String(url).endsWith("/complete"))).toHaveLength(1);
     expect(writes().filter(([url]) => String(url).endsWith("/recoverable-drafts"))).toHaveLength(0);
+  });
+  it("keeps the existing three-part upload running across blur and foreground restoration without another intent", async () => {
+    let release!: () => void,
+      entered!: () => void,
+      starts = 0;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const started = new Promise<void>((resolve) => (entered = resolve));
+    const { value, bodies } = await multipartFixture({
+      put: async () => {
+        if (++starts === 3) entered();
+        await held;
+      },
+    });
+    const target = new EventTarget();
+    const suspend = vi.fn(() => value.suspend());
+    const restore = vi.fn(() => {
+      if (!value.getSnapshot().busy) void value.check();
+    });
+    const stopWatching = watchUploadRecoveryLifecycle({
+      target,
+      isVisible: () => true,
+      suspend,
+      restore,
+    });
+    const operation = value.continueUpload({ concurrency: 3, complete: true });
+    await started;
+    const before = writes().length;
+    target.dispatchEvent(new Event("blur"));
+    target.dispatchEvent(new Event("visibilitychange"));
+    target.dispatchEvent(new Event("focus"));
+    expect(suspend).not.toHaveBeenCalled();
+    expect(restore).toHaveBeenCalledTimes(1);
+    expect(view.busy).toBe(true);
+    expect(view.fileName).toBe("whole.mp4");
+    expect(writes()).toHaveLength(before);
+    release();
+    await operation;
+    expect(bodies).toEqual(["01234", "56789", "a"]);
+    expect(view.saved?.session?.state).toBe("COMPLETED");
+    expect(writes().filter(([url]) => String(url).endsWith("/complete"))).toHaveLength(1);
+    stopWatching();
+    target.dispatchEvent(new Event("pagehide"));
+    expect(suspend).not.toHaveBeenCalled();
+  });
+  it("does not lose the selected native-picker file or restart its fingerprint when the window blurs", async () => {
+    let entered!: () => void, release!: () => void;
+    let checkingSignal: AbortSignal | null = null;
+    const started = new Promise<void>((resolve) => (entered = resolve));
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const identify = vi.fn(async (_file: File, signal: AbortSignal) => {
+      checkingSignal = signal;
+      entered();
+      await held;
+      signal.throwIfAborted();
+      return fileIdentity;
+    });
+    const value = client(identify);
+    await value.open();
+    const target = new EventTarget();
+    const stopWatching = watchUploadRecoveryLifecycle({
+      target,
+      isVisible: () => true,
+      suspend: () => value.suspend(),
+      restore: () => {
+        if (!value.getSnapshot().busy) void value.check();
+      },
+    });
+    const selected = value.choose(file());
+    await started;
+    target.dispatchEvent(new Event("blur"));
+    target.dispatchEvent(new Event("focus"));
+    expect(checkingSignal!.aborted).toBe(false);
+    release();
+    await selected;
+    expect(identify).toHaveBeenCalledTimes(1);
+    expect(view.fileName).toBe("camera.mp4");
+    expect(view.message).toBe("CREATE_READY");
+    await value.create();
+    expect(view.saved?.session?.sessionId).toBe(session.sessionId);
+    expect(writes().filter(([url]) => String(url).endsWith("/recoverable-drafts"))).toHaveLength(1);
+    stopWatching();
+  });
+  it("still aborts all parts on real pagehide and restores only metadata until the user resumes", async () => {
+    let entered!: () => void,
+      starts = 0;
+    const started = new Promise<void>((resolve) => (entered = resolve));
+    const aborted: number[] = [];
+    const { value, bodies } = await multipartFixture({
+      put: (signal, part) =>
+        new Promise<void>((_resolve, reject) => {
+          if (++starts === 3) entered();
+          signal.addEventListener(
+            "abort",
+            () => {
+              aborted.push(part);
+              reject(signal.reason);
+            },
+            { once: true },
+          );
+        }),
+    });
+    const target = new EventTarget();
+    let restored: Promise<void> | null = null;
+    const stopWatching = watchUploadRecoveryLifecycle({
+      target,
+      isVisible: () => true,
+      suspend: () => value.suspend(),
+      restore: () => {
+        restored = value.check();
+      },
+    });
+    const operation = value.continueUpload({ concurrency: 3, complete: true });
+    await started;
+    target.dispatchEvent(new Event("pagehide"));
+    await operation;
+    expect(aborted.sort()).toEqual([1, 2, 3]);
+    expect(view.fileName).toBeNull();
+    expect(view.scope).toBeNull();
+    const before = writes().length;
+    target.dispatchEvent(new Event("pageshow"));
+    await restored;
+    expect(view.saved?.session?.sessionId).toBe(session.sessionId);
+    expect(view.fileName).toBeNull();
+    expect(view.message).toBe("INSPECTED");
+    expect(writes()).toHaveLength(before);
+    expect(bodies).toHaveLength(3);
+    stopWatching();
   });
   it("aborts a failed batch, then after reload sends only parts absent from the provider inventory", async () => {
     let fail!: () => void;

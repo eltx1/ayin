@@ -121,7 +121,7 @@ export class StudioController {
 
   @Delete("videos/:videoId")
   remove(@Req() request: AuthenticatedRequest, @Param("videoId") videoIdRaw: string) {
-    return this.run(() => this.studio.remove(request.ayinAuth.accountId, this.videoId(videoIdRaw)));
+    return this.run(() => this.studio.remove(request.ayinAuth, this.videoId(videoIdRaw)));
   }
 
   @Get("comments")

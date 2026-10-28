@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, mkdtemp, open, rm, stat, utimes } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, open, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -28,6 +28,7 @@ type TransferStats = {
   }[];
   multipartInventory: { partNumber: number; bytes: number }[][];
   storedObjects: { bytes: number; sha256: string; contentType: string }[];
+  rejectedPuts: { partNumber: number; bytes: number; status: number }[];
 };
 
 async function register(request: APIRequestContext, email: string) {
@@ -86,9 +87,11 @@ test("primary upload resumes actual 129 MiB after reload and rejects a same-meta
 }, info) => {
   const stats = async (): Promise<TransferStats> =>
     (await page.request.get(`${PROVIDER}/stats`)).json();
-  expect((await page.request.post(`${PROVIDER}/control`, { data: { reset: true } })).ok()).toBe(
-    true,
-  );
+  expect(
+    (
+      await page.request.post(`${PROVIDER}/control`, { data: { reset: true, failPutPartOnce: 4 } })
+    ).ok(),
+  ).toBe(true);
   await register(page.request, "large-recovery@e2e.ayin.test");
   const fixture = await realFixtures();
   let held = false;
@@ -147,6 +150,21 @@ test("primary upload resumes actual 129 MiB after reload and rejects a same-meta
     }
     expect(await stats()).toMatchObject({ allocations: 1, puts: 3, completes: 0 });
 
+    // Ordinary tab switching hides private UI but must preserve this explicit
+    // transfer. The held inventory prevents a fourth PUT during this check.
+    await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(upload.getByRole("button", { name: "Pause upload", exact: true })).toBeEnabled();
+    await expect(upload.getByRole("button", { name: "Continue upload", exact: true })).toHaveCount(
+      0,
+    );
+    expect(await stats()).toMatchObject({
+      allocations: 1,
+      authorizations: 3,
+      puts: 3,
+      completes: 0,
+    });
+
     // Reload while an actual upload is active. The browser loses File objects
     // and in-memory grants; only the persisted descriptor and server bytes remain.
     page.once("dialog", (dialog) => dialog.accept());
@@ -172,11 +190,12 @@ test("primary upload resumes actual 129 MiB after reload and rejects a same-meta
       sessions: 1,
     });
     await reselect.setInputFiles(fixture.original);
+    // Part 4 receives a real HTTP 503 before storage. This single explicit
+    // resume must recover automatically without another click or reallocation.
     await expect.poll(async () => (await stats()).queued, { timeout: 120_000 }).toBe(1);
     const completed = await stats();
     expect(completed).toMatchObject({
       allocations: 1,
-      authorizations: 26,
       puts: 26,
       completes: 1,
       sessions: 1,
@@ -185,6 +204,11 @@ test("primary upload resumes actual 129 MiB after reload and rejects a same-meta
       published: 0,
       multipartInventory: [],
     });
+    expect(completed.rejectedPuts).toEqual([{ partNumber: 4, bytes: PART, status: 503 }]);
+    // The failed batch may cancel either/both sibling PUTs before acceptance.
+    // Only its missing parts may receive new grants; accepted parts stay unique.
+    expect(completed.authorizations).toBeGreaterThanOrEqual(27);
+    expect(completed.authorizations).toBeLessThanOrEqual(29);
     const received = [...completed.received].sort((a, b) => a.partNumber - b.partNumber);
     expect(received.map((part) => part.partNumber)).toEqual(
       Array.from({ length: 26 }, (_, index) => index + 1),
@@ -200,17 +224,20 @@ test("primary upload resumes actual 129 MiB after reload and rejects a same-meta
     // Recovery leads to the existing Studio editor, preserving saved metadata.
     await expect(upload.getByRole("button", { name: "Publish video", exact: true })).toHaveCount(0);
     await expect(upload.getByRole("button", { name: "Save details", exact: true })).toHaveCount(0);
+    const evidence = JSON.stringify(
+      {
+        evidence: "isolated-synthetic-byte-transfer",
+        expectedBytes: SIZE,
+        interrupted,
+        completed,
+      },
+      null,
+      2,
+    );
+    // The list reporter does not persist in-memory attachments into the CI ZIP.
+    await writeFile(info.outputPath("actual-129-mib-reload-result.json"), evidence);
     await info.attach("actual-129-mib-reload-result", {
-      body: JSON.stringify(
-        {
-          evidence: "isolated-synthetic-byte-transfer",
-          expectedBytes: SIZE,
-          interrupted,
-          completed,
-        },
-        null,
-        2,
-      ),
+      body: evidence,
       contentType: "application/json",
     });
     await page.screenshot({ path: info.outputPath("actual-129-mib-recovered.png") });

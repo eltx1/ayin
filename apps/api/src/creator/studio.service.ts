@@ -1,4 +1,14 @@
 import { Inject, Injectable } from "@nestjs/common";
+import type { AuthenticatedRequest } from "../auth/auth.guard.js";
+import { unauthorized } from "../auth/auth.errors.js";
+import {
+  assertChannelMediaOwners,
+  lockChannelMediaAccounts,
+  observeChannelMediaOwners,
+} from "../media/media-privacy-account-fence.js";
+import { lockMediaGeneration } from "../media/media-generation-safety.js";
+import { freezeOutputAttempts } from "../media/media-output-write-journal.js";
+import { registerRemovedVideoUploadCleanup } from "../media/media-upload-cleanup.js";
 
 import { decodeStudioContentCursor, encodeStudioContentCursor } from "./studio-content-cursor.js";
 import { DatabaseService } from "../database/database.service.js";
@@ -244,20 +254,163 @@ export class StudioService {
     return this.videoSummary(video.id);
   }
 
-  async remove(accountId: string, videoId: string) {
-    const video = await this.ownedVideo(accountId, videoId);
-    if (video.status === "REMOVED") return { id: video.id, status: "REMOVED" as const };
-    await this.database.client.$transaction(async (tx) => {
-      await tx.video.update({
-        where: { id: video.id },
-        data: { status: "REMOVED", removedAt: new Date(), publishedAt: null },
+  async remove(actor: AuthenticatedRequest["ayinAuth"], videoId: string) {
+    return this.database.client.$transaction(async (tx) => {
+      const observed = await tx.video.findUnique({
+        where: { id: videoId },
+        select: { channelId: true },
       });
+      if (!observed)
+        throw new StudioError(
+          "VIDEO_NOT_FOUND",
+          "This video is not available in your Studio.",
+          404,
+        );
+      const owners = await observeChannelMediaOwners(tx, observed.channelId);
+      await lockChannelMediaAccounts(tx, actor.accountId, owners);
+      await assertChannelMediaOwners(tx, observed.channelId, owners);
+      const assertActor = async () => {
+        const account = await tx.account.findUnique({
+          where: { id: actor.accountId },
+          select: { status: true, authVersion: true },
+        });
+        const sessions = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "AccountSession"
+          WHERE id=${actor.sessionId}::uuid AND "accountId"=${actor.accountId}::uuid
+            AND "authVersion"=${actor.authVersion} AND "revokedAt" IS NULL
+            AND "expiresAt" > (clock_timestamp() AT TIME ZONE 'UTC') FOR SHARE`;
+        if (
+          !account ||
+          account.status !== "ACTIVE" ||
+          account.authVersion !== actor.authVersion ||
+          !sessions.length
+        )
+          throw unauthorized();
+        const membership = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "ChannelMember"
+          WHERE "channelId"=${observed.channelId}::uuid AND "accountId"=${actor.accountId}::uuid
+            AND role IN ('OWNER','ADMIN','EDITOR') FOR SHARE`;
+        if (!membership.length)
+          throw new StudioError(
+            "VIDEO_NOT_FOUND",
+            "This video is not available in your Studio.",
+            404,
+          );
+      };
+      await assertActor();
+      await lockMediaGeneration(tx, videoId);
+      await tx.$queryRaw`SELECT id FROM "MediaAsset" WHERE "videoId"=${videoId}::uuid
+        ORDER BY id FOR NO KEY UPDATE /* ayin-studio-remove-assets */`;
+      await tx.$queryRaw`SELECT id FROM "MediaProcessingJob" WHERE "videoId"=${videoId}::uuid
+        ORDER BY id FOR UPDATE /* ayin-studio-remove-jobs */`;
+      await tx.$queryRaw`SELECT id FROM "Video" WHERE id=${videoId}::uuid FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM "Channel" WHERE id=${observed.channelId}::uuid FOR SHARE`;
+      const video = await tx.video.findUnique({
+        where: { id: videoId },
+        select: { channelId: true, removedAt: true },
+      });
+      const channel = await tx.channel.findUnique({
+        where: { id: observed.channelId },
+        select: { status: true, removedAt: true },
+      });
+      if (
+        !video ||
+        video.channelId !== observed.channelId ||
+        !channel ||
+        channel.status === "REMOVED" ||
+        channel.removedAt
+      )
+        throw new StudioError(
+          "VIDEO_NOT_FOUND",
+          "This video is not available in your Studio.",
+          404,
+        );
+      await assertActor();
+      const [uploads, attempts, jobs] = await Promise.all([
+        tx.mediaUploadSession.findMany({
+          where: { videoId, sourceProtocolVersion: 2 },
+          orderBy: { id: "asc" },
+        }),
+        tx.mediaProcessingOutputAttempt.findMany({
+          where: { videoId, protocolVersion: 2 },
+          orderBy: { id: "asc" },
+        }),
+        tx.mediaProcessingJob.findMany({ where: { videoId }, select: { id: true } }),
+      ]);
+      if ([...uploads, ...attempts].some((record) => record.channelId !== observed.channelId))
+        throw new StudioError(
+          "VIDEO_STATE_CHANGED",
+          "This video's media ownership requires review.",
+          409,
+        );
+      const now = new Date();
+      await tx.video.update({
+        where: { id: videoId },
+        data: {
+          status: "REMOVED",
+          removedAt: video.removedAt ?? now,
+          publishedAt: null,
+          scheduledPublishAt: null,
+        },
+      });
+      await tx.mediaProcessingJob.updateMany({
+        where: { videoId },
+        data: {
+          status: "CANCELLED",
+          leaseOwner: null,
+          leaseWorkerId: null,
+          leaseExpiresAt: null,
+        },
+      });
+      await freezeOutputAttempts(
+        tx,
+        [
+          ...new Set([
+            ...jobs.map((job) => job.id),
+            ...attempts.map((attempt) => attempt.processingJobId),
+          ]),
+        ].sort(),
+        now,
+      );
+      // Retire only durable owned media references here. Legacy pending sources
+      // retain their existing janitor/accounting path until their URLs expire.
+      const sourceIds = uploads.flatMap((upload) =>
+        upload.sourceAssetId ? [upload.sourceAssetId] : [],
+      );
+      if (sourceIds.length || attempts.length)
+        await tx.mediaAsset.updateMany({
+          where: {
+            videoId,
+            OR: [
+              { id: { in: sourceIds } },
+              ...attempts.map((attempt) => ({ r2ObjectKey: { startsWith: attempt.prefix } })),
+            ],
+          },
+          data: { status: "REMOVED", removedAt: now },
+        });
+      await tx.mediaPlaybackGeneration.updateMany({
+        where: { videoId },
+        data: {
+          status: "SUPERSEDED",
+          fallbackStatus: "REMOVED",
+          hlsMasterStatus: "REMOVED",
+        },
+      });
+      await tx.mediaPlaybackRendition.updateMany({
+        where: { playbackGeneration: { videoId } },
+        data: { status: "REMOVED" },
+      });
+      for (const upload of uploads)
+        await registerRemovedVideoUploadCleanup(tx, {
+          sessionId: upload.id,
+          videoId,
+          channelId: observed.channelId,
+          now,
+        });
       await tx.creatorTvVideoPreference.updateMany({
-        where: { videoId: video.id },
+        where: { videoId },
         data: { included: false },
       });
+      return { id: videoId, status: "REMOVED" as const };
     });
-    return { id: video.id, status: "REMOVED" as const };
   }
 
   async comments(accountId: string) {

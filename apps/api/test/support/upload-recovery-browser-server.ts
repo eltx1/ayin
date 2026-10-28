@@ -58,10 +58,12 @@ const received: Array<{
   cookiePresent: boolean;
   authorizationPresent: boolean;
 }> = [];
+const rejectedPuts: Array<{ partNumber: number; bytes: number; status: number }> = [];
 const requestStarts = new WeakMap<object, number>();
 let supported = true,
   failAuthorize = false,
   failCompleteAfterStore = false;
+let failPutPartOnce: number | null = null;
 let counters = { allocations: 0, authorizations: 0, puts: 0, completes: 0 };
 const uploads = new Map<
   string,
@@ -316,8 +318,15 @@ if (directTransfer) {
       const startedAt = requestStarts.get(request);
       if (startedAt === undefined) throw Error("Missing synthetic receiver timing start");
       const bodyReceiveMs = performance.now() - startedAt;
-      storeGrantedBytes(token, request.body);
       const partNumber = grants.get(token)?.partNumber ?? null;
+      if (partNumber !== null && partNumber === failPutPartOnce) {
+        // Receive the actual HTTP body, but fail before committing it to storage.
+        // No browser route mock or replacement response is involved.
+        failPutPartOnce = null;
+        rejectedPuts.push({ partNumber, bytes: request.body.length, status: 503 });
+        return reply.code(503).send({ error: "Synthetic transient provider failure" });
+      }
+      storeGrantedBytes(token, request.body);
       received.push({
         partNumber,
         bytes: request.body.length,
@@ -347,6 +356,7 @@ const provider = createServer(async (request, reply) => {
           ...(directTransfer
             ? {
                 received,
+                rejectedPuts,
                 // Only safe inventory is exposed: never signed grants, object
                 // addresses, credentials or account/session identifiers.
                 multipartInventory: [...uploads.values()].map(({ parts }) =>
@@ -392,24 +402,32 @@ const provider = createServer(async (request, reply) => {
         supported?: boolean;
         failAuthorize?: boolean;
         failCompleteAfterStore?: boolean;
+        failPutPartOnce?: number;
       };
       if (input.reset) {
         await db.$executeRawUnsafe(
           'TRUNCATE TABLE "Account", "Channel", "MediaUploadSession", "AccountDeletionRequest", "PrivacyMediaDeletionJob", "MediaProcessingOutputAttempt" CASCADE',
         );
         received.length = 0;
+        rejectedPuts.length = 0;
         uploads.clear();
         objects.clear();
         grants.clear();
         supported = true;
         failAuthorize = false;
         failCompleteAfterStore = false;
+        failPutPartOnce = null;
         counters = { allocations: 0, authorizations: 0, puts: 0, completes: 0 };
       }
       if (typeof input.supported === "boolean") supported = input.supported;
       if (typeof input.failAuthorize === "boolean") failAuthorize = input.failAuthorize;
       if (typeof input.failCompleteAfterStore === "boolean")
         failCompleteAfterStore = input.failCompleteAfterStore;
+      if (input.failPutPartOnce !== undefined) {
+        if (!Number.isSafeInteger(input.failPutPartOnce) || input.failPutPartOnce < 1)
+          throw Error("Invalid synthetic failing part");
+        failPutPartOnce = input.failPutPartOnce;
+      }
       reply.end('{"ok":true}');
       return;
     }
