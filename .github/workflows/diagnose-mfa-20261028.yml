@@ -1,0 +1,62 @@
+name: Diagnose MFA state (read only)
+on:
+  push:
+    branches: [codex/ayin-mfa-diagnostic-20261028]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+      - name: Read only MFA status, without credentials or account identifiers
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: 13.63.216.89
+          SSH_PORT: "22"
+        run: |
+          set -euo pipefail
+          umask 077
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          bash deploy/acquire-ssh-host-key.sh "$HOME/.ssh/candidate"
+          test "$(ssh-keygen -lf "$HOME/.ssh/candidate" -E sha256 | awk 'NR == 1 {print $2}')" = 'SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y'
+          mv "$HOME/.ssh/candidate" "$HOME/.ssh/known_hosts"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes ayin@"$DEPLOY_HOST" 'cd /home/ayin/htdocs/current && git rev-parse HEAD && node deploy/run-with-env.cjs /home/ayin/env/api.env node --input-type=module' <<'JS'
+          import { createPrismaClient } from './packages/db/dist/index.js';
+          const db = createPrismaClient();
+          try {
+            await db.$transaction(async (tx) => {
+              await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
+              const roles = await tx.adminRoleAssignment.findMany({
+                where: { role: { in: ['ADMIN', 'SUPERADMIN'] } },
+                select: { accountId: true }
+              });
+              const ids = [...new Set(roles.map(x => x.accountId))];
+              for (let i = 0; i < ids.length; i++) {
+                const id = ids[i];
+                const account = await tx.account.findUnique({
+                  where: { id }, select: { status: true, authVersion: true, updatedAt: true }
+                });
+                const mfa = await tx.accountMfaCredential.findUnique({
+                  where: { accountId: id },
+                  select: { status: true, version: true, enabledAt: true, pendingExpiresAt: true, updatedAt: true }
+                });
+                const audits = await tx.adminAuditLog.findMany({
+                  where: { entityId: id, OR: [
+                    { action: { startsWith: 'auth.mfa' } },
+                    { action: { contains: 'password' } },
+                    { action: { contains: 'session' } },
+                    { action: { contains: 'mfa_reset' } }
+                  ] },
+                  select: { action: true, createdAt: true },
+                  orderBy: { createdAt: 'desc' }, take: 12
+                });
+                console.log(JSON.stringify({ administrator: i + 1, now: new Date(), account, mfa, audits }));
+              }
+            });
+          } finally { await db.$disconnect(); }
+          JS
