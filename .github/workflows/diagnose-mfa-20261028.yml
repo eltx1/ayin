@@ -40,7 +40,10 @@ jobs:
              const video=await tx.video.findUnique({where:{id:s.videoId},select:{status:true,visibility:true}});
              rows.push({source:{status:s.status,createdAt:s.createdAt,updatedAt:s.updatedAt,integrity:s.uploadIntegrityRequired},video,jobs});
             }
-            return {matched:sources.length,rows};
+            const sourceStates=await tx.mediaUploadSession.groupBy({by:['state'],where:{sourceProtocolVersion:2},_count:{_all:true}});
+            const outputStates=await tx.mediaProcessingJob.groupBy({by:['status'],where:{outputProtocolVersion:2},_count:{_all:true}});
+            const cleanupStates=await tx.privacyMediaDeletionJob.groupBy({by:['status'],where:{cleanupContractVersion:2,status:{not:'DONE'}},_count:{_all:true}});
+            return {matched:sources.length,rows,recoveryCapacity:{sourceStates,outputStates,cleanupStates}};
            });
            console.log('SAFE_LARGE_UPLOAD',JSON.stringify(result,(_,v)=>typeof v==='bigint'?String(v):v));
            const disk=await statfs('/home/ayin');
