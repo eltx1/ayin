@@ -48,11 +48,24 @@ for (const locale of ["en", "ar"] as const)
     });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/upload?lang=${locale}`);
+    // A native summary can receive focus before hydration replaces its node.
+    // The picker becomes enabled only after the hydrated workspace's verified
+    // identity/capability read; require one live picker before keyboard actions.
+    const picker = page.locator('input[type="file"][accept^="video/"]');
+    await expect
+      .poll(() =>
+        picker.evaluateAll(
+          (nodes) => nodes.length === 1 && !(nodes[0] as HTMLInputElement).disabled,
+        ),
+      )
+      .toBe(true);
     const recentUploads = page.getByText(copy("Recent uploads", "أحدث عمليات الرفع"), {
       exact: true,
     });
     await recentUploads.focus();
-    await page.keyboard.press("Enter");
+    await expect(recentUploads).toBeFocused();
+    await recentUploads.press("Enter");
+    await expect(recentUploads.locator("..")).toHaveJSProperty("open", true);
     const history = page.getByRole("region", {
       name: copy("Saved upload history", "سجل الرفع المحفوظ"),
       exact: true,
@@ -63,7 +76,9 @@ for (const locale of ["en", "ar"] as const)
     expect(reads).toBe(0);
     const summary = history.locator("summary");
     await summary.focus();
-    await page.keyboard.press("Enter");
+    await expect(summary).toBeFocused();
+    await summary.press("Enter");
+    await expect(summary.locator("..")).toHaveJSProperty("open", true);
     await history
       .getByRole("button", {
         name: copy("Read saved uploads", "قراءة ملفات الرفع المحفوظة"),
