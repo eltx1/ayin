@@ -28,7 +28,7 @@ jobs:
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes ayin@"$DEPLOY_HOST" 'cd /home/ayin/htdocs/current && git rev-parse HEAD && node deploy/run-with-env.cjs /home/ayin/env/api.env node --input-type=module' <<'JS'
           import { createPrismaClient } from './packages/db/dist/index.js';
           const db = createPrismaClient();
-          const expectedDigest = 'f138cbede048d36ab2e67f958f9dce94d52d1aa074236a505014567a3ea04e6d';
+          const expectedDigest = '6f54a24028407cdd6d004742c971b303cb44d8d2ee73445a757fae7049ef7ad2';
           try {
             const result = await db.$transaction(async tx => {
               await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
@@ -36,8 +36,8 @@ jobs:
               const rows = [];
               for (const source of sources) {
                 const video = await tx.video.findUnique({where:{id:source.videoId},select:{status:true,visibility:true}});
-                const sessions = await tx.mediaUploadSession.findMany({where:{videoId:source.videoId},select:{sourceProtocolVersion:true,state:true,sizeBytes:true,partSizeBytes:true,contentIdentityDigest:true,operations:{select:{kind:true,status:true}}}});
-                const jobs = await tx.mediaProcessingJob.findMany({where:{videoId:source.videoId},select:{status:true,stage:true,progressPercent:true,attempt:true,errorCode:true,createdAt:true,queuedAt:true,startedAt:true,completedAt:true,sourceSizeBytes:true,outputSizeBytes:true,outputProtocolVersion:true,inputIntegrityVersion:true,inputIntegrityDigest:true,inputVerifiedAt:true,outputVerifiedAt:true}});
+                const sessions = await tx.mediaUploadSession.findMany({where:{videoId:source.videoId},select:{sourceProtocolVersion:true,state:true,sizeBytes:true,partSizeBytes:true,contentIdentityAlgorithm:true,contentIdentityDigest:true,operations:{select:{kind:true,status:true}}}});
+                const jobs = await tx.mediaProcessingJob.findMany({where:{videoId:source.videoId},select:{status:true,stage:true,progressPercent:true,attempt:true,errorCode:true,createdAt:true,queuedAt:true,startedAt:true,completedAt:true,sourceSizeBytes:true,outputSizeBytes:true,outputProtocolVersion:true,inputIntegrityVersion:true,inputIntegrityAlgorithm:true,inputIntegrityDigest:true,inputIntegrityRedactedAt:true,inputVerifiedAt:true,outputVerifiedAt:true}});
                 rows.push({source:{status:source.status,createdAt:source.createdAt,integrityRequired:source.uploadIntegrityRequired},video,sessions:sessions.map(({contentIdentityDigest,operations,...session})=>({...session,identityMatchesFixture:contentIdentityDigest===expectedDigest,operations:operations.reduce((counts,op)=>{const key=op.kind+':'+op.status;counts[key]=(counts[key]??0)+1;return counts;},{})})),jobs:jobs.map(({inputIntegrityDigest,...job})=>({...job,inputMatchesFixture:inputIntegrityDigest===expectedDigest}))});
               }
               return {matched:sources.length,rows};
