@@ -129,6 +129,52 @@ databaseDescribe("creator quick upload and publish", () => {
     expect(completed.statusCode).toBe(201);
   }
 
+  it("returns owner-scoped effective upload limits and pending-byte usage before choosing a file", async () => {
+    const owner = await register("Capacity owner", "capacity-owner@example.com");
+    const url = `/creator/videos/upload-capabilities?channelId=${owner.user.channel.id}`;
+    const before = await app.inject({ method: "GET", url, headers: { cookie: owner.cookie } });
+    expect(before.statusCode).toBe(200);
+    expect(before.headers["cache-control"]).toBe("private, no-store");
+    expect(before.json()).toMatchObject({
+      actorAccountId: owner.user.account.id,
+      channelId: owner.user.channel.id,
+      maxFileSizeBytes: 5 * 1024 ** 3,
+      channelQuotaBytes: 100 * 1024 ** 3,
+      usedStorageBytes: 0,
+      availableStorageBytes: 100 * 1024 ** 3,
+      multipartThresholdBytes: 64 * 1024 ** 2,
+      partSizeBytes: 16 * 1024 ** 2,
+      uploadSessionTtlSeconds: 86_400,
+      storageAvailable: true,
+      durableRecovery: { supported: false, maxFileSizeBytes: null },
+    });
+    expect(before.body).not.toMatch(/objectKey|uploadId|accessKey|secret|https:\/\//u);
+    await createDraft(owner.cookie, owner.user.channel.id);
+    const after = await app.inject({ method: "GET", url, headers: { cookie: owner.cookie } });
+    expect(after.statusCode).toBe(200);
+    expect(after.json().usedStorageBytes).toBe(uploadSize);
+    expect(after.json().availableStorageBytes).toBe(100 * 1024 ** 3 - uploadSize);
+    expect(await prisma.video.count()).toBe(1);
+  });
+
+  it("does not disclose another channel's upload capacity or accept unscoped queries", async () => {
+    const owner = await register("Capacity owner", "capacity-owner@example.com");
+    const other = await register("Other owner", "capacity-other@example.com");
+    const url = `/creator/videos/upload-capabilities?channelId=${owner.user.channel.id}`;
+    expect((await app.inject({ method: "GET", url })).statusCode).toBe(401);
+    const wrongOwner = await app.inject({ method: "GET", url, headers: { cookie: other.cookie } });
+    expect(wrongOwner.statusCode).toBe(403);
+    expect(wrongOwner.body).not.toContain("usedStorageBytes");
+    const missing = await app.inject({
+      method: "GET",
+      url: "/creator/videos/upload-capabilities",
+      headers: { cookie: owner.cookie },
+    });
+    expect(missing.statusCode).toBe(400);
+    expect(storage.createMultipartUpload).not.toHaveBeenCalled();
+    expect(await prisma.mediaAsset.count()).toBe(0);
+  });
+
   async function markReady(videoId: string) {
     const job = await prisma.mediaProcessingJob.findFirstOrThrow({
       where: { videoId },

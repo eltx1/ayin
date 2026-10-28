@@ -19,6 +19,7 @@ Optional tuning:
 
 ```text
 R2_UPLOAD_URL_TTL_SECONDS=900
+UPLOAD_SESSION_TTL_SECONDS=86400
 R2_PART_SIZE_BYTES=16777216
 R2_MULTIPART_THRESHOLD_BYTES=67108864
 ```
@@ -65,6 +66,10 @@ Original filenames are never used in R2 keys.
 The current ingest allow-list is broader than MP4 and is enforced by `MediaUploadService`. Browser selection is not authoritative; the server verifies MIME/extension/session state and the worker probes the uploaded media before producing playback output.
 
 Large files use multipart upload. Small files use one short-lived presigned PUT. `MediaAsset.status` remains `PENDING` until R2 completion is verified, then becomes `UPLOADED` and processing is enqueued. Repeated completion is designed to be recoverable/idempotent.
+
+The ordinary upload session lasts 24 hours by default (`UPLOAD_SESSION_TTL_SECONDS`, configurable from 1 to 24 hours). Each individual R2 URL still lasts 15 minutes by default and cannot outlive its session. Multipart parts are authorized as needed; `POST /media/uploads/sessions/authorize-single` renews a pending single PUT for the same source. Renewal, resume and completion recheck current authentication, ownership and source lifecycle. Administrator overrides retain their separate step-up deadline. An expired session cannot be revived by renewing a URL.
+
+`GET /creator/videos/upload-capabilities?channelId=...` returns an authenticated owner-scoped snapshot of the effective ordinary file limit, remaining channel quota and separate durable-recovery eligibility/limit. It does not reserve bytes. Ordinary multipart retry needs the selected file and session token retained in the current tab; it does not promise recovery across a reload. Durable V2 recovery remains subject to its independently configured source/output/debt limits.
 
 ## Canonical MP4 processing
 
@@ -130,7 +135,7 @@ Future retention policy may choose to preserve original sources, but that is a s
 
 ## Abandoned upload cleanup
 
-`MediaUploadService.cleanupAbandonedUploads(olderThan)` is the cleanup entry point for stale `PENDING` uploads. It aborts stale multipart uploads, removes partial/single objects when appropriate and marks stale metadata rejected/removed. R2 lifecycle rules remain a secondary cleanup safety net.
+`MediaUploadService.cleanupAbandonedUploads(olderThan)` is the cleanup entry point for stale ordinary `PENDING` uploads. It aborts stale multipart uploads, removes partial/single objects when appropriate and marks stale metadata rejected/removed. Its cutoff is clamped to at least 24 hours old, including when the configured session lifetime has since been reduced, so an older caller cannot terminate a still-valid session. Provider multipart lifecycle rules must retain incomplete uploads longer than 24 hours; they remain a secondary cleanup safety net. Identity-bound V2 sources use their separate durable cleanup contract.
 
 ## Playback compatibility
 

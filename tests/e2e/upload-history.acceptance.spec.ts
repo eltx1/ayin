@@ -48,6 +48,11 @@ for (const locale of ["en", "ar"] as const)
     });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/upload?lang=${locale}`);
+    const recentUploads = page.getByText(copy("Recent uploads", "أحدث عمليات الرفع"), {
+      exact: true,
+    });
+    await recentUploads.focus();
+    await page.keyboard.press("Enter");
     const history = page.getByRole("region", {
       name: copy("Saved upload history", "سجل الرفع المحفوظ"),
       exact: true,

@@ -1,4 +1,13 @@
-import { Body, Controller, HttpException, Inject, Post, Req, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Header,
+  HttpException,
+  Inject,
+  Post,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 import { z } from "zod";
 
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
@@ -66,6 +75,17 @@ export class MediaUploadController {
         parsed.data.partNumber,
       ),
     );
+  }
+
+  @Post("sessions/authorize-single")
+  @Header("Cache-Control", "private, no-store")
+  async authorizeSingle(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    const parsed = sessionSchema.safeParse(body);
+    if (!parsed.success)
+      throw this.httpError(
+        new MediaUploadError("INVALID_UPLOAD_REQUEST", "This upload could not be renewed."),
+      );
+    return this.run(() => this.uploads.authorizeSingle(request.ayinAuth, parsed.data.sessionToken));
   }
 
   @Post("sessions/resume")

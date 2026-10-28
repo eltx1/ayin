@@ -12,7 +12,18 @@ import { UploadProtocolError } from "@/lib/upload-session";
 
 import { trackAnalyticsEvent } from "@/lib/analytics";
 import { apiBaseUrl } from "@/lib/api";
-import { uploadPreparedVideoDirectly } from "@/lib/direct-video-upload";
+import {
+  completeVideoUpload,
+  UploadBlobError,
+  uploadPreparedVideoDirectly,
+  type UploadSession,
+  type DirectUploadCompletionInput,
+} from "@/lib/direct-video-upload";
+import {
+  isRejectedUploadRequest,
+  uploadErrorMessage,
+  UploadRequestError,
+} from "@/lib/upload-error";
 import {
   captureLocalThumbnailChoices,
   releaseLocalThumbnailChoices,
@@ -22,6 +33,9 @@ import {
   confirmQuickUpload,
   createQuickDraft,
   getQuickProcessingStatus,
+  getUploadCapabilities,
+  verifyUploadIdentity,
+  type UploadCapabilities,
   publishQuickVideo,
   saveQuickVideoDetails,
   uploadQuickThumbnail,
@@ -42,6 +56,30 @@ import {
 import styles from "./quick-upload.module.css";
 
 type Visibility = "PUBLIC" | "UNLISTED" | "PRIVATE";
+type TransferPhase =
+  | "idle"
+  | "checking"
+  | "preparing"
+  | "uploading"
+  | "retrying"
+  | "finalizing"
+  | "paused"
+  | "processing"
+  | "ready"
+  | "failed";
+type UploadFailure = {
+  title: string;
+  detail: string;
+  action: "retry" | "review" | "signin" | "choose" | "processing" | "edit";
+};
+type PreparedUpload = {
+  videoId: string;
+  session: UploadSession;
+  file: File;
+  completion: DirectUploadCompletionInput | null;
+  storageComplete: boolean;
+  transferStarted: boolean;
+};
 
 export function QuickUpload() {
   const router = useRouter();
@@ -51,6 +89,17 @@ export function QuickUpload() {
     account: { id: string };
     channel: { id: string };
   } | null>(null);
+  const [capabilities, setCapabilities] = useState<UploadCapabilities | null>(null);
+  const [phase, setPhase] = useState<TransferPhase>("idle");
+  const [failure, setFailure] = useState<UploadFailure | null>(null);
+  const [transferredBytes, setTransferredBytes] = useState(0);
+  const [transferRate, setTransferRate] = useState<number | null>(null);
+  const [processingPercent, setProcessingPercent] = useState(0);
+  const prepared = useRef<PreparedUpload | null>(null);
+  const phaseRef = useRef<TransferPhase>("idle");
+  const feedback = useRef<HTMLDivElement | null>(null);
+  const fileInput = useRef<HTMLInputElement | null>(null);
+  const speedSample = useRef({ time: 0, bytes: 0 });
   const [file, setFile] = useState<File | null>(null);
   const [inspection, setInspection] = useState<VideoInspectionResult | null>(null);
   const [videoId, setVideoId] = useState<string | null>(null);
@@ -152,8 +201,11 @@ export function QuickUpload() {
           channel = uploadRecord(row.channel);
         const accountId = uploadId(account.id),
           channelId = uploadId(channel.id);
-        if (!controller.signal.aborted)
+        const limits = await getUploadCapabilities(accountId, channelId, controller.signal);
+        if (!controller.signal.aborted) {
           setIdentity({ account: { id: accountId }, channel: { id: channelId } });
+          setCapabilities(limits);
+        }
       })
       .catch(() => {
         if (!controller.signal.aborted || controller.signal.reason?.name === "AbortError")
@@ -165,6 +217,15 @@ export function QuickUpload() {
       controller.abort(new DOMException("Unmounted", "Unmounted"));
     };
   }, [identityAttempt]);
+
+  useEffect(() => {
+    if (!failure && !uncertain) return;
+    feedback.current?.focus({ preventScroll: true });
+    feedback.current?.scrollIntoView({
+      block: "nearest",
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
+  }, [failure, uncertain]);
 
   useEffect(() => {
     choicesRef.current = thumbnailChoices;
@@ -179,10 +240,198 @@ export function QuickUpload() {
     [],
   );
 
+  function changePhase(next: TransferPhase) {
+    phaseRef.current = next;
+    setPhase(next);
+  }
+
+  function showUploadFailure(error: unknown, stage: TransferPhase) {
+    const signIn =
+      error instanceof UploadRequestError &&
+      error.status === 401 &&
+      !["INVALID_UPLOAD_SESSION", "UPLOAD_SESSION_EXPIRED", "STEP_UP_REQUIRED"].includes(
+        error.code ?? "",
+      );
+    const expired =
+      error instanceof UploadRequestError &&
+      ["UPLOAD_SESSION_EXPIRED", "INVALID_UPLOAD_SESSION", "UPLOAD_STATE_CHANGED"].includes(
+        error.code ?? "",
+      );
+    const rejectedBeforeDraft = !prepared.current && isRejectedUploadRequest(error);
+    const safeRetry =
+      Boolean(prepared.current) &&
+      !expired &&
+      !signIn &&
+      !(error instanceof UploadProtocolError) &&
+      !(error instanceof UploadRequestError && error.status === 403);
+    setUncertain(!safeRetry && !rejectedBeforeDraft);
+    changePhase("failed");
+    setMessage(null);
+    setFailure({
+      title: copy("Upload needs attention"),
+      detail: copy(
+        (error instanceof UploadProtocolError
+          ? "The upload response could not be verified. Review this upload in Studio before trying again."
+          : error instanceof UploadBlobError
+            ? error.status && error.status >= 400 && error.status < 500
+              ? "Storage rejected the transfer. Retry to refresh the upload connection; your saved draft will be reused."
+              : "The file transfer stopped after automatic retries. Check your connection, then retry this upload."
+            : uploadErrorMessage(error)) ??
+          (safeRetry
+            ? stage === "finalizing"
+              ? "The final confirmation did not arrive. Retry to check and finish this same upload."
+              : "Your connection was interrupted. Retry to continue this upload without creating another video."
+            : "We could not confirm whether the upload was saved. Check your saved videos before starting another upload."),
+      ),
+      action: signIn ? "signin" : safeRetry ? "retry" : rejectedBeforeDraft ? "choose" : "review",
+    });
+  }
+
+  async function transfer(current: PreparedUpload, signal: AbortSignal) {
+    setTransferRate(null);
+    speedSample.current = { time: 0, bytes: 0 };
+    let confirmation: Awaited<ReturnType<typeof confirmQuickUpload>> | null = null;
+    if (!current.storageComplete && current.completion) {
+      changePhase("finalizing");
+      // Completion may have committed before its response was lost. Confirm
+      // first; a completed worker may already have removed the staging source.
+      try {
+        confirmation = await confirmQuickUpload(current.videoId, signal);
+        current.storageComplete = true;
+      } catch (error) {
+        if (!(error instanceof UploadRequestError) || error.code !== "UPLOAD_NOT_COMPLETE")
+          throw error;
+        await completeVideoUpload(current.completion, current.session.assetId, signal);
+        current.storageComplete = true;
+      }
+    } else if (!current.storageComplete) {
+      const renewSingleAuthorization = current.transferStarted;
+      current.transferStarted = true;
+      await uploadPreparedVideoDirectly({
+        session: current.session,
+        file: current.file,
+        signal,
+        renewSingleAuthorization,
+        onProgress: setProgress,
+        onBytesProgress: (bytes) => {
+          setTransferredBytes(bytes);
+          const time = Date.now();
+          const sample = speedSample.current;
+          if (sample.time && time - sample.time >= 750 && bytes > sample.bytes) {
+            const rate = ((bytes - sample.bytes) * 1000) / (time - sample.time);
+            setTransferRate((previous) => (previous ? previous * 0.6 + rate * 0.4 : rate));
+            speedSample.current = { time, bytes };
+          } else if (!sample.time || bytes < sample.bytes) speedSample.current = { time, bytes };
+        },
+        onStatus: (status) => {
+          changePhase(status.phase);
+          if (status.phase === "retrying") {
+            setTransferRate(null);
+            speedSample.current = { time: 0, bytes: 0 };
+          }
+          setMessage(
+            copy(
+              status.phase === "finalizing"
+                ? "Finalizing upload…"
+                : status.phase === "retrying"
+                  ? "Connection paused. Retrying the upload safely…"
+                  : "Keep this page open until the upload finishes. You can edit the details below.",
+            ),
+          );
+        },
+        completeUpload: async (payload) => {
+          current.completion = payload;
+          const result = await completeVideoUpload(payload, current.session.assetId, signal);
+          current.storageComplete = true;
+          return result;
+        },
+      });
+    }
+    changePhase("finalizing");
+    confirmation ??= await confirmQuickUpload(current.videoId, signal);
+    signal.throwIfAborted();
+    setProgress(100);
+    setTransferredBytes(current.file.size);
+    setProcessingReady(confirmation.status === "DRAFT");
+    setProcessingLabel(confirmation.status === "DRAFT" ? copy("Ready") : copy("Queued"));
+    setUploadComplete(true);
+    changePhase(confirmation.status === "DRAFT" ? "ready" : "processing");
+    setMessage(
+      copy(
+        confirmation.status === "DRAFT"
+          ? "Upload and processing complete. Your video is ready to publish."
+          : "Upload complete. AYIN is preparing a reliable playback version in the background.",
+      ),
+    );
+    trackAnalyticsEvent("UPLOAD_COMPLETE", {
+      ...(identity ? { channelId: identity.channel.id } : {}),
+      videoId: current.videoId,
+    });
+  }
+
+  async function retryUpload() {
+    if (mutation.current || !prepared.current || !identity) return;
+    const controller = new AbortController();
+    operation.current = controller;
+    mutation.current = true;
+    setBusy(true);
+    setMutationKind("upload");
+    setFailure(null);
+    setUncertain(false);
+    try {
+      await verifyUploadIdentity(identity.account.id, identity.channel.id, controller.signal);
+      await transfer(prepared.current, controller.signal);
+    } catch (error) {
+      if (!controller.signal.aborted) showUploadFailure(error, phaseRef.current);
+    } finally {
+      mutation.current = false;
+      setBusy(false);
+      setMutationKind(null);
+    }
+  }
+
+  function pauseUpload() {
+    if (!["uploading", "retrying"].includes(phaseRef.current)) return;
+    operation.current?.abort();
+    changePhase("paused");
+    setMessage(copy("Upload paused. Keep this page open to continue from this file."));
+    setFailure(null);
+  }
+
   async function chooseFile(selected: File | null) {
-    if (!selected || !identity || mutation.current || videoId || uncertain || published) return;
+    if (
+      !selected ||
+      !identity ||
+      !capabilities ||
+      mutation.current ||
+      videoId ||
+      uncertain ||
+      published
+    )
+      return;
     if (!selected.size || !isSupportedVideoFile(selected)) {
-      setMessage(copy("Drop one supported video file to start an upload."));
+      setFailure({
+        title: copy("Choose a video file"),
+        detail: copy("Drop one supported video file to start an upload."),
+        action: "choose",
+      });
+      return;
+    }
+    if (
+      !capabilities.storageAvailable ||
+      selected.size > Math.min(capabilities.maxFileSizeBytes, capabilities.availableStorageBytes)
+    ) {
+      setFailure({
+        title: copy("This file cannot be uploaded yet"),
+        detail: copy(
+          !capabilities.storageAvailable
+            ? "Video uploads are temporarily unavailable. Please try again later."
+            : selected.size > capabilities.maxFileSizeBytes
+              ? "This file is larger than the upload limit shown below. Choose a smaller file."
+              : "Your channel does not have enough storage for this video. Review saved videos in Studio.",
+        ),
+        action: "choose",
+      });
       return;
     }
     mutation.current = true;
@@ -206,6 +455,9 @@ export function QuickUpload() {
     setPublished(false);
     setMetadataDraft({ ...EMPTY_METADATA_DRAFT });
     setMessage(null);
+    setFailure(null);
+    prepared.current = null;
+    changePhase("checking");
     setBusy(true);
     setMutationKind("upload");
     const nextTitle = titleFromFilename(selected.name);
@@ -215,10 +467,16 @@ export function QuickUpload() {
       controller.signal.throwIfAborted();
       setInspection(result);
       if (result.status === "incompatible") {
-        setMessage(result.message);
+        setFailure({
+          title: copy("Choose a supported video"),
+          detail: copy(result.message),
+          action: "choose",
+        });
+        changePhase("failed");
         return;
       }
       trackAnalyticsEvent("UPLOAD_START", { channelId: identity.channel.id });
+      changePhase("preparing");
       const draft = await createQuickDraft({
         channelId: identity.channel.id,
         title: nextTitle,
@@ -228,6 +486,14 @@ export function QuickUpload() {
         signal: controller.signal,
       });
       controller.signal.throwIfAborted();
+      prepared.current = {
+        videoId: draft.video.id,
+        session: draft.uploadSession,
+        file: selected,
+        completion: null,
+        storageComplete: false,
+        transferStarted: false,
+      };
       setVideoId(draft.video.id);
       setVisibility(draft.video.visibility);
       setCommentsEnabled(draft.video.commentsEnabled);
@@ -244,47 +510,10 @@ export function QuickUpload() {
         });
       });
 
-      await uploadPreparedVideoDirectly({
-        session: draft.uploadSession,
-        file: selected,
-        onProgress: setProgress,
-        onStatus: (status) =>
-          setMessage(
-            copy(
-              status.phase === "finalizing"
-                ? "Finalizing upload…"
-                : status.phase === "retrying"
-                  ? "Connection paused. Retrying the upload safely…"
-                  : "Uploading video…",
-            ),
-          ),
-        signal: controller.signal,
-      });
-      const confirmation = await confirmQuickUpload(draft.video.id, controller.signal);
-      setProcessingReady(confirmation.status === "DRAFT");
-      setProcessingLabel(confirmation.status === "DRAFT" ? copy("Ready") : copy("Queued"));
-      trackAnalyticsEvent("UPLOAD_COMPLETE", {
-        channelId: identity.channel.id,
-        videoId: draft.video.id,
-      });
-      setUploadComplete(true);
-      setMessage(
-        confirmation.status === "DRAFT"
-          ? copy("Upload and processing complete. Your video is ready to publish.")
-          : copy(
-              "Upload complete. AYIN is preparing a reliable playback version in the background.",
-            ),
-      );
+      await transfer(prepared.current, controller.signal);
     } catch (error) {
       if (controller.signal.aborted) return;
-      setUncertain(true);
-      setMessage(
-        error instanceof UploadProtocolError
-          ? copy(error.message)
-          : copy(
-              "Upload could not be confirmed. Review your saved uploads in Studio before starting again.",
-            ),
-      );
+      showUploadFailure(error, phaseRef.current);
     } finally {
       mutation.current = false;
       setBusy(false);
@@ -310,7 +539,11 @@ export function QuickUpload() {
     if (!identity || mutation.current || videoId || uncertain || published) return;
     const selected = Array.from(event.dataTransfer.files).find(isSupportedVideoFile);
     if (!selected) {
-      setMessage(copy("Drop one supported video file to start an upload."));
+      setFailure({
+        title: copy("Choose a video file"),
+        detail: copy("Drop one supported video file to start an upload."),
+        action: "choose",
+      });
       return;
     }
     void chooseFile(selected);
@@ -324,6 +557,10 @@ export function QuickUpload() {
     let reads = 0;
 
     const poll = async () => {
+      if (document.hidden) {
+        timeout = setTimeout(() => void poll(), 15000);
+        return;
+      }
       try {
         const status = await getQuickProcessingStatus(videoId, controller.signal);
         reads++;
@@ -331,6 +568,24 @@ export function QuickUpload() {
         const update = describeQuickProcessing(status, reads);
         setProcessingCheckNeeded(update.checkNeeded);
         setProcessingReady(status.ready);
+        setProcessingPercent(status.processing?.progressPercent ?? 0);
+        if (status.ready) {
+          changePhase("ready");
+          setFailure((current) => (current?.action === "processing" ? null : current));
+        }
+        if (
+          !status.ready &&
+          (status.processing?.status === "FAILED" || status.processing?.status === "CANCELLED")
+        ) {
+          setFailure({
+            title: copy("Video processing needs attention"),
+            detail: copy(
+              update.message ??
+                "Processing status is temporarily unavailable. Retry checking its status.",
+            ),
+            action: "processing",
+          });
+        }
         setProcessingLabel(copy(update.label));
         setProcessingStageLabel(update.stageLabel ? copy(update.stageLabel) : null);
         if (update.message) {
@@ -345,10 +600,20 @@ export function QuickUpload() {
           );
         }
         if (status.ready || update.checkNeeded) return;
-        timeout = setTimeout(() => void poll(), 2000);
+        timeout = setTimeout(
+          () => void poll(),
+          reads < 15 ? 2000 : reads < 60 ? 5000 : reads < 120 ? 15000 : 30000,
+        );
       } catch {
         if (!active || controller.signal.aborted) return;
         setProcessingCheckNeeded(true);
+        setFailure({
+          title: copy("Could not check processing"),
+          detail: copy(
+            "Your upload is saved. Retry the status check; you do not need to upload the file again.",
+          ),
+          action: "processing",
+        });
         setMessage(
           copy("Processing status is temporarily unavailable. Retry checking its status."),
         );
@@ -369,10 +634,16 @@ export function QuickUpload() {
     try {
       payload = detailsPayload();
     } catch {
+      setFailure({
+        title: copy("Check your video details"),
+        detail: copy("Check the title, schedule and advanced metadata before saving."),
+        action: "edit",
+      });
       setMessage(copy("Check the title, schedule and advanced metadata before saving."));
       return;
     }
     mutation.current = true;
+    setFailure(null);
     setBusy(true);
     setMutationKind("save");
     const controller = new AbortController();
@@ -382,8 +653,19 @@ export function QuickUpload() {
       controller.signal.throwIfAborted();
       setSavedSignature(signature);
       setMessage(copy("Video details saved."));
-    } catch {
+    } catch (error) {
       if (!controller.signal.aborted) {
+        if (isRejectedUploadRequest(error)) {
+          setFailure({
+            title: copy("Details were not saved"),
+            detail: copy(
+              uploadErrorMessage(error) ??
+                "Check the title, schedule and advanced metadata before saving.",
+            ),
+            action: "edit",
+          });
+          return;
+        }
         setUncertain(true);
         setMessage(
           copy(
@@ -418,6 +700,7 @@ export function QuickUpload() {
       return;
     }
     mutation.current = true;
+    setFailure(null);
     setBusy(true);
     setMutationKind("thumbnail");
     const controller = new AbortController();
@@ -427,8 +710,16 @@ export function QuickUpload() {
       controller.signal.throwIfAborted();
       setSelectedThumbnailId(choiceId);
       setMessage(copy("Thumbnail saved."));
-    } catch {
+    } catch (error) {
       if (!controller.signal.aborted) {
+        if (isRejectedUploadRequest(error)) {
+          setFailure({
+            title: copy("Thumbnail was not saved"),
+            detail: copy(uploadErrorMessage(error) ?? "Choose a JPG or PNG thumbnail up to 5 MB."),
+            action: "edit",
+          });
+          return;
+        }
         setUncertain(true);
         setMessage(
           copy(
@@ -457,12 +748,18 @@ export function QuickUpload() {
     try {
       payload = detailsPayload();
     } catch {
+      setFailure({
+        title: copy("Check your video details"),
+        detail: copy("Check the title, schedule and advanced metadata before publishing."),
+        action: "edit",
+      });
       setMessage(copy("Check the title, schedule and advanced metadata before publishing."));
       return;
     }
     mutation.current = true;
     const controller = new AbortController();
     operation.current = controller;
+    setFailure(null);
     setBusy(true);
     setMessage(null);
     setMutationKind("publish");
@@ -495,8 +792,19 @@ export function QuickUpload() {
 
       setMessage(copy("Published. Opening your video…"));
       router.push(href(`/watch/${encodeURIComponent(result.video.slug)}`));
-    } catch {
+    } catch (error) {
       if (!controller.signal.aborted) {
+        if (isRejectedUploadRequest(error)) {
+          setFailure({
+            title: copy("Video was not published"),
+            detail: copy(
+              uploadErrorMessage(error) ??
+                "Check the title, schedule and advanced metadata before publishing.",
+            ),
+            action: "edit",
+          });
+          return;
+        }
         setUncertain(true);
         setMessage(
           copy(
@@ -528,22 +836,28 @@ export function QuickUpload() {
   }
 
   const formatLabel = videoForm === "CLIP" ? copy("AYIN Clip") : copy("Standard video");
-  const statusLabel = published
-    ? copy("Published")
-    : processingReady
-      ? copy("Ready")
-      : uploadComplete
-        ? (processingLabel ?? copy("Processing"))
-        : videoId
-          ? locale === "ar"
-            ? `تم رفع ${progress}٪`
-            : `${progress}% uploaded`
-          : copy("Not started");
+  const statusLabel =
+    failure || uncertain || phase === "failed"
+      ? copy("Needs attention")
+      : phase === "paused"
+        ? copy("Paused")
+        : published
+          ? copy("Published")
+          : processingReady
+            ? copy("Ready")
+            : uploadComplete
+              ? (processingLabel ?? copy("Processing"))
+              : videoId
+                ? locale === "ar"
+                  ? `تم رفع ${progress}٪`
+                  : `${progress}% uploaded`
+                : copy("Not started");
 
   return (
     <section className={styles.shell} aria-label={copy("Creator upload")} dir={direction}>
       <PageHeader
-        eyebrow={copy("Creator upload")}
+        density="compact"
+        className={styles.pageHeader ?? ""}
         title={copy("Upload a video")}
         actions={
           <ActionLink href={href("/studio/content")}>{copy("Manage saved videos")}</ActionLink>
@@ -553,92 +867,239 @@ export function QuickUpload() {
         )}
       />
 
-      <div className={styles.workspace}>
-        <section className={styles.stepCard} aria-labelledby="format-heading">
-          <div className={styles.stepHeading}>
+      {file || failure || message || uncertain ? (
+        <div
+          className={`${styles.transferPanel} ${failure || uncertain ? styles.transferProblem : ""}`}
+          ref={feedback}
+          tabIndex={-1}
+          aria-label={copy("Current upload")}
+        >
+          <div className={styles.transferHeading}>
             <div>
-              <span className={styles.stepNumber}>01</span>
-              <h2 id="format-heading">{copy("Choose the viewing experience")}</h2>
-              <p>
-                {copy("Pick how this upload should appear across AYIN before selecting the file.")}
-              </p>
+              <small>{copy("Current upload")}</small>
+              <strong>{file?.name ?? copy("Upload a video")}</strong>
             </div>
-            <span className={styles.selectionPill}>{formatLabel}</span>
+            <span className={styles.transferBadge}>
+              {phase === "checking"
+                ? copy("Checking file")
+                : phase === "preparing"
+                  ? copy("Starting upload")
+                  : phase === "finalizing"
+                    ? copy("Confirming upload")
+                    : phase === "retrying"
+                      ? copy("Reconnecting")
+                      : statusLabel}
+            </span>
           </div>
+          <ol className={styles.phaseSteps} aria-label={copy("Upload workflow")}>
+            <li data-state={uploadComplete ? "complete" : "current"}>
+              {uploadComplete ? "✓" : "1"} {copy("Upload")}
+            </li>
+            <li data-state={processingReady ? "complete" : uploadComplete ? "current" : "pending"}>
+              {processingReady ? "✓" : "2"} {copy("Prepare playback")}
+            </li>
+            <li data-state={published ? "complete" : processingReady ? "current" : "pending"}>
+              {published ? "✓" : "3"} {copy("Publish")}
+            </li>
+          </ol>
+          {file && phase !== "checking" && phase !== "preparing" ? (
+            <>
+              <div
+                className={styles.transferTrack}
+                role="progressbar"
+                aria-label={copy("Upload progress")}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={progress}
+              >
+                <span style={{ width: `${progress}%` }} />
+              </div>
+              <div className={styles.transferMetrics}>
+                <span>
+                  {formatFileSize(transferredBytes)} / {formatFileSize(file.size)} · {progress}%
+                </span>
+                {phase === "uploading" && transferRate ? (
+                  <span>
+                    {formatFileSize(transferRate)}/s · {copy("About")}{" "}
+                    {Math.max(1, Math.ceil((file.size - transferredBytes) / transferRate / 60))}{" "}
+                    {copy("min left")}
+                  </span>
+                ) : null}
+                {uploadComplete && !processingReady ? (
+                  <span>
+                    {processingStageLabel ?? processingLabel ?? copy("Processing")}
+                    {processingPercent > 0 ? ` · ${processingPercent}%` : ""}
+                  </span>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+          {failure || uncertain ? (
+            <div className={styles.inlineFailure} role="alert">
+              <strong>{failure?.title ?? copy("This action needs checking")}</strong>
+              <p>{failure?.detail ?? message}</p>
+            </div>
+          ) : message ? (
+            <p className={styles.transferMessage} role="status" aria-live="polite">
+              {message}
+            </p>
+          ) : null}
+          <div className={styles.transferActions}>
+            {phase === "paused" || failure?.action === "retry" ? (
+              <ActionButton type="button" disabled={busy} onClick={() => void retryUpload()}>
+                {phase === "paused" ? copy("Continue upload") : copy("Retry this upload")}
+              </ActionButton>
+            ) : null}
+            {mutationKind === "upload" && (phase === "uploading" || phase === "retrying") ? (
+              <ActionButton tone="secondary" type="button" onClick={pauseUpload}>
+                {copy("Pause upload")}
+              </ActionButton>
+            ) : null}
+            {failure?.action === "choose" ? (
+              <ActionButton
+                tone="secondary"
+                type="button"
+                onClick={() => fileInput.current?.click()}
+              >
+                {copy("Choose another file")}
+              </ActionButton>
+            ) : null}
+            {failure?.action === "signin" ? (
+              <>
+                <ActionLink href={href("/login")} target="_blank" rel="noopener noreferrer">
+                  {copy("Sign in in a new tab")}
+                </ActionLink>
+                <ActionButton
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    if (prepared.current) void retryUpload();
+                    else {
+                      setFailure(null);
+                      setUncertain(false);
+                      setIdentityFailed(false);
+                      setIdentityAttempt((value) => value + 1);
+                    }
+                  }}
+                >
+                  {copy("I have signed in — continue")}
+                </ActionButton>
+              </>
+            ) : null}
+            {processingCheckNeeded ? (
+              <ActionButton
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setFailure(null);
+                  setProcessingCheckNeeded(false);
+                  setMessage(copy("Checking processing status…"));
+                  setProcessingAttempt((value) => value + 1);
+                }}
+              >
+                {copy("Check processing status")}
+              </ActionButton>
+            ) : null}
+            {videoId || uncertain ? (
+              <Link href={href("/studio/content")}>{copy("Review saved uploads in Studio")}</Link>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
-          <div
-            className={styles.typeGrid}
-            role="radiogroup"
-            aria-label={copy("Video format")}
-            onKeyDown={(event) => {
-              if (
-                videoId ||
-                busy ||
-                uncertain ||
-                published ||
-                !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(
-                  event.key,
-                )
-              )
-                return;
-              event.preventDefault();
-              const next =
-                event.key === "Home"
-                  ? "LONG_FORM"
-                  : event.key === "End"
-                    ? "CLIP"
-                    : videoForm === "CLIP"
-                      ? "LONG_FORM"
-                      : "CLIP";
-              setVideoForm(next);
-              event.currentTarget
-                .querySelectorAll<HTMLButtonElement>('[role="radio"]')
-                [next === "CLIP" ? 1 : 0]?.focus();
-            }}
+      <div className={styles.workspace}>
+        {!videoId ? (
+          <section
+            className={`${styles.stepCard} ${styles.formatCard}`}
+            aria-labelledby="format-heading"
           >
-            <button
-              className={`${styles.typeCard} ${videoForm === "LONG_FORM" ? styles.typeCardSelected : ""}`}
-              type="button"
-              role="radio"
-              aria-checked={videoForm === "LONG_FORM"}
-              disabled={Boolean(videoId) || busy || published}
-              onClick={() => setVideoForm("LONG_FORM")}
-            >
-              <span className={styles.typeVisual} aria-hidden="true">
-                <span className={styles.landscapeFrame} />
-              </span>
-              <span className={styles.typeCopy}>
-                <strong>{copy("Standard video")}</strong>
-                <small>{copy("Full videos, episodes, tutorials and long-form stories.")}</small>
-              </span>
-              <span className={styles.typeMeta}>{copy("Landscape + flexible")}</span>
-              <span className={styles.typeCheck} aria-hidden="true">
-                ✓
-              </span>
-            </button>
+            <div className={styles.stepHeading}>
+              <div>
+                <span className={styles.stepNumber}>01</span>
+                <h2 id="format-heading">{copy("Choose the viewing experience")}</h2>
+                <p>
+                  {copy(
+                    "Pick how this upload should appear across AYIN before selecting the file.",
+                  )}
+                </p>
+              </div>
+              <span className={styles.selectionPill}>{formatLabel}</span>
+            </div>
 
-            <button
-              className={`${styles.typeCard} ${videoForm === "CLIP" ? styles.typeCardSelected : ""}`}
-              type="button"
-              role="radio"
-              aria-checked={videoForm === "CLIP"}
-              disabled={Boolean(videoId) || busy || published}
-              onClick={() => setVideoForm("CLIP")}
+            <div
+              className={styles.typeGrid}
+              role="radiogroup"
+              aria-label={copy("Video format")}
+              onKeyDown={(event) => {
+                if (
+                  videoId ||
+                  busy ||
+                  uncertain ||
+                  published ||
+                  !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(
+                    event.key,
+                  )
+                )
+                  return;
+                event.preventDefault();
+                const next =
+                  event.key === "Home"
+                    ? "LONG_FORM"
+                    : event.key === "End"
+                      ? "CLIP"
+                      : videoForm === "CLIP"
+                        ? "LONG_FORM"
+                        : "CLIP";
+                setVideoForm(next);
+                event.currentTarget
+                  .querySelectorAll<HTMLButtonElement>('[role="radio"]')
+                  [next === "CLIP" ? 1 : 0]?.focus();
+              }}
             >
-              <span className={styles.typeVisual} aria-hidden="true">
-                <span className={styles.portraitFrame} />
-              </span>
-              <span className={styles.typeCopy}>
-                <strong>{copy("AYIN Clip")}</strong>
-                <small>{copy("Fast, vertical-first videos built for the Clips feed.")}</small>
-              </span>
-              <span className={styles.typeMeta}>{copy("Vertical-first")}</span>
-              <span className={styles.typeCheck} aria-hidden="true">
-                ✓
-              </span>
-            </button>
-          </div>
-        </section>
+              <button
+                className={`${styles.typeCard} ${videoForm === "LONG_FORM" ? styles.typeCardSelected : ""}`}
+                type="button"
+                role="radio"
+                aria-checked={videoForm === "LONG_FORM"}
+                disabled={Boolean(videoId) || busy || published}
+                onClick={() => setVideoForm("LONG_FORM")}
+              >
+                <span className={styles.typeVisual} aria-hidden="true">
+                  <span className={styles.landscapeFrame} />
+                </span>
+                <span className={styles.typeCopy}>
+                  <strong>{copy("Standard video")}</strong>
+                  <small>{copy("Full videos, episodes, tutorials and long-form stories.")}</small>
+                </span>
+                <span className={styles.typeMeta}>{copy("Landscape + flexible")}</span>
+                <span className={styles.typeCheck} aria-hidden="true">
+                  ✓
+                </span>
+              </button>
+
+              <button
+                className={`${styles.typeCard} ${videoForm === "CLIP" ? styles.typeCardSelected : ""}`}
+                type="button"
+                role="radio"
+                aria-checked={videoForm === "CLIP"}
+                disabled={Boolean(videoId) || busy || published}
+                onClick={() => setVideoForm("CLIP")}
+              >
+                <span className={styles.typeVisual} aria-hidden="true">
+                  <span className={styles.portraitFrame} />
+                </span>
+                <span className={styles.typeCopy}>
+                  <strong>{copy("AYIN Clip")}</strong>
+                  <small>{copy("Fast, vertical-first videos built for the Clips feed.")}</small>
+                </span>
+                <span className={styles.typeMeta}>{copy("Vertical-first")}</span>
+                <span className={styles.typeCheck} aria-hidden="true">
+                  ✓
+                </span>
+              </button>
+            </div>
+          </section>
+        ) : null}
 
         {identityFailed ? (
           <p role="alert">
@@ -654,75 +1115,120 @@ export function QuickUpload() {
             </button>
           </p>
         ) : null}
-        <section className={styles.stepCard} aria-labelledby="file-heading">
-          <div className={styles.stepHeading}>
-            <div>
-              <span className={styles.stepNumber}>02</span>
-              <h2 id="file-heading">{copy("Add your video")}</h2>
-              <p>{copy("Drag it here on desktop or open your library on mobile.")}</p>
-            </div>
-            {file ? <span className={styles.selectionPill}>{copy("File selected")}</span> : null}
-          </div>
-
-          <label
-            className={`${styles.picker} ${dragActive ? styles.pickerActive : ""} ${!identity ? styles.pickerDisabled : ""}`}
-            onDragEnter={handleDragOver}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
+        {!videoId ? (
+          <section
+            className={`${styles.stepCard} ${styles.fileCard}`}
+            aria-labelledby="file-heading"
           >
-            <input
-              className={styles.fileInput}
-              type="file"
-              accept="video/*,.mp4,.mov,.mkv,.webm,.avi,.mpeg,.mpg,.mts,.m2ts,.ts,.3gp,.3g2,.m4v,.wmv,.flv,.ogv,.mxf"
-              disabled={!identity || busy || published || uncertain || Boolean(videoId)}
-              onChange={(event) => void chooseFile(event.target.files?.[0] ?? null)}
-            />
+            <div className={styles.stepHeading}>
+              <div>
+                <span className={styles.stepNumber}>02</span>
+                <h2 id="file-heading">{copy("Add your video")}</h2>
+                <p>{copy("Drag it here on desktop or open your library on mobile.")}</p>
+              </div>
+              {file ? <span className={styles.selectionPill}>{copy("File selected")}</span> : null}
+            </div>
 
-            <span className={styles.uploadGlyph} aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false">
-                <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14.5v3A2.5 2.5 0 0 0 7.5 20h9a2.5 2.5 0 0 0 2.5-2.5v-3" />
-              </svg>
-            </span>
+            <label
+              className={`${styles.picker} ${dragActive ? styles.pickerActive : ""} ${!identity ? styles.pickerDisabled : ""}`}
+              onDragEnter={handleDragOver}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
+              <input
+                className={styles.fileInput}
+                type="file"
+                accept="video/*,.mp4,.mov,.mkv,.webm,.avi,.mpeg,.mpg,.mts,.m2ts,.ts,.3gp,.3g2,.m4v,.wmv,.flv,.ogv,.mxf"
+                disabled={
+                  !identity ||
+                  !capabilities ||
+                  !capabilities.storageAvailable ||
+                  !capabilities.availableStorageBytes ||
+                  busy ||
+                  published ||
+                  uncertain ||
+                  Boolean(videoId)
+                }
+                ref={fileInput}
+                onClick={(event) => {
+                  event.currentTarget.value = "";
+                }}
+                onChange={(event) => void chooseFile(event.target.files?.[0] ?? null)}
+              />
 
-            <span className={styles.pickerCopy}>
-              <strong>
-                {file
-                  ? file.name
-                  : dragActive
-                    ? copy("Drop your video here")
-                    : copy("Select a video to upload")}
-              </strong>
-              <span>
-                {file
-                  ? `${formatFileSize(file.size)} · ${formatLabel}`
-                  : identity
-                    ? copy("Drag & drop a file here, or browse your device.")
-                    : copy("Preparing your creator workspace…")}
+              <span className={styles.uploadGlyph} aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14.5v3A2.5 2.5 0 0 0 7.5 20h9a2.5 2.5 0 0 0 2.5-2.5v-3" />
+                </svg>
               </span>
-            </span>
 
-            <span className={styles.browseButton}>
-              {busy ? copy("Checking…") : file ? copy("Choose another") : copy("Browse video")}
-            </span>
+              <span className={styles.pickerCopy}>
+                <strong>
+                  {file
+                    ? file.name
+                    : dragActive
+                      ? copy("Drop your video here")
+                      : copy("Select a video to upload")}
+                </strong>
+                <span>
+                  {file
+                    ? `${formatFileSize(file.size)} · ${formatLabel}`
+                    : identity
+                      ? copy("Drag & drop a file here, or browse your device.")
+                      : copy("Preparing your creator workspace…")}
+                </span>
+              </span>
 
-            <span className={styles.pickerMeta}>
-              {copy("MP4, MOV, MKV, WebM and other common video formats")}
-            </span>
-          </label>
+              <span className={styles.browseButton}>
+                {busy
+                  ? phase === "checking"
+                    ? copy("Checking…")
+                    : copy("Upload in progress")
+                  : file
+                    ? copy("Choose another")
+                    : copy("Browse video")}
+              </span>
 
-          {inspection ? (
-            <p className={styles[inspection.status]} role="status">
-              {locale === "ar"
-                ? inspection.status === "incompatible"
-                  ? "صيغة الفيديو غير مدعومة. اختر ملف فيديو شائعًا."
-                  : inspection.status === "compatible"
-                    ? "الملف متوافق للمشاهدة؛ سيجري تجهيز النسخة بعد الرفع."
-                    : "لا يمكن معاينة الملف محليًا. سيتم فحصه وتجهيزه بعد الرفع."
-                : inspection.message}
-            </p>
-          ) : null}
-        </section>
+              <span className={styles.pickerMeta}>
+                {copy("MP4, MOV, MKV, WebM and other common video formats")}
+              </span>
+            </label>
+
+            {capabilities ? (
+              <p className={styles.limitHint}>
+                {copy("Maximum file size")}:{" "}
+                <strong>{formatFileSize(capabilities.maxFileSizeBytes)}</strong>
+                <span>
+                  {" "}
+                  · {copy("Available storage")}:{" "}
+                  {formatFileSize(capabilities.availableStorageBytes)}
+                </span>
+              </p>
+            ) : null}
+            {capabilities &&
+            (!capabilities.storageAvailable || !capabilities.availableStorageBytes) ? (
+              <p className={styles.inlineFailure} role="alert">
+                {copy(
+                  !capabilities.storageAvailable
+                    ? "Video uploads are temporarily unavailable. Please try again later."
+                    : "Your channel does not have enough storage for this video. Review saved videos in Studio.",
+                )}
+              </p>
+            ) : null}
+            {inspection ? (
+              <p className={styles[inspection.status]} role="status">
+                {locale === "ar"
+                  ? inspection.status === "incompatible"
+                    ? "صيغة الفيديو غير مدعومة. اختر ملف فيديو شائعًا."
+                    : inspection.status === "compatible"
+                      ? "الملف متوافق للمشاهدة؛ سيجري تجهيز النسخة بعد الرفع."
+                      : "لا يمكن معاينة الملف محليًا. سيتم فحصه وتجهيزه بعد الرفع."
+                  : inspection.message}
+              </p>
+            ) : null}
+          </section>
+        ) : null}
 
         {videoId ? (
           <section
@@ -747,7 +1253,10 @@ export function QuickUpload() {
               </span>
             </div>
 
-            <fieldset className={styles.fields} disabled={busy || published || uncertain}>
+            <fieldset
+              className={styles.fields}
+              disabled={(busy && mutationKind !== "upload") || published || uncertain}
+            >
               <div className={styles.editorTopGrid}>
                 <label className={styles.titleField}>
                   <span>{copy("Title")}</span>
@@ -764,25 +1273,22 @@ export function QuickUpload() {
                     <span>
                       <small>{copy("Upload status")}</small>
                       <strong>
-                        {uploadComplete
-                          ? processingReady
-                            ? copy("Ready to publish")
-                            : copy("Upload complete")
-                          : copy("Uploading video")}
+                        {failure || phase === "failed" || uncertain
+                          ? copy("Needs attention")
+                          : phase === "paused"
+                            ? copy("Paused")
+                            : uploadComplete
+                              ? processingReady
+                                ? copy("Ready to publish")
+                                : copy("Upload complete")
+                              : copy("Uploading video")}
                       </strong>
                     </span>
                     <strong className={styles.progressValue}>
                       {uploadComplete ? (processingLabel ?? copy("Queued")) : `${progress}%`}
                     </strong>
                   </div>
-                  <div
-                    className={styles.progressTrack}
-                    role="progressbar"
-                    aria-label={copy("Upload progress")}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={progress}
-                  >
+                  <div className={styles.progressTrack} aria-hidden="true">
                     <span style={{ width: `${Math.max(2, progress)}%` }} />
                   </div>
                   {processingStageLabel ? (
@@ -867,6 +1373,7 @@ export function QuickUpload() {
                                 : styles.thumbnail
                             }
                             key={choice.id}
+                            disabled={busy}
                             type="button"
                             onClick={() => void chooseCapturedThumbnail(choice)}
                           >
@@ -901,6 +1408,7 @@ export function QuickUpload() {
                       <input
                         type="file"
                         accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+                        disabled={busy}
                         onChange={(event) =>
                           void chooseCustomThumbnail(event.target.files?.[0] ?? null)
                         }
@@ -917,6 +1425,19 @@ export function QuickUpload() {
                 )}
               </p>
 
+              {!uploadComplete ? (
+                <p className={styles.hint}>
+                  {copy(
+                    "You can edit the details while the video uploads. Save or publish after upload finishes.",
+                  )}
+                </p>
+              ) : !processingReady ? (
+                <p className={styles.hint}>
+                  {copy(
+                    "Your file is uploaded. Publishing becomes available when playback is ready.",
+                  )}
+                </p>
+              ) : null}
               <ActionButton
                 className={styles.actionLayout}
                 tone="secondary"
@@ -952,37 +1473,12 @@ export function QuickUpload() {
           </section>
         ) : null}
       </div>
-
-      {videoId || uncertain ? (
-        <p className={styles.hint}>
-          <Link href={href("/studio/content")}>{copy("Review saved uploads in Studio")}</Link>
-          {uncertain ? copy(" · The last response is uncertain; further writes are paused.") : null}
-        </p>
-      ) : null}
-      {processingCheckNeeded && !uncertain ? (
-        <button
-          type="button"
-          onClick={() => {
-            setProcessingCheckNeeded(false);
-            setMessage(copy("Checking processing status…"));
-            setProcessingAttempt((value) => value + 1);
-          }}
-        >
-          {copy("Check processing status")}
-        </button>
-      ) : null}
-      {message ? (
-        <p className={styles.message} role="status" aria-live="polite">
-          <span aria-hidden="true" />
-          {message}
-        </p>
-      ) : null}
     </section>
   );
 }
 
 function formatFileSize(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "Video file";
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 MB";
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;

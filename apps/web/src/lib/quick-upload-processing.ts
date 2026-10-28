@@ -52,10 +52,10 @@ export function describeQuickProcessing(status: QuickProcessingStatus, reads: nu
       processing && processing.status !== "QUEUED" && processing.status !== "READY"
         ? (stageLabels.get(processing.stage ?? "") ?? null)
         : null,
-    checkNeeded: reads >= 30,
+    checkNeeded: false,
     message:
       reads >= 30
-        ? "Playback preparation was still pending at the last check. Automatic checks are paused; check again for an update."
+        ? "Your video is still processing. You can keep this page open or return to Studio later."
         : null,
   };
 }

@@ -64,6 +64,32 @@ export class QuickUploadController {
     @Inject(VideoMetadataService) private readonly metadata: VideoMetadataService,
   ) {}
 
+  @Get("upload-capabilities")
+  @Header("Cache-Control", "private, no-store")
+  async uploadCapabilities(@Req() request: AuthenticatedRequest, @Query() query: unknown) {
+    const parsed = z.object({ channelId: z.string().uuid() }).strict().safeParse(query);
+    if (!parsed.success)
+      throw this.httpError(
+        new QuickUploadError("INVALID_UPLOAD_REQUEST", "Choose a channel before uploading."),
+      );
+    const channelId = parsed.data.channelId.toLowerCase();
+    return this.run(async () => {
+      const capabilities = await this.quickUpload.uploadCapabilities(
+        request.ayinAuth.accountId,
+        channelId,
+      );
+      const recovery = await this.recovery.capability(request.ayinAuth, channelId);
+      return {
+        ...capabilities,
+        durableRecovery: {
+          supported: recovery.supported,
+          maxFileSizeBytes:
+            recovery.supported && "maxSourceBytes" in recovery ? recovery.maxSourceBytes : null,
+        },
+      };
+    });
+  }
+
   @Get("uploads")
   @Header("Cache-Control", "private, no-store")
   async uploadHistory(@Req() request: AuthenticatedRequest, @Query() query: unknown) {

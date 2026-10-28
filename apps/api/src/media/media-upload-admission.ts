@@ -122,12 +122,10 @@ export async function lockUploadAdmission(tx: Prisma.TransactionClient, channelI
  * quota at the first grant, so a lost/crashed CREATE cannot charge whole-file
  * bytes when it could only allocate an empty multipart resource.
  */
-export async function assertUploadByteQuota(
+export async function readUploadByteUsage(
   tx: Prisma.TransactionClient,
   channelId: string,
-  sizeBytes: number,
-  quotaBytes: number,
-) {
+): Promise<bigint | null> {
   const live = await tx.mediaAsset.aggregate({
     where: {
       channelId,
@@ -155,13 +153,23 @@ export async function assertUploadByteQuota(
       AND (a.id IS NULL OR a."removedAt" IS NOT NULL OR a.status NOT IN ('PENDING','UPLOADED','VALIDATED'))
       AND (s.state IN ('PREPARING','OPEN','FINALIZING','CANCELLING','UNRESOLVED') OR EXISTS (
         SELECT 1 FROM "PrivacyMediaDeletionJob" j WHERE j."uploadSessionId" = s.id AND j.status <> 'DONE'))`;
+  return debt[0] ? (live._sum.sizeBytes ?? 0n) + debt[0].bytes : null;
+}
+
+export async function assertUploadByteQuota(
+  tx: Prisma.TransactionClient,
+  channelId: string,
+  sizeBytes: number,
+  quotaBytes: number,
+) {
+  const usedBytes = await readUploadByteUsage(tx, channelId);
   if (
     !Number.isSafeInteger(sizeBytes) ||
     sizeBytes < 0 ||
     !Number.isSafeInteger(quotaBytes) ||
     quotaBytes < 1 ||
-    !debt[0] ||
-    (live._sum.sizeBytes ?? 0n) + debt[0].bytes + BigInt(sizeBytes) > BigInt(quotaBytes)
+    usedBytes === null ||
+    usedBytes + BigInt(sizeBytes) > BigInt(quotaBytes)
   )
     throw new MediaUploadError(
       "CHANNEL_UPLOAD_QUOTA_REACHED",

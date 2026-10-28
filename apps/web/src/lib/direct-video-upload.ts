@@ -1,4 +1,5 @@
-import { apiBaseUrl, readApiError } from "@/lib/api";
+import { apiBaseUrl } from "@/lib/api";
+import { readUploadRequestError, UploadRequestError } from "./upload-error";
 import { videoMimeTypeForUpload } from "@/lib/video-inspection";
 import {
   parseUploadCompletion,
@@ -10,6 +11,7 @@ import {
 } from "./upload-session";
 
 const MAX_PART_ATTEMPTS = 4;
+const MAX_CONCURRENT_PARTS = 3;
 const STALL_TIMEOUT_MS = 45_000;
 const STALL_CHECK_INTERVAL_MS = 5_000;
 
@@ -53,7 +55,7 @@ interface UploadBlobErrorOptions {
   status?: number;
 }
 
-class UploadBlobError extends Error {
+export class UploadBlobError extends Error {
   readonly retryable: boolean;
   readonly status: number | null;
 
@@ -91,31 +93,55 @@ export async function uploadPreparedVideoDirectly(input: {
   // Admin may require an explicit verification continuation for this metadata
   // request. Storage bodies and completion acknowledgment validation stay here.
   completeUpload?: (payload: DirectUploadCompletionInput) => Promise<unknown>;
+  onBytesProgress?: (loaded: number, total: number) => void;
+  renewSingleAuthorization?: boolean;
 }): Promise<DirectUploadResult> {
   const { file, onProgress, onStatus, signal } = input;
   signal?.throwIfAborted();
   const session = parseUploadSession(input.session, file.size);
   let highestReportedPercent = 0;
+  let highestReportedBytes = 0;
   const reportProgress = (loadedBytes: number) => {
-    const next = Math.min(99, Math.round((loadedBytes / file.size) * 100));
+    // Report logical file bytes, not retransmitted traffic. Retrying a part must
+    // neither count those bytes twice nor move the progress bar backwards.
+    highestReportedBytes = Math.max(highestReportedBytes, Math.min(file.size, loadedBytes));
+    input.onBytesProgress?.(highestReportedBytes, file.size);
+    const next = Math.min(99, Math.round((highestReportedBytes / file.size) * 100));
     if (next <= highestReportedPercent) return;
     highestReportedPercent = next;
     onProgress(highestReportedPercent);
   };
 
   if (session.mode === "single") {
-    onStatus?.({ phase: "uploading", message: "Uploading video…" });
     await retryPart(
-      async () =>
-        uploadBlob(
-          session.upload.url,
+      async (attempt) => {
+        const authorization =
+          attempt > 1 || input.renewSingleAuthorization
+            ? parseUploadSession(
+                {
+                  ...session,
+                  upload: await apiJson<unknown>(
+                    "/media/uploads/sessions/authorize-single",
+                    { sessionToken: session.sessionToken },
+                    signal,
+                  ),
+                },
+                file.size,
+              )
+            : session;
+        if (authorization.mode !== "single") throw new UploadProtocolError();
+        signal?.throwIfAborted();
+        onStatus?.({ phase: "uploading", message: "Uploading video…", attempt });
+        return uploadBlob(
+          authorization.upload.url,
           file,
-          session.upload.headers,
+          authorization.upload.headers,
           (loaded) => {
             reportProgress(loaded);
           },
           signal,
-        ),
+        );
+      },
       (attempt) =>
         onStatus?.({
           phase: "retrying",
@@ -124,6 +150,7 @@ export async function uploadPreparedVideoDirectly(input: {
         }),
       signal,
     );
+    signal?.throwIfAborted();
     reportProgress(file.size);
     onStatus?.({ phase: "finalizing", message: "Finalizing upload…" });
     const completed = parseUploadCompletion(
@@ -146,62 +173,94 @@ export async function uploadPreparedVideoDirectly(input: {
   const completedParts = new Map(
     resumed.map((part) => [part.partNumber, { partNumber: part.partNumber, etag: part.etag }]),
   );
-  let completedBytes = resumed.reduce((total, part) => total + part.sizeBytes, 0);
-  reportProgress(completedBytes);
+  const partProgress = new Map(resumed.map((part) => [part.partNumber, part.sizeBytes]));
+  let transferredBytes = resumed.reduce((total, part) => total + part.sizeBytes, 0);
+  reportProgress(transferredBytes);
 
-  for (let partNumber = 1; partNumber <= session.partCount; partNumber += 1) {
-    signal?.throwIfAborted();
-    if (completedParts.has(partNumber)) continue;
-
-    const start = (partNumber - 1) * session.partSizeBytes;
-    const end = Math.min(file.size, start + session.partSizeBytes);
-    const blob = file.slice(start, end);
-    onStatus?.({
-      phase: "uploading",
-      message: `Uploading video · part ${partNumber} of ${session.partCount}`,
-      partNumber,
-      partCount: session.partCount,
-    });
-
-    const etag = await retryPart(
-      async () => {
-        // Refresh the presigned URL for every attempt. This avoids retrying with
-        // an authorization that may have expired during a long network stall.
-        const authorization = await apiJson<unknown>(
-          "/media/uploads/sessions/authorize-part",
-          {
-            sessionToken: session.sessionToken,
-            partNumber,
+  signal?.throwIfAborted();
+  const transfer = new AbortController();
+  const cancel = () => transfer.abort(signal?.reason);
+  signal?.addEventListener("abort", cancel, { once: true });
+  let nextPartNumber = 1;
+  const worker = async () => {
+    try {
+      while (!transfer.signal.aborted) {
+        while (completedParts.has(nextPartNumber)) nextPartNumber += 1;
+        if (nextPartNumber > session.partCount) return;
+        const partNumber = nextPartNumber++;
+        const start = (partNumber - 1) * session.partSizeBytes;
+        const blob = file.slice(start, Math.min(file.size, start + session.partSizeBytes));
+        const reportPartProgress = (loaded: number) => {
+          if (transfer.signal.aborted) return;
+          const previous = partProgress.get(partNumber) ?? 0;
+          const current = Math.max(previous, Math.min(blob.size, loaded));
+          partProgress.set(partNumber, current);
+          transferredBytes += current - previous;
+          reportProgress(transferredBytes);
+        };
+        const etag = await retryPart(
+          async (attempt) => {
+            // A retry occupies this worker's slot and refreshes only its part's
+            // authorization. Other completed or in-flight parts are retained.
+            const authorization = await apiJson<unknown>(
+              "/media/uploads/sessions/authorize-part",
+              { sessionToken: session.sessionToken, partNumber },
+              transfer.signal,
+            );
+            transfer.signal.throwIfAborted();
+            onStatus?.({
+              phase: "uploading",
+              message: `Uploading video · part ${partNumber} of ${session.partCount}`,
+              partNumber,
+              partCount: session.partCount,
+              attempt,
+            });
+            return uploadBlob(
+              parseUploadPartUrl(authorization),
+              blob,
+              {},
+              reportPartProgress,
+              transfer.signal,
+            );
           },
-          signal,
+          (attempt) =>
+            onStatus?.({
+              phase: "retrying",
+              message: `Connection paused. Retrying part ${partNumber} of ${session.partCount} safely…`,
+              partNumber,
+              partCount: session.partCount,
+              attempt,
+            }),
+          transfer.signal,
         );
-        return uploadBlob(
-          parseUploadPartUrl(authorization),
-          blob,
-          {},
-          (loaded) => {
-            reportProgress(completedBytes + loaded);
-          },
-          signal,
-        );
-      },
-      (attempt) =>
-        onStatus?.({
-          phase: "retrying",
-          message: `Connection paused. Retrying part ${partNumber} of ${session.partCount} safely…`,
-          partNumber,
-          partCount: session.partCount,
-          attempt,
-        }),
-      signal,
-    );
-
-    if (!etag) {
-      throw new Error("One upload part could not be verified. Please retry the upload.");
+        transfer.signal.throwIfAborted();
+        if (!etag?.trim() || etag.length > 512 || /[\r\n]/.test(etag)) {
+          throw new UploadBlobError(
+            "One upload part could not be verified. Resume the upload to check the saved parts.",
+            { retryable: false },
+          );
+        }
+        completedParts.set(partNumber, { partNumber, etag });
+        reportPartProgress(blob.size);
+      }
+    } catch (error) {
+      // Preserve the first failure and stop all sibling requests/backoffs before
+      // allowing this operation to return or a caller to start a safe retry.
+      if (!transfer.signal.aborted) transfer.abort(error);
+      throw error;
     }
-    completedParts.set(partNumber, { partNumber, etag });
-    completedBytes += blob.size;
-    reportProgress(completedBytes);
+  };
+  try {
+    await Promise.allSettled(
+      Array.from(
+        { length: Math.min(MAX_CONCURRENT_PARTS, session.partCount - completedParts.size) },
+        worker,
+      ),
+    );
+    transfer.signal.throwIfAborted();
+    if (completedParts.size !== session.partCount) throw new UploadProtocolError();
+  } finally {
+    signal?.removeEventListener("abort", cancel);
   }
 
   onStatus?.({ phase: "finalizing", message: "Finalizing upload…" });
@@ -266,10 +325,7 @@ async function apiJson<T>(path: string, payload: unknown, signal?: AbortSignal):
       signal: controller.signal,
     });
     if (!response.ok) {
-      throw new UploadBlobError(await readApiError(response), {
-        retryable: [408, 425, 429].includes(response.status) || response.status >= 500,
-        status: response.status,
-      });
+      throw await readUploadRequestError(response);
     }
     try {
       return (await response.json()) as T;
@@ -314,6 +370,7 @@ export function uploadBlob(
     const cancel = () => request.abort();
     signal?.addEventListener("abort", cancel, { once: true });
     request.upload.onprogress = (event) => {
+      if (settled || signal?.aborted) return;
       lastProgressAt = Date.now();
       if (event.lengthComputable) onProgress(event.loaded);
     };
@@ -390,7 +447,10 @@ async function retryPart<T>(
       signal?.throwIfAborted();
       const retryable =
         !(error instanceof UploadProtocolError) &&
-        (!(error instanceof UploadBlobError) || error.retryable);
+        (!(error instanceof UploadBlobError) || error.retryable) &&
+        (!(error instanceof UploadRequestError) ||
+          [408, 425, 429].includes(error.status) ||
+          error.status >= 500);
       if (!retryable || attempt >= MAX_PART_ATTEMPTS) break;
       const nextAttempt = attempt + 1;
       onRetry?.(nextAttempt, error);
@@ -412,4 +472,15 @@ async function retryPart<T>(
     }
   }
   throw lastError instanceof Error ? lastError : new Error("Upload part failed after retries.");
+}
+
+export async function completeVideoUpload(
+  payload: DirectUploadCompletionInput,
+  assetId: string,
+  signal?: AbortSignal,
+): Promise<DirectUploadResult> {
+  return parseUploadCompletion(
+    await apiJson<unknown>("/media/uploads/sessions/complete", payload, signal),
+    assetId,
+  );
 }

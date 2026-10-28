@@ -69,6 +69,7 @@ databaseDescribe("direct creator media upload", () => {
   });
 
   beforeEach(async () => {
+    vi.restoreAllMocks();
     vi.clearAllMocks();
     await prisma.$executeRawUnsafe('TRUNCATE TABLE "Account", "Channel" CASCADE');
   });
@@ -229,7 +230,7 @@ databaseDescribe("direct creator media upload", () => {
     const after = await prisma.mediaAsset.findUnique({ where: { id: session.assetId } });
     expect(after?.status).toBe("UPLOADED");
   });
-  async function tokenFixture() {
+  async function tokenFixture(sizeBytes = 70 * 1024 * 1024) {
     const owner = await register("Token boundary owner", "token-boundary@example.com");
     const created = await app.inject({
       method: "POST",
@@ -237,7 +238,7 @@ databaseDescribe("direct creator media upload", () => {
       headers: { cookie: owner.cookie },
       payload: {
         channelId: owner.user.channel.id,
-        sizeBytes: 70 * 1024 * 1024,
+        sizeBytes,
         mimeType: "video/mp4",
       },
     });
@@ -279,7 +280,7 @@ databaseDescribe("direct creator media upload", () => {
               .digest("base64url");
         }
         const before = await prisma.mediaAsset.findMany({ orderBy: { id: "asc" } });
-        for (const path of ["authorize-part", "resume", "complete", "abort"]) {
+        for (const path of ["authorize-part", "authorize-single", "resume", "complete", "abort"]) {
           const response = await app.inject({
             method: "POST",
             url: "/media/uploads/sessions/" + path,
@@ -297,6 +298,7 @@ databaseDescribe("direct creator media upload", () => {
         expect(await prisma.mediaAsset.findMany({ orderBy: { id: "asc" } })).toEqual(before);
         for (const method of [
           storage.authorizeMultipartPart,
+          storage.authorizeSinglePut,
           storage.listParts,
           storage.completeMultipartUpload,
           storage.abortMultipartUpload,
@@ -306,6 +308,195 @@ databaseDescribe("direct creator media upload", () => {
           expect(method).not.toHaveBeenCalled();
       },
     );
+  it("finishes an ordinary multipart transfer after the original 15-minute provider URL window", async () => {
+    const { owner, session, videoId } = await tokenFixture();
+    const createdAt = Date.now();
+    expect(new Date(session.expiresAt).getTime() - createdAt).toBeGreaterThan(23 * 3600_000);
+    vi.spyOn(Date, "now").mockReturnValue(createdAt + 20 * 60_000);
+    const part = await app.inject({
+      method: "POST",
+      url: "/media/uploads/sessions/authorize-part",
+      headers: { cookie: owner.cookie },
+      payload: { sessionToken: session.sessionToken, partNumber: 1 },
+    });
+    expect(part.statusCode).toBe(201);
+    expect(storage.authorizeMultipartPart).toHaveBeenCalledWith(
+      expect.objectContaining({ key: session.objectKey, expiresInSeconds: 900 }),
+    );
+    const resume = await app.inject({
+      method: "POST",
+      url: "/media/uploads/sessions/resume",
+      headers: { cookie: owner.cookie },
+      payload: { sessionToken: session.sessionToken },
+    });
+    expect(resume.statusCode).toBe(201);
+    vi.mocked(storage.headObject).mockResolvedValueOnce({
+      sizeBytes: 70 * 1024 * 1024,
+      contentType: "video/mp4",
+      etag: '"complete"',
+    });
+    const completed = await app.inject({
+      method: "POST",
+      url: "/media/uploads/sessions/complete",
+      headers: { cookie: owner.cookie },
+      payload: {
+        sessionToken: session.sessionToken,
+        parts: Array.from({ length: session.partCount }, (_, index) => ({
+          partNumber: index + 1,
+          etag: `part-${index + 1}`,
+        })),
+      },
+    });
+    expect(completed.statusCode).toBe(201);
+    expect(completed.json().status).toBe("UPLOADED");
+    expect(await prisma.mediaProcessingJob.count({ where: { videoId } })).toBe(1);
+    expect(storage.createMultipartUpload).not.toHaveBeenCalled();
+  });
+
+  it("renews the same pending single source after 15 minutes without resetting its provider allocation", async () => {
+    const { owner, session } = await tokenFixture(1024);
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 20 * 60_000);
+    const before = await prisma.mediaAsset.findUnique({ where: { id: session.assetId } });
+    const result = await app.inject({
+      method: "POST",
+      url: "/media/uploads/sessions/authorize-single",
+      headers: { cookie: owner.cookie },
+      payload: { sessionToken: session.sessionToken },
+    });
+    expect(result.statusCode).toBe(201);
+    expect(result.headers["cache-control"]).toBe("private, no-store");
+    expect(result.json()).toMatchObject({
+      method: "PUT",
+      headers: { "content-type": "video/mp4" },
+    });
+    expect(storage.authorizeSinglePut).toHaveBeenCalledExactlyOnceWith({
+      key: session.objectKey,
+      contentType: "video/mp4",
+      expiresInSeconds: 900,
+    });
+    expect(await prisma.mediaAsset.findUnique({ where: { id: session.assetId } })).toEqual(before);
+    expect(storage.createMultipartUpload).not.toHaveBeenCalled();
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+  });
+
+  it("authorizes every part of a 3.48 GiB source without applying the 12-per-minute session-creation limit", async () => {
+    const { owner, session } = await tokenFixture(3_735_538_284);
+    expect(session.partCount).toBe(223);
+    for (let partNumber = 1; partNumber <= session.partCount; partNumber += 1) {
+      const response = await app.inject({
+        method: "POST",
+        url: "/media/uploads/sessions/authorize-part",
+        headers: { cookie: owner.cookie },
+        payload: { sessionToken: session.sessionToken, partNumber },
+      });
+      expect(response.statusCode, `part ${partNumber}`).toBe(201);
+    }
+    expect(storage.authorizeMultipartPart).toHaveBeenCalledTimes(223);
+    const single = await app.inject({
+      method: "POST",
+      url: "/media/uploads/sessions/authorize-single",
+      headers: { cookie: owner.cookie },
+      payload: { sessionToken: session.sessionToken },
+    });
+    expect(single.statusCode).toBe(400);
+    expect(single.json().error.code).toBe("NOT_SINGLE_UPLOAD");
+    expect(storage.authorizeSinglePut).not.toHaveBeenCalled();
+  });
+
+  for (const sizeBytes of [1024, 70 * 1024 * 1024])
+    it(`bounds a ${sizeBytes}-byte source grant to the remaining session and refuses hard expiry`, async () => {
+      const { owner, session } = await tokenFixture(sizeBytes);
+      const now = vi
+        .spyOn(Date, "now")
+        .mockReturnValue(new Date(session.expiresAt).getTime() - 10_000);
+      const path = sizeBytes === 1024 ? "authorize-single" : "authorize-part";
+      const operation =
+        sizeBytes === 1024 ? storage.authorizeSinglePut : storage.authorizeMultipartPart;
+      const request = () =>
+        app.inject({
+          method: "POST",
+          url: `/media/uploads/sessions/${path}`,
+          headers: { cookie: owner.cookie },
+          payload: {
+            sessionToken: session.sessionToken,
+            ...(path === "authorize-part" ? { partNumber: 1 } : {}),
+          },
+        });
+      expect((await request()).statusCode).toBe(201);
+      expect(operation).toHaveBeenCalledWith(expect.objectContaining({ expiresInSeconds: 10 }));
+      vi.clearAllMocks();
+      now.mockReturnValue(new Date(session.expiresAt).getTime() + 1);
+      const expired = await request();
+      expect(expired.statusCode).toBe(401);
+      expect(expired.json().error.code).toBe("INVALID_UPLOAD_SESSION");
+      expect(operation).not.toHaveBeenCalled();
+    });
+
+  for (const boundary of ["OTHER_OWNER", "REMOVED", "UPLOADED", "REVOKED"] as const)
+    it(`refuses single renewal for ${boundary} without returning a provider grant`, async () => {
+      const { owner, session } = await tokenFixture(1024);
+      let cookie = owner.cookie;
+      if (boundary === "OTHER_OWNER")
+        cookie = (await register("Other", "other-single@example.com")).cookie;
+      if (boundary === "REMOVED")
+        await prisma.mediaAsset.update({
+          where: { id: session.assetId },
+          data: { removedAt: new Date() },
+        });
+      if (boundary === "UPLOADED")
+        await prisma.mediaAsset.update({
+          where: { id: session.assetId },
+          data: { status: "UPLOADED" },
+        });
+      if (boundary === "REVOKED")
+        await prisma.accountSession.updateMany({
+          where: { accountId: owner.user.account.id },
+          data: { revokedAt: new Date() },
+        });
+      const result = await app.inject({
+        method: "POST",
+        url: "/media/uploads/sessions/authorize-single",
+        headers: { cookie },
+        payload: { sessionToken: session.sessionToken },
+      });
+      expect(result.statusCode).toBe(
+        boundary === "OTHER_OWNER" ? 403 : boundary === "REVOKED" ? 401 : 409,
+      );
+      expect(storage.authorizeSinglePut).not.toHaveBeenCalled();
+      expect(result.body).not.toContain("example.invalid");
+    });
+
+  for (const boundary of ["REVOKED", "REMOVED"] as const)
+    it(`rechecks ${boundary} after single URL signing before returning the URL`, async () => {
+      const { owner, session } = await tokenFixture(1024);
+      vi.mocked(storage.authorizeSinglePut).mockImplementationOnce(async () => {
+        if (boundary === "REVOKED")
+          await prisma.accountSession.updateMany({
+            where: { accountId: owner.user.account.id },
+            data: { revokedAt: new Date() },
+          });
+        else
+          await prisma.mediaAsset.update({
+            where: { id: session.assetId },
+            data: { removedAt: new Date() },
+          });
+        return {
+          url: "https://example.invalid/renewed-secret",
+          expiresAt: new Date(Date.now() + 900_000),
+        };
+      });
+      const result = await app.inject({
+        method: "POST",
+        url: "/media/uploads/sessions/authorize-single",
+        headers: { cookie: owner.cookie },
+        payload: { sessionToken: session.sessionToken },
+      });
+      expect(result.statusCode).toBe(boundary === "REVOKED" ? 401 : 409);
+      expect(result.body).not.toContain("renewed-secret");
+      expect(storage.authorizeSinglePut).toHaveBeenCalledOnce();
+      expect(storage.deleteObject).not.toHaveBeenCalled();
+      expect(await prisma.mediaProcessingJob.count()).toBe(0);
+    });
   it("preserves an actual valid V1 multipart token for explicit part authorization and resume", async () => {
     const { owner, session } = await tokenFixture();
     const before = await prisma.mediaAsset.findMany({ orderBy: { id: "asc" } });

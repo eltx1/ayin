@@ -23,7 +23,7 @@ import {
   type MediaStorageAdapter,
   MediaStorageUnavailableError,
 } from "./media-storage.adapter.js";
-import type { MediaStorageConfig } from "./media-storage.config.js";
+import { MAX_UPLOAD_SESSION_TTL_SECONDS, type MediaStorageConfig } from "./media-storage.config.js";
 import {
   type UploadSessionPayload,
   UploadSessionTokenService,
@@ -179,7 +179,8 @@ export class MediaUploadService {
     const assetId = randomUUID();
     const objectKey = `channels/${channelId}/media/${assetId}/source.${sourceExtension(mimeType)}`;
     const mode = input.sizeBytes >= this.config.multipartThresholdBytes ? "multipart" : "single";
-    const expiresAtMs = Date.now() + this.config.uploadUrlTtlSeconds * 1000;
+    const expiresAtMs =
+      Date.now() + (this.config.uploadSessionTtlSeconds ?? MAX_UPLOAD_SESSION_TTL_SECONDS) * 1000;
     let uploadId: string | null = null;
 
     // Both provider allocations happen outside the database fence. No URL or
@@ -193,7 +194,7 @@ export class MediaUploadService {
       authorization = await this.storage.authorizeSinglePut({
         key: objectKey,
         contentType: mimeType,
-        expiresInSeconds: this.config.uploadUrlTtlSeconds,
+        expiresInSeconds: this.remainingAuthorizationSeconds({ expiresAtMs }),
       });
     }
 
@@ -287,6 +288,28 @@ export class MediaUploadService {
       expiresInSeconds: this.remainingAuthorizationSeconds(session),
     });
     return this.withSession(actor, sessionToken, ["PENDING"], async () => authorization);
+  }
+
+  async authorizeSingle(actor: UploadActor, sessionToken: string) {
+    const session = await this.withSession(
+      actor,
+      sessionToken,
+      ["PENDING"],
+      async (_tx, session) => session,
+    );
+    if (session.mode !== "single")
+      throw new MediaUploadError("NOT_SINGLE_UPLOAD", "This upload uses multipart transfer.");
+    const authorization = await this.storage.authorizeSinglePut({
+      key: session.objectKey,
+      contentType: session.mimeType,
+      expiresInSeconds: this.remainingAuthorizationSeconds(session),
+    });
+    return this.withSession(actor, sessionToken, ["PENDING"], async () => ({
+      url: authorization.url,
+      method: "PUT" as const,
+      headers: { "content-type": session.mimeType },
+      expiresAt: authorization.expiresAt.toISOString(),
+    }));
   }
 
   async resumeParts(actor: UploadActor, sessionToken: string) {
@@ -396,10 +419,16 @@ export class MediaUploadService {
     olderThan: Date,
   ): Promise<{ abortedMultipart: number; rejectedAssets: number }> {
     this.ensureStorageAvailable();
+    // Operators may still supply the former 15-minute URL-based cutoff. Never
+    // age-clean an upload while any issued session could remain valid, even if
+    // the current configuration was shortened since that session was issued.
+    const cutoff = new Date(
+      Math.min(olderThan.getTime(), Date.now() - MAX_UPLOAD_SESSION_TTL_SECONDS * 1_000),
+    );
     const uploads = await this.storage.listMultipartUploads("channels/");
     let abortedMultipart = 0;
     for (const upload of uploads) {
-      if (upload.initiatedAt >= olderThan) {
+      if (upload.initiatedAt >= cutoff) {
         continue;
       }
       const asset = await this.database.client.mediaAsset.findUnique({
@@ -418,7 +447,7 @@ export class MediaUploadService {
         kind: "SOURCE_VIDEO",
         status: "PENDING",
         removedAt: null,
-        createdAt: { lt: olderThan },
+        createdAt: { lt: cutoff },
         uploadIntegrityRequired: false,
       },
       select: { id: true, r2ObjectKey: true },
@@ -464,22 +493,7 @@ export class MediaUploadService {
             owners,
           );
         } else {
-          const account = await tx.account.findUnique({
-            where: { id: actor.accountId },
-            select: { status: true, authVersion: true },
-          });
-          const sessions = await tx.$queryRaw<Array<{ id: string }>>(
-            Prisma.sql`SELECT id FROM "AccountSession" WHERE id = ${actor.sessionId}::uuid
-              AND "accountId" = ${actor.accountId}::uuid AND "authVersion" = ${actor.authVersion}
-              AND "revokedAt" IS NULL AND "expiresAt" > (clock_timestamp() AT TIME ZONE 'UTC') FOR SHARE`,
-          );
-          if (
-            !account ||
-            account.status !== "ACTIVE" ||
-            account.authVersion !== actor.authVersion ||
-            !sessions.length
-          )
-            throw unauthorized();
+          await this.assertOwnerSession(tx, actor);
         }
       };
       if (!options.adminOverride) await lockChannelMediaAccounts(tx, actor.accountId, owners);
@@ -531,6 +545,13 @@ export class MediaUploadService {
       );
     }
     return this.database.client.$transaction(async (tx) => {
+      const owners = session.adminOverride
+        ? []
+        : await observeChannelMediaOwners(tx, session.channelId);
+      if (!session.adminOverride) {
+        await lockChannelMediaAccounts(tx, actor.accountId, owners);
+        await assertChannelMediaOwners(tx, session.channelId, owners);
+      }
       // adminOverride is signed provenance, not a grant of present authority.
       const assertAuthority = async () => {
         if (session.adminOverride) {
@@ -538,7 +559,10 @@ export class MediaUploadService {
             "OPERATIONS",
             "CONTENT_MODERATOR",
           ]);
-        } else await this.assertChannelOwner(actor.accountId, session.channelId, tx);
+        } else {
+          await this.assertOwnerSession(tx, actor);
+          await this.assertChannelOwner(actor.accountId, session.channelId, tx);
+        }
       };
       await assertAuthority();
       const observed = await tx.mediaAsset.findUnique({
@@ -652,6 +676,25 @@ export class MediaUploadService {
     }
   }
 
+  private async assertOwnerSession(tx: Prisma.TransactionClient, actor: UploadActor) {
+    const account = await tx.account.findUnique({
+      where: { id: actor.accountId },
+      select: { status: true, authVersion: true },
+    });
+    const sessions = await tx.$queryRaw<Array<{ id: string }>>(
+      Prisma.sql`SELECT id FROM "AccountSession" WHERE id = ${actor.sessionId}::uuid
+        AND "accountId" = ${actor.accountId}::uuid AND "authVersion" = ${actor.authVersion}
+        AND "revokedAt" IS NULL AND "expiresAt" > (clock_timestamp() AT TIME ZONE 'UTC') FOR SHARE`,
+    );
+    if (
+      !account ||
+      account.status !== "ACTIVE" ||
+      account.authVersion !== actor.authVersion ||
+      !sessions.length
+    )
+      throw unauthorized();
+  }
+
   private validateCompletedParts(parts: CompletedUploadPart[], expectedCount: number): void {
     if (parts.length !== expectedCount) {
       throw new MediaUploadError(
@@ -671,9 +714,17 @@ export class MediaUploadService {
     }
   }
 
-  private remainingAuthorizationSeconds(session: UploadSessionPayload): number {
+  private remainingAuthorizationSeconds(
+    session: Pick<UploadSessionPayload, "expiresAtMs">,
+  ): number {
     const remaining = Math.floor((session.expiresAtMs - Date.now()) / 1000);
-    return Math.max(60, Math.min(this.config.uploadUrlTtlSeconds, remaining));
+    if (remaining < 1)
+      throw new MediaUploadError(
+        "INVALID_UPLOAD_SESSION",
+        "This upload session expired. Start a new upload to continue.",
+        401,
+      );
+    return Math.min(this.config.uploadUrlTtlSeconds, remaining);
   }
 
   private async rejectAsset(assetId: string): Promise<void> {

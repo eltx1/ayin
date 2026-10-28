@@ -1,4 +1,5 @@
-import { apiBaseUrl, readApiError } from "@/lib/api";
+import { apiBaseUrl } from "@/lib/api";
+import { readUploadRequestError, UploadRequestError } from "./upload-error";
 import type { UploadSession } from "@/lib/direct-video-upload";
 import { videoMimeTypeForUpload } from "@/lib/video-inspection";
 import { uploadBlob } from "./direct-video-upload";
@@ -255,7 +256,7 @@ async function requestJson(
       cache: "no-store",
       signal: controller.signal,
     });
-    if (!response.ok) throw new Error(await readApiError(response));
+    if (!response.ok) throw await readUploadRequestError(response);
     try {
       return await response.json();
     } catch {
@@ -265,4 +266,66 @@ async function requestJson(
     clearTimeout(timeout);
     signal?.removeEventListener("abort", cancel);
   }
+}
+
+export interface UploadCapabilities {
+  actorAccountId: string;
+  channelId: string;
+  maxFileSizeBytes: number;
+  channelQuotaBytes: number;
+  usedStorageBytes: number;
+  availableStorageBytes: number;
+  multipartThresholdBytes: number;
+  partSizeBytes: number;
+  uploadSessionTtlSeconds: number;
+  storageAvailable: boolean;
+}
+
+export async function getUploadCapabilities(
+  accountId: string,
+  channelId: string,
+  signal?: AbortSignal,
+): Promise<UploadCapabilities> {
+  const row = uploadRecord(
+    await requestJson(
+      `/creator/videos/upload-capabilities?channelId=${encodeURIComponent(channelId)}`,
+      { method: "GET" },
+      signal,
+    ),
+  );
+  if (
+    row.actorAccountId !== accountId ||
+    row.channelId !== channelId ||
+    typeof row.storageAvailable !== "boolean"
+  )
+    throw new UploadProtocolError();
+  for (const key of [
+    "maxFileSizeBytes",
+    "channelQuotaBytes",
+    "usedStorageBytes",
+    "availableStorageBytes",
+    "multipartThresholdBytes",
+    "partSizeBytes",
+    "uploadSessionTtlSeconds",
+  ] as const) {
+    if (typeof row[key] !== "number" || !Number.isSafeInteger(row[key]) || row[key] < 0)
+      throw new UploadProtocolError();
+  }
+  if (!row.maxFileSizeBytes || !row.partSizeBytes || !row.uploadSessionTtlSeconds)
+    throw new UploadProtocolError();
+  return row as unknown as UploadCapabilities;
+}
+
+export async function verifyUploadIdentity(
+  accountId: string,
+  channelId: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const row = uploadRecord(await requestJson("/auth/me", { method: "GET" }, signal));
+  if (uploadRecord(row.account).id !== accountId || uploadRecord(row.channel).id !== channelId)
+    throw new UploadRequestError(
+      "Sign in to the account that started this upload, then retry from this page.",
+      401,
+      "UPLOAD_ACCOUNT_CHANGED",
+    );
 }

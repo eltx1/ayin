@@ -18,6 +18,12 @@ const region = (page: Page, locale = "en") =>
   });
 const button = (page: Page, name: string) =>
   region(page).getByRole("button", { name, exact: true });
+async function openRecovery(page: Page, locale = "en") {
+  await page
+    .getByText(text(locale, "Resume an earlier upload", "استئناف رفع سابق"), { exact: true })
+    .click();
+  await region(page, locale).locator("summary").click();
+}
 async function stats(page: Page) {
   return (await page.request.get(`${PROVIDER}/stats`)).json();
 }
@@ -58,7 +64,7 @@ async function setup(page: Page, locale = "en", email = `recovery-${Date.now()}@
     });
   });
   await page.goto(`/upload?lang=${locale}`);
-  await region(page, locale).locator("summary").click();
+  await openRecovery(page, locale);
   await region(page, locale)
     .getByRole("button", {
       name: text(locale, "Check saved upload", "التحقق من الرفع المحفوظ"),
@@ -93,7 +99,7 @@ async function inspect(page: Page) {
 }
 async function reopen(page: Page) {
   await page.reload();
-  await region(page).locator("summary").click();
+  await openRecovery(page);
   await button(page, "Check saved upload").click();
   await expect(button(page, "Check saved upload")).toBeEnabled();
 }
@@ -432,7 +438,7 @@ for (const locale of ["en", "ar"])
     expect(await stats(page)).toEqual(before);
     await page.request.post(`${PROVIDER}/control`, { data: { supported: true } });
     await page.reload();
-    await workspace.locator("summary").click();
+    await openRecovery(page, locale);
     await check.click();
     await expect(verify).toBeEnabled();
     expect(
@@ -523,7 +529,7 @@ for (const locale of ["en", "ar"]) {
 
     await disableBrowserIssuance(page);
     await page.reload();
-    await workspace.locator("summary").click();
+    await openRecovery(page, locale);
     await check.click();
     await expect(check).toBeEnabled();
     await expect(
@@ -670,7 +676,7 @@ for (const locale of ["en", "ar"]) {
 
     await disableBrowserIssuance(page);
     await page.reload();
-    await workspace.locator("summary").click();
+    await openRecovery(page, locale);
     for (let count = 0; count < 2; count++) {
       await check.click();
       await expect(verify).toBeEnabled();
@@ -803,7 +809,7 @@ test("same-account new login invalidates old in-memory authority and saved detai
     data: { name: "Session owner", email, password: "strong-pass-123" },
   });
   await page.goto("/upload");
-  await region(page).locator("summary").click();
+  await openRecovery(page);
   await button(page, "Check saved upload").click();
   await create(page);
   await inspect(page);

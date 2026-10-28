@@ -1,0 +1,80 @@
+name: Upload reliability regression
+
+on:
+  push:
+    paths:
+      - "apps/api/src/media/**"
+      - "apps/api/src/creator/**"
+      - "apps/api/src/config/**"
+      - "apps/api/test/*upload*"
+      - "apps/api/test/*media*"
+      - "apps/web/src/app/(viewer)/upload/**"
+      - "apps/web/src/components/upload/**"
+      - "apps/web/src/lib/*upload*"
+      - "tests/e2e/upload*"
+      - ".github/workflows/upload-reliability.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: ayin_e2e
+          POSTGRES_USER: ayin
+          POSTGRES_PASSWORD: ayin
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ayin -d ayin_e2e"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_e2e?schema=public
+      TEST_DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_e2e?schema=public
+      AUTH_TOKEN_SECRET: task-29-e2e-auth-secret-with-more-than-32-characters
+      UPLOAD_SESSION_SECRET: task-29-e2e-upload-secret-with-more-than-32-characters
+      PAYOUT_DATA_ENCRYPTION_KEY: CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk=
+      WEB_ORIGIN: http://127.0.0.1:3000
+      CORS_ORIGIN: http://127.0.0.1:3000
+      NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:3001
+      NEXT_PUBLIC_MEDIA_BASE_URL: http://media.invalid
+      AYIN_E2E_STORAGE: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Generate Prisma client and migrate
+        run: |
+          pnpm db:generate
+          pnpm db:migrate:deploy
+          pnpm db:seed
+      - name: Build release candidate
+        run: pnpm build
+      - name: Verify upload lifetime, quota, ownership and session revocation
+        run: pnpm --filter @ayin/api exec vitest run --testTimeout=30000 --fileParallelism=false test/media-upload.integration.test.ts test/quick-upload.integration.test.ts test/media-upload-authority.integration.test.ts test/media-upload-privacy.integration.test.ts test/media-creation-privacy.integration.test.ts
+      - name: Verify upload, retry, mobile layout and saved history in Chromium
+        run: pnpm exec playwright test tests/e2e/upload-workflow.acceptance.spec.ts tests/e2e/upload-transport.acceptance.spec.ts tests/e2e/upload-history.acceptance.spec.ts
+      - name: Preserve failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: upload-reliability-failure-evidence
+          path: test-results/
+          retention-days: 7
