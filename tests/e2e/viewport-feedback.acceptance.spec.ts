@@ -62,11 +62,13 @@ test("leaving Viewer clears measured chrome while the shared feedback dock survi
 });
 
 for (const locale of ["en", "ar"]) {
-  test(`global feedback clears measured navigation and native modal focus in ${locale}`, async ({
-    page,
-  }, info) => {
-    const prefix = locale === "ar" ? "/ar" : "";
-    for (const width of [320, 390, 768, 1440]) {
+  // Each viewport owns a fresh session; dismissing an install prompt must persist
+  // within that session rather than being reset to satisfy another layout sample.
+  for (const width of [320, 390, 768, 1440]) {
+    test(`global feedback clears measured navigation and native modal focus in ${locale} at ${width}px`, async ({
+      page,
+    }, info) => {
+      const prefix = locale === "ar" ? "/ar" : "";
       await page.setViewportSize({ width, height: width === 1440 ? 900 : 844 });
       await page.goto(`${prefix}/search?lang=${locale}`);
       await page.bringToFront();
@@ -150,10 +152,20 @@ for (const locale of ["en", "ar"]) {
       await expect(menu).toBeFocused();
       await later.click();
       await expect(later).toHaveCount(0);
+      // A repeated native offer must still respect the user's dismissal.
+      await page.evaluate(() => {
+        const event = new Event("beforeinstallprompt", { cancelable: true });
+        Object.assign(event, {
+          prompt: async () => {},
+          userChoice: Promise.resolve({ outcome: "dismissed" }),
+        });
+        window.dispatchEvent(event);
+      });
+      await expect(later).toHaveCount(0);
       await page.evaluate(() => window.dispatchEvent(new Event("online")));
       await expect(dock).toBeHidden({ timeout: 6000 });
-    }
-  });
+    });
+  }
 }
 
 test("200% text and short landscape keep mobile navigation labels and targets reachable", async ({

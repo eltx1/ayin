@@ -168,16 +168,24 @@ test("primary upload resumes actual 129 MiB after reload and rejects a same-meta
     // Reload while an actual upload is active. The browser loses File objects
     // and in-memory grants; only the persisted descriptor and server bytes remain.
     page.once("dialog", (dialog) => dialog.accept());
-    await page.unroute("**/media/uploads/sessions/*/inspection");
-    const reloading = page.reload();
+    // Keep the old document's response held until navigation has discarded it.
+    // Releasing it alongside reload races the old retry loop, which can validly
+    // obtain another grant before pagehide without transferring another part.
+    await page.reload();
     release();
-    await reloading;
+    await page.unroute("**/media/uploads/sessions/*/inspection");
     const saved = upload.getByRole("region", { name: "Saved upload", exact: true });
     await expect(saved).toBeVisible();
     const reselect = saved.getByLabel("Reselect original video", { exact: true });
     await expect(reselect).toBeEnabled();
     expect(await reselect.inputValue()).toBe("");
-    expect(await stats()).toMatchObject({ allocations: 1, puts: 3, completes: 0, sessions: 1 });
+    expect(await stats()).toMatchObject({
+      allocations: 1,
+      authorizations: 3,
+      puts: 3,
+      completes: 0,
+      sessions: 1,
+    });
 
     await reselect.setInputFiles(fixture.changed);
     await expect(upload.getByRole("alert")).toContainText("This is not the original video");

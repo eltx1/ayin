@@ -238,7 +238,15 @@ for (const locale of ["en", "ar"]) {
     );
     // A full-page capture at this retained scroll position places sticky chrome
     // over unrelated rows. Capture and verify the viewport a creator can use.
-    const alert = page.getByRole("alert");
+    const alert = page
+      .getByRole("region", {
+        name: locale === "ar" ? "رفع الفيديو" : "Creator upload",
+        exact: true,
+      })
+      .getByRole("alert")
+      .filter({
+        hasText: locale === "ar" ? "لم تُحفظ الصورة المصغرة" : "Thumbnail was not saved",
+      });
     await alert.evaluate((element) =>
       element.scrollIntoView({ block: "center", behavior: "instant" }),
     );

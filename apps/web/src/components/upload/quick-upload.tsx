@@ -1156,7 +1156,11 @@ export function QuickUpload() {
       selected.size < 1 ||
       selected.size > 5 * 1024 * 1024
     ) {
-      setMessage(copy("Choose a JPG or PNG thumbnail up to 5 MB."));
+      setFailure({
+        title: copy("Thumbnail was not saved"),
+        detail: copy("Choose a JPG or PNG thumbnail up to 5 MB."),
+        action: "edit",
+      });
       return;
     }
     mutation.current = true;

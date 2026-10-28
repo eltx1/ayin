@@ -34,7 +34,7 @@ test("Arabic auth and search surfaces use RTL with localized viewer chrome", asy
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
   await expect(page.getByRole("heading", { name: "البحث في AYIN" })).toBeVisible();
   await expect(page.getByLabel("البحث في AYIN")).toBeVisible();
-  await expect(page.getByRole("button", { name: "بحث" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "بحث", exact: true })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "التنقل الرئيسي" })).toBeVisible();
   await expect(page.getByRole("link", { name: "الرئيسية", exact: true })).toBeVisible();
 });
