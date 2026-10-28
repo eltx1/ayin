@@ -1,0 +1,69 @@
+name: WebKit large upload verification
+
+on:
+  push:
+    branches:
+      - "codex/ayin-webkit-upload-20261028"
+
+permissions:
+  contents: read
+
+jobs:
+  webkit-upload:
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: ayin_e2e
+          POSTGRES_USER: ayin
+          POSTGRES_PASSWORD: ayin
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ayin -d ayin_e2e"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_e2e?schema=public
+      TEST_DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_e2e?schema=public
+      AUTH_TOKEN_SECRET: task-29-e2e-auth-secret-with-more-than-32-characters
+      UPLOAD_SESSION_SECRET: task-29-e2e-upload-secret-with-more-than-32-characters
+      PAYOUT_DATA_ENCRYPTION_KEY: CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk=
+      WEB_ORIGIN: http://127.0.0.1:3000
+      CORS_ORIGIN: http://127.0.0.1:3000
+      NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:3001
+      NEXT_PUBLIC_MEDIA_BASE_URL: http://media.invalid
+      AYIN_E2E_STORAGE: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install WebKit and system dependencies
+        run: pnpm exec playwright install --with-deps webkit
+      - name: Generate Prisma client and migrate isolated test database
+        run: |
+          pnpm db:generate
+          pnpm db:migrate:deploy
+          pnpm db:seed
+      - name: Build release candidate
+        run: pnpm build
+      - name: Verify actual 129 MiB reload, file identity, HTTP 503 retry and byte integrity in WebKit
+        run: pnpm exec playwright test --config playwright.upload-webkit.config.ts
+      - name: Preserve WebKit verification evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: upload-webkit-browser-evidence
+          path: test-results/upload-webkit-recovery/
+          retention-days: 7
