@@ -1,35 +1,34 @@
 .spotlight {
   isolation: isolate;
   position: relative;
-  min-height: clamp(420px, 40vw, 620px);
-  display: flex;
-  align-items: end;
-  margin: 1rem var(--shell-gutter) 0;
-  border-radius: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  align-items: center;
+  gap: clamp(1rem, 2vw, 2rem);
+  margin: 1.5rem var(--shell-gutter) 0;
+  border-radius: 22px;
   overflow: clip;
-  background: #101019;
+  background: #100d18;
   border: 1px solid var(--border);
 }
 .visual {
-  position: absolute;
-  inset: 0;
-  z-index: -2;
+  position: relative;
+  grid-column: 2;
+  grid-row: 1;
+  aspect-ratio: 16 / 9;
+  margin: 1.25rem;
+  margin-inline-start: 0;
+  isolation: isolate;
   display: block;
   overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  background: #171324;
 }
 .image {
   object-fit: cover;
-  object-position: 70% 40%;
-}
-.spotlight::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: -1;
-  background:
-    linear-gradient(90deg, #08080ff2 0%, #08080fdb 28%, #08080f66 58%, #08080f00 100%),
-    linear-gradient(0deg, #08080fe8, transparent 70%);
+  object-position: center;
+  z-index: 1;
 }
 .visualMark {
   position: absolute;
@@ -40,21 +39,22 @@
   letter-spacing: -0.07em;
   font-weight: 900;
   color: #ffffff15;
-  z-index: -1;
+  z-index: 0;
 }
 .playOverlay {
   position: absolute;
-  inset-inline-end: 22%;
-  top: 44%;
+  inset-inline-end: calc(50% - 28px);
+  top: calc(50% - 28px);
   display: grid;
   place-items: center;
-  width: 64px;
-  height: 64px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
   border: 1px solid #ffffff66;
   background: #0004;
   backdrop-filter: blur(8px);
   color: white;
+  z-index: 2;
   opacity: 0;
   transition: opacity 0.2s;
 }
@@ -63,8 +63,11 @@
   opacity: 1;
 }
 .copy {
-  padding: clamp(1.5rem, 4vw, 4rem);
-  max-width: min(58%, 780px);
+  grid-column: 1;
+  grid-row: 1;
+  min-inline-size: 0;
+  padding: clamp(1.4rem, 3vw, 3rem);
+  padding-inline-end: 0;
   pointer-events: none;
 }
 .copy a {
@@ -75,9 +78,9 @@
   align-items: center;
   gap: 0.5rem;
   color: #e6d6ff;
-  font-size: 0.7rem;
+  font-size: 0.74rem;
   font-weight: 750;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   margin: 0 0 1rem;
 }
@@ -87,12 +90,11 @@
   height: 7px;
   border-radius: 50%;
   background: #ba8aff;
-  box-shadow: 0 0 14px #9c56ff;
 }
 .copy h1 {
-  font-size: clamp(1.7rem, 3.2vw, 3.35rem);
-  font-weight: 800;
-  letter-spacing: -0.045em;
+  font-size: clamp(1.65rem, 2.6vw, 2.8rem);
+  font-weight: 750;
+  letter-spacing: -0.035em;
   line-height: 1.22;
   margin: 0;
   text-wrap: balance;
@@ -123,7 +125,7 @@
 .description {
   color: #c8c5d0;
   font-size: 0.9rem;
-  line-height: 1.8;
+  line-height: 1.7;
   margin: 0.9rem 0 0;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -144,7 +146,7 @@
   gap: 0.6rem;
   min-height: 48px;
   padding: 0.75rem 1.25rem;
-  border-radius: 9px;
+  border-radius: 11px;
   text-decoration: none;
   font-weight: 750;
   font-size: 0.9rem;
@@ -164,11 +166,6 @@
 .explore:hover {
   background: #ffffff20;
 }
-:global([dir="rtl"]) .spotlight::before {
-  background:
-    linear-gradient(270deg, #08080ff2 0%, #08080fdb 28%, #08080f66 58%, #08080f00 100%),
-    linear-gradient(0deg, #08080fe8, transparent 70%);
-}
 :global([dir="rtl"]) .copy h1 {
   letter-spacing: normal;
   line-height: 1.45;
@@ -181,46 +178,35 @@
     min-height: 0;
     display: grid;
     grid-template-columns: 1fr;
-    margin-top: 0.5rem;
-    border-radius: 16px;
+    gap: 0;
+    margin-top: 1rem;
+    border-radius: 18px;
   }
   .visual {
     position: relative;
-    aspect-ratio: 16 / 10;
+    aspect-ratio: 16 / 9;
     z-index: 0;
     grid-column: 1;
     grid-row: 1;
-  }
-  .image {
-    object-position: center;
-  }
-  .spotlight::before {
-    display: none;
-  }
-  .visual::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background: linear-gradient(0deg, #101019, transparent 45%);
+    margin: 0.75rem;
+    border-radius: 11px;
   }
   .playOverlay {
     opacity: 1;
     width: 48px;
     height: 48px;
-    top: 35%;
+    top: calc(50% - 24px);
     inset-inline-end: calc(50% - 24px);
     z-index: 1;
   }
   .copy {
     position: relative;
     z-index: 1;
-    max-width: 100%;
-    padding: 0 1.1rem 1.3rem;
-    margin-top: -0.3rem;
+    grid-row: 2;
+    padding: 0.65rem 1.1rem 1.2rem;
   }
   .copy h1 {
-    font-size: clamp(1.45rem, 5.6vw, 2rem);
+    font-size: clamp(1.35rem, 4.7vw, 1.85rem);
   }
   .eyebrow {
     margin-bottom: 0.55rem;

@@ -317,7 +317,13 @@ describe("explicit recoverable upload controller", () => {
       throw Error(`Unexpected URL ${path}`);
     });
   });
-  function client(identify = vi.fn(async () => fileIdentity)) {
+  function client(
+    identify: (
+      file: File,
+      signal: AbortSignal,
+      progress: (percent: number) => void,
+    ) => Promise<UploadFileIdentity> = vi.fn(async () => fileIdentity),
+  ) {
     return new UploadRecoveryClient({
       storage,
       fetch: fetcher,
@@ -764,6 +770,273 @@ describe("explicit recoverable upload controller", () => {
     expect(view.message).toBe("READY_COMPLETE");
     expect(value.canComplete()).toBe(true);
     expect(writes().some(([url]) => String(url).endsWith("/complete"))).toBe(false);
+  });
+  it("transfers three parts concurrently, then verifies every saved part before completing the same draft", async () => {
+    const releases = new Map<number, () => void>();
+    let allStarted!: () => void;
+    const started = new Promise<void>((resolve) => (allStarted = resolve));
+    const { value, bodies } = await multipartFixture({
+      put: (_signal, part) =>
+        new Promise<void>((resolve) => {
+          releases.set(part, resolve);
+          if (releases.size === 3) allStarted();
+        }),
+    });
+    const operation = value.continueUpload({ concurrency: 3, complete: true });
+    await started;
+    expect(bodies).toEqual(["01234", "56789", "a"]);
+    expect(view.saved?.pending).toBeNull();
+    expect(writes().some(([url]) => String(url).endsWith("/complete"))).toBe(false);
+    releases.get(2)!();
+    releases.get(3)!();
+    expect(writes().some(([url]) => String(url).endsWith("/complete"))).toBe(false);
+    releases.get(1)!();
+    await operation;
+    expect(view.saved?.session?.videoId).toBe(session.videoId);
+    expect(view.saved?.session?.state).toBe("COMPLETED");
+    expect(view.uploadedBytes).toBe(11);
+    expect(writes().filter(([url]) => String(url).endsWith("/complete"))).toHaveLength(1);
+    expect(writes().filter(([url]) => String(url).endsWith("/recoverable-drafts"))).toHaveLength(0);
+  });
+  it("aborts a failed batch, then after reload sends only parts absent from the provider inventory", async () => {
+    let fail!: () => void;
+    let partTwoSaved!: () => void;
+    const twoSaved = new Promise<void>((resolve) => (partTwoSaved = resolve));
+    let laterAttempt = false;
+    const aborted: number[] = [];
+    let allStarted!: () => void;
+    let starts = 0;
+    const started = new Promise<void>((resolve) => (allStarted = resolve));
+    const { value, bodies } = await multipartFixture({
+      put: (signal, part) => {
+        if (laterAttempt) return Promise.resolve();
+        starts++;
+        if (starts === 3) allStarted();
+        if (part === 2) {
+          partTwoSaved();
+          return Promise.resolve();
+        }
+        return new Promise<void>((_resolve, reject) => {
+          if (part === 1) fail = () => reject(new Error("Network disconnected"));
+          signal.addEventListener(
+            "abort",
+            () => {
+              aborted.push(part);
+              reject(signal.reason);
+            },
+            { once: true },
+          );
+        });
+      },
+    });
+    const first = value.continueUpload({ concurrency: 3, complete: true });
+    await started;
+    await twoSaved;
+    fail();
+    await first;
+    expect(aborted).toContain(3);
+    expect(view.saved?.pending).toBeNull();
+    expect(writes().filter(([url]) => String(url).endsWith("/complete"))).toHaveLength(0);
+    value.suspend();
+    laterAttempt = true;
+    const reopened = client(vi.fn(async () => ({ ...fileIdentity, sizeBytes: 11 })));
+    await reopened.check();
+    expect(view.uploadedBytes).toBe(5);
+    expect(view.fileName).toBeNull();
+    await reopened.choose(new File(["0123456789a"], "whole.mp4", { type: "video/mp4" }));
+    await reopened.continueUpload({ concurrency: 3, complete: true });
+    expect(bodies).toEqual(["01234", "56789", "a", "01234", "a"]);
+    expect(view.saved?.session?.state).toBe("COMPLETED");
+    expect(writes().filter(([url]) => String(url).endsWith("/complete"))).toHaveLength(1);
+  });
+  it("keeps UNKNOWN authorization pending and sends no prepared batch bytes", async () => {
+    const { value, bodies } = await multipartFixture();
+    const normal = fetcher.getMockImplementation()!;
+    fetcher.mockImplementation((url, init) => {
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : null;
+      if (String(url).endsWith("/authorize") && body.partNumber === 2) {
+        state = { ...state, state: "UNRESOLVED", revision: 2 };
+        return Promise.resolve(
+          response(
+            envelope(body.requestId, {
+              session: state,
+              operation: { requestId: body.requestId, status: "UNKNOWN", replayed: false },
+            }),
+            201,
+          ),
+        );
+      }
+      return normal(url, init);
+    });
+    await value.continueUpload({ concurrency: 3, complete: true });
+    expect(bodies).toEqual([]);
+    expect(view.saved?.pending?.kind).toBe("AUTHORIZE");
+    expect(view.message).toBe("UNCERTAIN");
+    expect(writes().filter(([url]) => String(url).endsWith("/authorize"))).toHaveLength(2);
+    expect(writes().filter(([url]) => String(url).endsWith("/complete"))).toHaveLength(0);
+  });
+  it("stopping a parallel batch aborts every PUT and retains the same recoverable session", async () => {
+    let started!: () => void;
+    const entered = new Promise<void>((resolve) => (started = resolve));
+    let active = 0;
+    const aborted: number[] = [];
+    const { value } = await multipartFixture({
+      put: (signal, part) =>
+        new Promise<void>((_resolve, reject) => {
+          if (++active === 3) started();
+          signal.addEventListener(
+            "abort",
+            () => {
+              aborted.push(part);
+              reject(signal.reason);
+            },
+            { once: true },
+          );
+        }),
+    });
+    const transfer = value.continueUpload({ concurrency: 3, complete: true });
+    await entered;
+    value.stop();
+    await transfer;
+    expect(aborted.sort()).toEqual([1, 2, 3]);
+    expect(view.message).toBe("STOPPED");
+    expect(view.saved?.session?.sessionId).toBe(session.sessionId);
+    expect(writes().filter(([url]) => String(url).endsWith("/complete"))).toHaveLength(0);
+  });
+  it("recovers an AUTHORIZE marker that never reached the server without replaying it or creating a new draft", async () => {
+    const requestId = randomUUID();
+    saveRecovery(storage, saved({ pending: { kind: "AUTHORIZE", requestId } }));
+    const normal = fetcher.getMockImplementation()!;
+    fetcher.mockImplementation((url, init) =>
+      String(url).endsWith(`/operations/${requestId}`)
+        ? Promise.resolve(response({ error: { code: "UPLOAD_RECOVERY_NOT_FOUND" } }, 404))
+        : normal(url, init),
+    );
+    const reopened = client();
+    await reopened.check();
+    expect(view.message).toBe("INSPECTED");
+    expect(view.saved?.pending).toBeNull();
+    expect(view.saved?.session?.sessionId).toBe(session.sessionId);
+    expect(writes()).toHaveLength(0);
+    await reopened.choose(file());
+    await reopened.continueUpload({ concurrency: 3, complete: true });
+    expect(view.saved?.session?.state).toBe("COMPLETED");
+    expect(writes().filter(([url]) => String(url).endsWith("/recoverable-drafts"))).toHaveLength(0);
+    expect(writes().filter(([url]) => String(url).endsWith("/authorize"))).toHaveLength(1);
+    expect(
+      JSON.parse(String(writes().find(([url]) => String(url).endsWith("/authorize"))?.[1]?.body))
+        .requestId,
+    ).not.toBe(requestId);
+  });
+  it("does not clear or replay an unresolved COMPLETE marker when its outcome is not found", async () => {
+    const requestId = randomUUID();
+    saveRecovery(storage, saved({ pending: { kind: "COMPLETE", requestId } }));
+    const normal = fetcher.getMockImplementation()!;
+    fetcher.mockImplementation((url, init) =>
+      String(url).endsWith(`/operations/${requestId}`)
+        ? Promise.resolve(response({ error: { code: "UPLOAD_RECOVERY_NOT_FOUND" } }, 404))
+        : normal(url, init),
+    );
+    const reopened = client();
+    await reopened.check();
+    expect(view.saved?.pending).toEqual({ kind: "COMPLETE", requestId });
+    await reopened.choose(file());
+    await reopened.continueUpload({ concurrency: 3, complete: true });
+    expect(writes()).toHaveLength(0);
+  });
+  it("restores a 5 GiB descriptor, rejects a same-metadata replacement, and transfers only its last three parts", async () => {
+    const sizeBytes = 5 * 1024 ** 3,
+      partSizeBytes = 16 * 1024 ** 2,
+      partCount = 320;
+    state = { ...session, mode: "MULTIPART", sizeBytes, partSizeBytes, partCount };
+    const savedDescriptor = saved({ session: state });
+    saveRecovery(storage, savedDescriptor);
+    expect(storage.getItem(RECOVERY_STORAGE_KEY)!.length).toBeLessThan(8192);
+    const uploaded = new Map(Array.from({ length: 317 }, (_, index) => [index + 1, partSizeBytes]));
+    const slices: [number, number][] = [];
+    const virtualFile = () => {
+      const value = new File(["small fixture"], "original.mp4", {
+        type: "video/mp4",
+        lastModified: 123,
+      });
+      Object.defineProperty(value, "size", { value: sizeBytes });
+      value.slice = (start = 0, end = sizeBytes) => {
+        slices.push([start, end]);
+        const blob = new Blob(["bounded slice fixture"]);
+        Object.defineProperty(blob, "size", { value: end - start });
+        return blob;
+      };
+      return value;
+    };
+    const correct = virtualFile(),
+      wrong = virtualFile();
+    const fullIdentity = { ...fileIdentity, sizeBytes, leafCount: 1280 };
+    const normal = fetcher.getMockImplementation()!;
+    fetcher.mockImplementation(async (url, init) => {
+      const path = String(url),
+        body = typeof init?.body === "string" ? JSON.parse(init.body) : null;
+      if (path.includes("/capability"))
+        return response({
+          protocolVersion: 1,
+          supported: true,
+          reason: null,
+          maxSourceBytes: sizeBytes,
+        });
+      if (path.endsWith("/inspection"))
+        return response({
+          ...state,
+          observation: {
+            kind: "PARTS_OBSERVED",
+            parts: [...uploaded].map(([partNumber, sizeBytes]) => ({ partNumber, sizeBytes })),
+            uploadedBytes: [...uploaded.values()].reduce((sum, bytes) => sum + bytes, 0),
+          },
+        });
+      if (path.endsWith("/resume") && body.fileIdentity.rootSha256 !== fullIdentity.rootSha256)
+        return response({ error: { code: "UPLOAD_FILE_CHANGED" } }, 409);
+      if (path.endsWith("/authorize"))
+        return response(
+          envelope(body.requestId, {
+            session: state,
+            grant: {
+              url: `https://provider.invalid/large/${body.partNumber}`,
+              method: "PUT",
+              headers: {},
+              expiresAt: new Date(Date.now() + 60000).toISOString(),
+              partNumber: body.partNumber,
+            },
+          }),
+          201,
+        );
+      if (path.startsWith("https://provider.invalid/large/")) {
+        uploaded.set(Number(path.split("/").at(-1)), (init?.body as Blob).size);
+        return new Response(null, { status: 200 });
+      }
+      return normal(url, init);
+    });
+    const identify = vi.fn(async (selected: File) => ({
+      ...fullIdentity,
+      rootSha256: selected === correct ? fullIdentity.rootSha256 : "a".repeat(64),
+    }));
+    const reopened = client(identify);
+    await reopened.check();
+    expect(view.uploadedBytes).toBe(317 * partSizeBytes);
+    expect(view.fileName).toBeNull();
+    await reopened.choose(wrong);
+    await reopened.continueUpload({ concurrency: 3, complete: true });
+    expect(view.message).toBe("UPLOAD_FILE_CHANGED");
+    expect(slices).toEqual([]);
+    expect(writes().filter(([url]) => String(url).endsWith("/authorize"))).toHaveLength(0);
+    await reopened.choose(correct);
+    await reopened.continueUpload({ concurrency: 3, complete: true });
+    expect(slices).toEqual(
+      [317, 318, 319].map((index) => [index * partSizeBytes, (index + 1) * partSizeBytes]),
+    );
+    expect(view.saved?.session?.state).toBe("COMPLETED");
+    expect(view.saved?.session?.videoId).toBe(savedDescriptor.session?.videoId);
+    expect(view.saved?.creationRequestId).toBe(savedDescriptor.creationRequestId);
+    expect(view.uploadedBytes).toBe(sizeBytes);
+    expect(writes().filter(([url]) => String(url).endsWith("/complete"))).toHaveLength(1);
+    expect(writes().filter(([url]) => String(url).endsWith("/recoverable-drafts"))).toHaveLength(0);
   });
   it("duplicate Continue clicks share one operation latch across the entire transfer", async () => {
     let release!: () => void,

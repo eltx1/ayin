@@ -21,7 +21,11 @@ import { z } from "zod";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { MediaUploadError } from "./media-upload.service.js";
 import { MediaUploadRecoveryService } from "./media-upload-recovery.service.js";
-import { UploadRateLimiter } from "./upload-rate-limiter.js";
+import {
+  UPLOAD_PART_AUTHORIZATIONS_PER_MINUTE,
+  UPLOAD_RECOVERY_READS_PER_MINUTE,
+  UploadRateLimiter,
+} from "./upload-rate-limiter.js";
 
 @Controller("media/uploads/sessions")
 @UseGuards(AuthGuard)
@@ -56,7 +60,10 @@ export class MediaUploadRecoveryController {
     )
       throw new HttpException("Invalid saved upload outcome request.", 400);
     try {
-      this.rateLimiter.consume(`recovery-outcome:${request.ayinAuth.accountId}`);
+      this.rateLimiter.consume(
+        `recovery-outcome:${request.ayinAuth.accountId}`,
+        UPLOAD_RECOVERY_READS_PER_MINUTE,
+      );
       return await this.commands.operationOutcome(
         request.ayinAuth,
         sessionId.toLowerCase(),
@@ -135,8 +142,13 @@ export class MediaUploadRecoveryController {
     @Param("sessionId") sessionId: string,
     @Body() body: unknown,
   ) {
-    return this.command(request, sessionId, body, authorizeRecoveredUploadSchema, (id, input) =>
-      this.commands.authorize(request.ayinAuth, id, input),
+    return this.command(
+      request,
+      sessionId,
+      body,
+      authorizeRecoveredUploadSchema,
+      (id, input) => this.commands.authorize(request.ayinAuth, id, input),
+      "authorize",
     );
   }
   @Post(":sessionId/complete")
@@ -167,6 +179,7 @@ export class MediaUploadRecoveryController {
     body: unknown,
     schema: z.ZodType<T>,
     run: (id: string, input: T) => Promise<unknown>,
+    rateClass: "command" | "authorize" = "command",
   ) {
     const parsed = schema.safeParse(body);
     if (
@@ -179,7 +192,10 @@ export class MediaUploadRecoveryController {
         400,
       );
     try {
-      this.rateLimiter.consume(`recovery-command:${request.ayinAuth.accountId}`);
+      this.rateLimiter.consume(
+        `recovery-${rateClass}:${request.ayinAuth.accountId}`,
+        rateClass === "authorize" ? UPLOAD_PART_AUTHORIZATIONS_PER_MINUTE : undefined,
+      );
       return await run(sessionId.toLowerCase(), parsed.data);
     } catch (failure) {
       if (failure instanceof MediaUploadError)
@@ -204,7 +220,10 @@ export class MediaUploadRecoveryController {
     )
       throw new HttpException("Invalid saved upload inspection request.", 400);
     try {
-      this.rateLimiter.consume(`inspect:${request.ayinAuth.accountId}`);
+      this.rateLimiter.consume(
+        `inspect:${request.ayinAuth.accountId}`,
+        UPLOAD_RECOVERY_READS_PER_MINUTE,
+      );
       return await this.recovery.inspect(request.ayinAuth, sessionId);
     } catch (error) {
       if (error instanceof MediaUploadError)

@@ -46,6 +46,7 @@ import {
   conservativeMultipartExposure,
 } from "../src/media/media-upload-admission.js";
 import { registerUploadCleanupInTransaction } from "../src/media/media-upload-cleanup.js";
+import { assertUploadRecoverySlot } from "../src/media/media-upload-rollout.js";
 import { R2HttpError } from "../src/media/r2-sigv4.js";
 import { PrivacyLifecycleService } from "../src/privacy/privacy-lifecycle.service.js";
 import {
@@ -152,6 +153,7 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
     grantSeconds = 900;
     Object.assign(app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG), {
       recoveryAudience: "canary",
+      partSizeBytes,
       recoverySourceMaxBytes: 0,
       recoveryMaxOutstandingSources: 1,
       recoveryV2Enabled: true,
@@ -2128,12 +2130,238 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
       recoveryMaxOutstandingSources: maximum,
     });
   }
+  it("permits repeated recovery reads under production rate limits without consuming control commands", async () => {
+    enableCreatorRollout();
+    const f = await fixture();
+    const environment = process.env.APP_ENV;
+    process.env.APP_ENV = "production";
+    try {
+      for (let batch = 0; batch < 13; batch++) {
+        for (const url of [
+          `/creator/videos/recoverable-drafts/${f.request.requestId}`,
+          `/media/uploads/sessions/${f.session.sessionId}/operations/${f.request.requestId}`,
+          `/media/uploads/sessions/${f.session.sessionId}/inspection`,
+        ]) {
+          const observed = await app.inject({
+            method: "GET",
+            url,
+            headers: { cookie: f.actor.cookie },
+          });
+          expect(observed.statusCode, observed.body).toBe(200);
+        }
+      }
+      expect(
+        success(await command(f.actor, f.session, "authorize", { partNumber: 1 })).grant,
+      ).toBeDefined();
+      expect(success(await command(f.actor, f.session, "cancel")).session.state).toBe("ABORTED");
+    } finally {
+      process.env.APP_ENV = environment;
+    }
+  });
+  it.each([3_736_813_160, 5 * 1024 ** 3])(
+    "recovers a %s-byte source with all part grants, exact identity and one immutable output reservation",
+    async (sizeBytes) => {
+      enableCreatorRollout();
+      const chunkBytes = 16 * 1024 ** 2;
+      Object.assign(app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG), {
+        recoverySourceMaxBytes: 5 * 1024 ** 3,
+        recoveryOutputEnvelopeBytes: 16 * 1024 ** 3,
+        recoveryDebtAccountBytes: 1616 * 1024 ** 3,
+        recoveryDebtChannelBytes: 1616 * 1024 ** 3,
+        partSizeBytes: chunkBytes,
+      });
+      const actor = await register();
+      const capability = await app.inject({
+        method: "GET",
+        url: `/media/uploads/sessions/capability?channelId=${actor.channelId}`,
+        headers: { cookie: actor.cookie },
+      });
+      expect(capability.json()).toMatchObject({ supported: true, maxSourceBytes: 5 * 1024 ** 3 });
+      let session = success(
+        await create(actor, { ...draft(actor), sizeBytes, fileIdentity: identity(sizeBytes) }),
+      ).session;
+      const initial = await source(session);
+      expect(initial.providerExposureBytes).toBe(0n);
+      // Independent grants share a revision and remain safe when up to three PUTs overlap.
+      const first = await Promise.all(
+        [1, 2, 3].map((partNumber) => command(actor, session, "authorize", { partNumber })),
+      );
+      for (const result of first) expect(success(result).grant).toBeDefined();
+      session = success(first[2]!).session;
+      const allocation = allocations.get(initial.providerUploadId!)!;
+      allocation.parts = [1, 2, 3].map((partNumber) => ({
+        partNumber,
+        sizeBytes: chunkBytes,
+        etag: `"large-${partNumber}"`,
+      }));
+      const resume = (fileIdentity: UploadFileIdentity) =>
+        app.inject({
+          method: "POST",
+          url: `/media/uploads/sessions/${session.sessionId}/resume`,
+          headers: { cookie: actor.cookie },
+          payload: { requestId: randomUUID(), expectedRevision: session.revision, fileIdentity },
+        });
+      const wrong = await resume({ ...identity(sizeBytes), rootSha256: "b".repeat(64) });
+      expect(wrong.statusCode).toBe(409);
+      expect(wrong.json()).toMatchObject({ error: { code: "UPLOAD_FILE_CHANGED" } });
+      session = success(await resume(identity(sizeBytes))).session;
+      const inspected = await app.inject({
+        method: "GET",
+        url: `/media/uploads/sessions/${session.sessionId}/inspection`,
+        headers: { cookie: actor.cookie },
+      });
+      expect(inspected.statusCode).toBe(200);
+      expect(inspected.json().observation).toMatchObject({ uploadedBytes: 3 * chunkBytes });
+      for (let partNumber = 4; partNumber <= session.partCount; partNumber++) {
+        session = success(await command(actor, session, "authorize", { partNumber })).session;
+        allocation.parts.push({
+          partNumber,
+          sizeBytes:
+            partNumber === session.partCount
+              ? sizeBytes - (partNumber - 1) * chunkBytes
+              : chunkBytes,
+          etag: `"large-${partNumber}"`,
+        });
+      }
+      expect(storage.authorizeMultipartPart).toHaveBeenCalledTimes(session.partCount);
+      expect(storage.authorizeMultipartPart).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          partNumber: session.partCount,
+          expectedSizeBytes: sizeBytes - (session.partCount - 1) * chunkBytes,
+          expiresInSeconds: 900,
+        }),
+      );
+      const reserved = await db.mediaProcessingOutputReservation.findUniqueOrThrow({
+        where: { uploadSessionId: session.sessionId },
+      });
+      expect(reserved.envelopeBytes).toBe(16n * 1024n ** 3n);
+      expect((await source(session)).providerExposureBytes).toBe(
+        BigInt(session.partCount) * 5n * 1024n ** 3n,
+      );
+      session = success(await command(actor, session, "complete")).session;
+      expect(session.state).toBe("COMPLETED");
+      expect(storage.createMultipartUpload).toHaveBeenCalledOnce();
+      expect(storage.completeMultipartUpload).toHaveBeenCalledOnce();
+      expect(await db.mediaUploadSession.count()).toBe(1);
+      expect(await db.mediaProcessingJob.count()).toBe(1);
+      expect(await db.mediaProcessingOutputReservation.count()).toBe(1);
+      expect(storage.authorizeSinglePut).not.toHaveBeenCalled();
+    },
+    60_000,
+  );
+
+  it("continues another upload while accepted source processing occupies one global slot", async () => {
+    enableCreatorRollout();
+    const first = await accepted();
+    const second = await fixture();
+    expect(
+      success(await command(second.actor, second.session, "authorize", { partNumber: 1 })).grant,
+    ).toBeDefined();
+    expect(await db.mediaProcessingJob.count({ where: { videoId: first.session.videoId! } })).toBe(
+      1,
+    );
+    const third = await register();
+    const blocked = await create(third);
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.json()).toMatchObject({ error: { code: "UPLOAD_CAPACITY_BUSY" } });
+  });
+
+  it("retains derived output-only UNKNOWN debt globally while admitted sources continue after a slot-limit reduction", async () => {
+    enableCreatorRollout(3);
+    const f = await claimed();
+    await finalize(f.job);
+    const other = await fixture();
+    const derived = await db.$transaction((tx) =>
+      app.get(MediaProcessingLifecycleService).createReprocessJob(tx, f.job.videoId),
+    );
+    expect(derived).not.toBeNull();
+    const job = (await app.get(MediaProcessingQueueService).claimNext("large-derived-worker"))!;
+    expect(job.id).toBe(derived!.id);
+    expect(
+      await app.get(MediaProcessingLifecycleService).recordInputVerification({
+        jobId: job.id,
+        workerId: job.leaseOwner!,
+        ...capturedMediaClaim(job),
+        identity: identity(),
+      }),
+    ).toBe(true);
+    const receipt = await dispatch(job);
+    await app.get(MediaOutputWriteJournalService).markUnknown(receipt);
+    await freeze(job);
+    await db.mediaProcessingJob.update({
+      where: { id: job.id },
+      data: { status: "CANCELLED", leaseOwner: null, leaseWorkerId: null, leaseExpiresAt: null },
+    });
+    const config = app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG);
+    config.recoveryMaxOutstandingSources = 2;
+    expect(
+      success(await command(other.actor, other.session, "authorize", { partNumber: 1 })).grant,
+    ).toBeDefined();
+    config.recoveryMaxOutstandingSources = 3;
+    await expect(
+      db.$transaction((tx) => assertUploadRecoverySlot(tx, config)),
+    ).rejects.toMatchObject({ code: "UPLOAD_CAPACITY_BUSY" });
+    expect(
+      (await db.mediaProcessingOutputWrite.findUniqueOrThrow({ where: { id: receipt.id } })).status,
+    ).toBe("UNKNOWN");
+    expect(
+      (
+        await db.mediaProcessingOutputReservation.findUniqueOrThrow({
+          where: { processingJobId: job.id },
+        })
+      ).uploadSessionId,
+    ).toBeNull();
+    await db.mediaProcessingJob.delete({ where: { id: job.id } });
+    await expect(
+      db.$transaction((tx) => assertUploadRecoverySlot(tx, config)),
+    ).rejects.toMatchObject({ code: "UPLOAD_CAPACITY_BUSY" });
+  });
+
+  it("counts whole-job output settlement without an attempt id after a derived job reaches READY", async () => {
+    enableCreatorRollout();
+    const f = await claimed();
+    await finalize(f.job);
+    const derived = await db.$transaction((tx) =>
+      app.get(MediaProcessingLifecycleService).createReprocessJob(tx, f.job.videoId),
+    );
+    const job = (await app.get(MediaProcessingQueueService).claimNext("whole-job-debt-worker"))!;
+    expect(job.id).toBe(derived!.id);
+    expect(
+      await app.get(MediaProcessingLifecycleService).recordInputVerification({
+        jobId: job.id,
+        workerId: job.leaseOwner!,
+        ...capturedMediaClaim(job),
+        identity: identity(),
+      }),
+    ).toBe(true);
+    await finalize(job);
+    const config = app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG);
+    await expect(
+      db.$transaction((tx) => assertUploadRecoverySlot(tx, config)),
+    ).resolves.toBeUndefined();
+    await db.privacyMediaDeletionJob.create({
+      data: {
+        operationKey: `whole-job:${job.id}`,
+        scope: "PROCESSING_OUTPUT",
+        kind: "OUTPUT_SETTLEMENT",
+        channelId: f.actor.channelId,
+        processingJobId: job.id,
+        outputAttemptId: null,
+        target: job.outputR2ObjectKey,
+        cleanupContractVersion: 2,
+        outputAddresses: { version: 3, attemptIds: [job.currentOutputAttemptId!] },
+      },
+    });
+    await expect(
+      db.$transaction((tx) => assertUploadRecoverySlot(tx, config)),
+    ).rejects.toMatchObject({ code: "UPLOAD_CAPACITY_BUSY" });
+  });
   it("serializes rollout admission across different creators and permits existing sources to drain at capacity", async () => {
     enableCreatorRollout();
     const actors = await Promise.all([register(), register(), register()]);
     const requests = actors.map(draft);
-    // A pending provider ACK intentionally blocks all new admission, even with
-    // spare slots. Start this capacity race after the first CREATE is settled.
+    // The first source occupies one global slot while the remaining creators
+    // race for the only remaining slot.
     const session = success(await create(actors[0]!, requests[0]!)).session;
     expect(session.state).toBe("OPEN");
     const attempts = await Promise.all(
@@ -2147,25 +2375,24 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
     expect(success(admitted).session.state).toBe("OPEN");
     const rejectedIndex = attempts.findIndex((r) => r.statusCode === 429);
     expect(attempts[rejectedIndex]!.json()).toMatchObject({
-      error: { code: "UPLOAD_CANARY_BUSY" },
+      error: { code: "UPLOAD_CAPACITY_BUSY" },
     });
     expect(
       await db.mediaUploadOperation.count({
         where: { kind: "CREATE", providerOutcome: "UNKNOWN" },
       }),
     ).toBe(0);
-    // With both ACKs committed, this retry proves the full-capacity rejection
-    // independently from the transient global uncertainty barrier.
+    // A retry cannot exceed the same finite global source count.
     const retry = await create(actors[rejectedIndex + 1]!, requests[rejectedIndex + 1]!);
     expect(retry.statusCode, retry.body).toBe(429);
-    expect(retry.json()).toMatchObject({ error: { code: "UPLOAD_CANARY_BUSY" } });
+    expect(retry.json()).toMatchObject({ error: { code: "UPLOAD_CAPACITY_BUSY" } });
     expect(storage.createMultipartUpload).toHaveBeenCalledTimes(2);
     const grant = success(await command(actors[0]!, session, "authorize", { partNumber: 1 }));
     expect(grant.grant).toBeDefined();
     expect(await db.mediaUploadSession.count()).toBe(2);
     expect(await db.mediaProcessingOutputReservation.count()).toBe(1);
   });
-  it("blocks new rollout admission during an in-flight successful CREATE until its acknowledgement", async () => {
+  it("charges an in-flight CREATE against one slot without freezing other creators or forgetting uncertainty", async () => {
     enableCreatorRollout();
     const actors = await Promise.all([register(), register(), register()]);
     const requests = actors.map(draft);
@@ -2181,20 +2408,21 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
     const pending = Promise.resolve(create(actors[0]!, requests[0]!));
     await entered.promise;
     try {
+      const second = success(await create(actors[1]!, requests[1]!)).session;
+      expect(second.state).toBe("OPEN");
+      const blocked = await create(actors[2]!, requests[2]!);
+      expect(blocked.statusCode, blocked.body).toBe(429);
+      expect(blocked.json()).toMatchObject({ error: { code: "UPLOAD_CAPACITY_BUSY" } });
+      expect(
+        success(await command(actors[1]!, second, "authorize", { partNumber: 1 })).grant,
+      ).toBeDefined();
       expect(
         await db.mediaUploadOperation.count({
           where: { kind: "CREATE", providerOutcome: "UNKNOWN" },
         }),
       ).toBe(1);
-      const blocked = await Promise.all(
-        actors.slice(1).map((actor, index) => create(actor, requests[index + 1]!)),
-      );
-      for (const attempt of blocked) {
-        expect(attempt.statusCode, attempt.body).toBe(429);
-        expect(attempt.json()).toMatchObject({ error: { code: "UPLOAD_CANARY_BUSY" } });
-      }
-      expect(storage.createMultipartUpload).toHaveBeenCalledTimes(1);
-      expect(await db.mediaUploadSession.count()).toBe(1);
+      expect(storage.createMultipartUpload).toHaveBeenCalledTimes(2);
+      expect(await db.mediaUploadSession.count()).toBe(2);
     } finally {
       release.resolve();
       await pending;
@@ -2205,9 +2433,6 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
         where: { kind: "CREATE", providerOutcome: "UNKNOWN" },
       }),
     ).toBe(0);
-    expect(success(await create(actors[1]!, requests[1]!)).session.state).toBe("OPEN");
-    expect(storage.createMultipartUpload).toHaveBeenCalledTimes(2);
-    expect(await db.mediaUploadSession.count()).toBe(2);
   });
   it("keeps current channel authority and visible source size limits under the all-creators audience", async () => {
     enableCreatorRollout();

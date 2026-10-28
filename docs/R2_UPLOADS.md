@@ -71,6 +71,30 @@ The ordinary upload session lasts 24 hours by default (`UPLOAD_SESSION_TTL_SECON
 
 `GET /creator/videos/upload-capabilities?channelId=...` returns an authenticated owner-scoped snapshot of the effective ordinary file limit, remaining channel quota and separate durable-recovery eligibility/limit. It does not reserve bytes. Ordinary multipart retry needs the selected file and session token retained in the current tab; it does not promise recovery across a reload. Durable V2 recovery remains subject to its independently configured source/output/debt limits.
 
+### Durable recovery for large videos
+
+The V2 lane supports sources up to 5 GiB, further constrained by the effective `uploadMaxSizeBytes` setting and channel byte quota. PostgreSQL retains the server-created multipart identity, operation journal and file fingerprint. After a reload, the creator reselects the original file; the full-file fingerprint must match before the existing provider inventory can be continued. Browser storage need only retain a small descriptor, not a copy of the video. The existing 24-hour hard deadline, short operation-specific grants, exact-size part signatures, current account/session authority and server-side source integrity verification remain in force.
+
+Production activation is explicit. With the existing 16 MiB parts, the following finite configuration supports one maximum-size source per account/channel budget. These values are **accounting ceilings**, not bytes allocated or a change to the actual 5 GiB file/100 GiB default channel quotas:
+
+```text
+AYIN_UPLOAD_RECOVERY_V2_ENABLED=1
+AYIN_UPLOAD_RECOVERY_AUDIENCE=all
+AYIN_UPLOAD_RECOVERY_SOURCE_MAX_BYTES=5368709120
+AYIN_UPLOAD_RECOVERY_OUTPUT_ENVELOPE_BYTES=17179869184
+AYIN_UPLOAD_RECOVERY_DEBT_ACCOUNT_BYTES=1735166787584
+AYIN_UPLOAD_RECOVERY_DEBT_CHANNEL_BYTES=1735166787584
+AYIN_UPLOAD_RECOVERY_MAX_OUTSTANDING_SOURCES=8
+```
+
+The source debt calculation deliberately remains `ceil(sourceBytes / partBytes) × 5 GiB`: 320 part slots require 1,600 GiB of conservative accounting at the maximum source size. The separate 16 GiB lifetime output allowance brings the complete minimum budget to 1,616 GiB. Exact-length signatures are retained, but accounting does not pretend they establish a physical provider storage guarantee. Changing the part size requires recalculating the budget; insufficient budgets disable capability before allocation. UNKNOWN provider outcomes never disappear from accounting merely because a URL expires, a source completes, a retry starts or cleanup is requested.
+
+The output allowance is immutable once reserved. It covers measured canonical, thumbnail, adaptive and retry writes across the job's lifetime, with no refill on retry or acknowledgement. Sixteen GiB provides room for three 5 GiB output attempts plus 1 GiB of auxiliary writes; this is a ceiling, not a promise that every input will encode below it. An oversized measured write is rejected before provider dispatch. Previously reserved jobs retain their original allowances.
+
+All-creator admission counts up to eight distinct unsettled source/processing obligations globally, including output-only uncertainty after source cleanup. Source and its linked job count once. A different creator's processing job occupies a slot without freezing all existing uploads. Existing admitted sessions can continue when slots are full; their byte quota, first-grant reservations, uncertainty and debt checks still apply. The original single-canary gates are unchanged. Part signing uses a separate bounded allowance of 1,200 grants per account per minute, sufficient for all 1,024 parts at the minimum 5 MiB part size; inspection and operation-outcome reads each use bounded 600-per-minute account buckets, while creation and control commands retain their lower limits.
+
+For rollback, set `AYIN_UPLOAD_RECOVERY_V2_ENABLED=0` to stop new V2 allocations and grants. Existing accepted processing and cleanup continue under their recorded reservations, and the existing completion path can settle already accepted bytes. Do not shrink/delete durable reservations or reset UNKNOWN debt. Restore the previous deployment configuration only after deciding how to handle still-open large sessions; a smaller source cap must not be presented as preserving their grant eligibility.
+
 ## Canonical MP4 processing
 
 The baseline production media path is:

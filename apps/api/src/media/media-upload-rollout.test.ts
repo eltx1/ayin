@@ -34,6 +34,7 @@ describe("explicit bounded creator rollout", () => {
       { recoveryV2Enabled: false },
       { recoverySourceMaxBytes: 0 },
       { recoverySourceMaxBytes: 128 * 1024 ** 2 + 1 },
+      { recoverySourceMaxBytes: 5 * 1024 ** 3 + 1 },
       { recoveryMaxOutstandingSources: 0 },
       { recoveryMaxOutstandingSources: 9 },
       { recoveryOutputEnvelopeBytes: 0 },
@@ -49,5 +50,31 @@ describe("explicit bounded creator rollout", () => {
     expect(() =>
       requireUploadRecoveryScope(config(), account, channel, 128 * 1024 ** 2 + 1),
     ).toThrowError(expect.objectContaining({ code: "VIDEO_TOO_LARGE" }));
+  });
+  it("admits 5 GiB only with complete finite source and lifetime-output debt budgets", () => {
+    const sourceMaxBytes = 5 * 1024 ** 3;
+    const outputEnvelopeBytes = 16 * 1024 ** 3;
+    const required = (320 * 5 + 16) * 1024 ** 3;
+    const large = {
+      ...config(),
+      recoverySourceMaxBytes: sourceMaxBytes,
+      recoveryOutputEnvelopeBytes: outputEnvelopeBytes,
+      recoveryDebtAccountBytes: required,
+      recoveryDebtChannelBytes: required,
+    };
+    expect(configuredUploadRecovery(large)).toEqual({ sourceMaxBytes, outputEnvelopeBytes });
+    expect(() => requireUploadRecoveryScope(large, account, channel, sourceMaxBytes)).not.toThrow();
+    expect(() =>
+      requireUploadRecoveryScope(large, account, channel, sourceMaxBytes + 1),
+    ).toThrowError(expect.objectContaining({ code: "VIDEO_TOO_LARGE" }));
+    expect(
+      configuredUploadRecovery({ ...large, recoveryDebtAccountBytes: required - 1 }),
+    ).toBeNull();
+    expect(
+      configuredUploadRecovery({ ...large, recoveryDebtChannelBytes: required - 1 }),
+    ).toBeNull();
+    expect(
+      configuredUploadRecovery({ ...large, recoveryOutputEnvelopeBytes: outputEnvelopeBytes + 1 }),
+    ).toBeNull();
   });
 });

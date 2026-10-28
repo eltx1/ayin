@@ -75,7 +75,7 @@ export const contentEditorEn = {
   "content.remove": "Remove video",
   "content.deleted": "The video was removed. The library is being refreshed.",
   "content.confirmRemove":
-    "Remove “{title}” from AYIN? Viewers will no longer be able to watch it.",
+    "Permanently remove “{title}” and its uploaded files from AYIN? Processing will stop and stored files will be scheduled for deletion. This cannot be undone.",
   "content.confirmUnpublish": "Unpublish “{title}”? It will return to draft status.",
   "content.discard": "Leave this editor and discard your unsaved changes?",
   "content.unsaved": "You have unsaved changes.",
@@ -166,7 +166,8 @@ export const contentEditorAr: Record<keyof typeof contentEditorEn, string> = {
   "content.unpublished": "تم إلغاء نشر الفيديو. جارٍ تحديث المكتبة.",
   "content.remove": "حذف الفيديو",
   "content.deleted": "تم حذف الفيديو. جارٍ تحديث المكتبة.",
-  "content.confirmRemove": "هل تريد حذف «{title}» من AYIN؟ لن يتمكن المشاهدون من مشاهدته بعد ذلك.",
+  "content.confirmRemove":
+    "هل تريد حذف «{title}» وملفاته المرفوعة نهائيًا من عين؟ ستتوقف المعالجة وتُجدول الملفات المخزنة للحذف. لا يمكن التراجع عن هذا الإجراء.",
   "content.confirmUnpublish": "هل تريد إلغاء نشر «{title}» وإعادته إلى المسودات؟",
   "content.discard": "هل تريد مغادرة المحرر والتخلي عن التغييرات غير المحفوظة؟",
   "content.unsaved": "لديك تغييرات غير محفوظة.",

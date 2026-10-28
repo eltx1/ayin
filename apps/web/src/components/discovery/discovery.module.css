@@ -31,7 +31,7 @@
 
 .rows {
   display: grid;
-  gap: clamp(1.1rem, 2.4vw, 1.7rem);
+  gap: clamp(0.9rem, 2vw, 1.4rem);
 }
 
 .rowBlock {
@@ -125,12 +125,21 @@
 }
 
 .authState {
-  background: linear-gradient(145deg, rgb(255 255 255 / 4%), rgb(139 24 248 / 3%));
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   color: var(--muted);
   margin: 0 var(--page-gutter) 1rem;
-  padding: 1rem 1.1rem;
+  padding: 1.25rem 1.4rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.authState p {
+  flex: 1 1 20rem;
+  margin: 0;
+  line-height: 1.6;
 }
 
 .authState a {
@@ -181,8 +190,8 @@
 }
 
 .homeDiscovery {
-  padding-block: 2rem 1.5rem;
-  scroll-margin-top: 6rem;
+  padding-block: 2.25rem 1.5rem;
+  scroll-margin-block-start: calc(var(--ayin-shell-top) + 1rem);
 }
 
 .collectionHeader {
@@ -195,43 +204,52 @@
 }
 .collectionHeader h2 {
   margin: 0.3rem 0 0;
-  font-size: clamp(1.5rem, 2.5vw, 2.3rem);
-  letter-spacing: -0.04em;
+  font-size: clamp(1.4rem, 2.2vw, 1.9rem);
+  letter-spacing: -0.025em;
+  line-height: 1.3;
 }
 .collectionHeader p {
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: 0.9rem;
+  line-height: 1.6;
   margin: 0;
 }
 .collectionHeader > div > p {
   color: var(--text-accent);
-  font-size: 0.65rem;
-  letter-spacing: 0.1em;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .homeState {
   padding: 1rem var(--shell-gutter);
 }
+.homeState > section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  max-inline-size: none;
+  padding-block: clamp(2rem, 5vw, 4rem);
+}
 
 .sectionLinks {
   display: flex;
-  gap: 0.6rem;
+  gap: 0.5rem;
   overflow-x: auto;
-  padding: 0.5rem var(--shell-gutter) 0.8rem;
+  padding: 0 var(--shell-gutter) 0.75rem;
   scrollbar-width: thin;
 }
 
 .sectionLinks a {
   align-items: center;
   background: var(--surface-subtle);
-  border: 1px solid var(--border-strong);
-  border-radius: 999px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
   color: var(--text-secondary);
   display: inline-flex;
   flex: 0 0 auto;
-  font-size: 0.9rem;
-  font-weight: 650;
+  font-size: 0.84rem;
+  font-weight: 600;
   min-height: var(--control-height);
   padding: 0.55rem 1rem;
   scroll-margin-block: 6rem;
@@ -239,13 +257,14 @@
 }
 
 .sectionLinks a:hover {
-  background: var(--surface-hover);
+  background: var(--surface-selected);
+  border-color: rgb(196 145 255 / 32%);
   color: var(--foreground);
 }
 
 .exploreMore {
   align-items: center;
-  background: linear-gradient(120deg, rgb(88 8 248 / 8%), transparent);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   display: flex;
@@ -265,4 +284,29 @@
   color: var(--text-secondary);
   line-height: 1.6;
   margin: 0.4rem 0 0;
+}
+
+:global([dir="rtl"]) .collectionHeader h2,
+:global([dir="rtl"]) .collectionHeader > div > p {
+  letter-spacing: normal;
+}
+@media (max-width: 720px) {
+  .homeDiscovery {
+    padding-block-start: 1.5rem;
+  }
+  .collectionHeader {
+    gap: 0.45rem;
+  }
+  .collectionHeader > p {
+    font-size: 0.84rem;
+  }
+  .sectionLinks {
+    padding-block-end: 0.5rem;
+  }
+  .exploreMore {
+    align-items: stretch;
+  }
+  .exploreMore > a {
+    inline-size: 100%;
+  }
 }

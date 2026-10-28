@@ -44,7 +44,7 @@ export function StudioDashboard() {
   };
   const label = (key: string) => copy[key as keyof typeof copy];
   return (
-    <>
+    <div className={styles.dashboard}>
       <PageHeader
         density="compact"
         title={copy.overview}
@@ -61,7 +61,23 @@ export function StudioDashboard() {
           </>
         }
       />
-      {state === "loading" && <StatusNotice announce="polite">{copy.loading}</StatusNotice>}
+      {state === "loading" && (
+        <>
+          <StatusNotice announce="polite">{copy.loading}</StatusNotice>
+          <div className={styles.loadingPreview} aria-hidden="true">
+            <div className={styles.loadingCounters}>
+              {Array.from({ length: 5 }, (_, index) => (
+                <span key={index} />
+              ))}
+            </div>
+            <div className={styles.loadingList}>
+              <span />
+              <span />
+              <span />
+            </div>
+          </div>
+        </>
+      )}
       {state === "error" && (
         <StatusNotice tone="danger" announce="assertive">
           {copy.error} <ActionButton onClick={refresh}>{copy.retry}</ActionButton>
@@ -69,31 +85,43 @@ export function StudioDashboard() {
       )}
       {data && (
         <>
-          <MetricList
-            label={copy.counters}
-            items={[
-              [copy.videos, data.counters.videos],
-              [copy.published, data.counters.publishedVideos],
-              [copy.subscribers, data.counters.subscribers],
-              [copy.comments, data.counters.comments],
-              [copy.playlists, data.counters.playlists],
-            ].map(([label, value]) => ({
-              label: String(label),
-              value: formatNumber(Number(value)),
-            }))}
-          />
+          <div className={styles.counters}>
+            <MetricList
+              label={copy.counters}
+              items={[
+                [copy.videos, data.counters.videos],
+                [copy.published, data.counters.publishedVideos],
+                [copy.subscribers, data.counters.subscribers],
+                [copy.comments, data.counters.comments],
+                [copy.playlists, data.counters.playlists],
+              ].map(([label, value]) => ({
+                label: String(label),
+                value: formatNumber(Number(value)),
+              }))}
+            />
+          </div>
           <div className={styles.grid}>
             <section className={`${styles.panel} ${styles.recent}`} aria-label={copy.recent}>
               <PageHeader
                 level={2}
                 density="compact"
                 title={copy.recent}
-                actions={<ActionLink href={href("/studio/content")}>{copy.content}</ActionLink>}
+                actions={
+                  <ActionLink tone="quiet" href={href("/studio/content")}>
+                    {copy.content}
+                  </ActionLink>
+                }
               />
               {data.recentUploads.length ? (
                 <ul className={styles.uploads}>
                   {data.recentUploads.map((video) => (
                     <li key={video.id}>
+                      <span className={styles.videoMark} aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none">
+                          <rect x="3" y="5" width="18" height="14" rx="3" />
+                          <path d="m10 9 5 3-5 3z" />
+                        </svg>
+                      </span>
                       <span dir="auto">{video.title}</span>
                       <DataBadge
                         tone={
@@ -110,7 +138,7 @@ export function StudioDashboard() {
                   ))}
                 </ul>
               ) : (
-                <p>{copy.empty}</p>
+                <p className={styles.empty}>{copy.empty}</p>
               )}
             </section>
             <section className={styles.panel} aria-label={copy.audience}>
@@ -121,9 +149,15 @@ export function StudioDashboard() {
                 description={copy.audienceCopy}
               />
               <div className={styles.actions}>
-                <ActionLink href={href("/studio/comments")}>{copy.comments}</ActionLink>
-                <ActionLink href={href("/studio/community")}>{copy.community}</ActionLink>
-                <ActionLink href={href("/studio/live")}>{copy.live}</ActionLink>
+                <ActionLink tone="secondary" href={href("/studio/comments")}>
+                  {copy.comments}
+                </ActionLink>
+                <ActionLink tone="secondary" href={href("/studio/community")}>
+                  {copy.community}
+                </ActionLink>
+                <ActionLink tone="secondary" href={href("/studio/live")}>
+                  {copy.live}
+                </ActionLink>
               </div>
             </section>
             <section className={styles.panel} aria-label={copy.analytics}>
@@ -133,7 +167,9 @@ export function StudioDashboard() {
                 title={copy.analytics}
                 description={copy.analyticsCopy}
               />
-              <ActionLink href={href("/studio/analytics")}>{copy.analytics}</ActionLink>
+              <ActionLink tone="secondary" href={href("/studio/analytics")}>
+                {copy.analytics}
+              </ActionLink>
             </section>
             <section className={styles.panel} aria-label={copy.monetization}>
               <PageHeader level={2} density="compact" title={copy.monetization} />
@@ -155,20 +191,30 @@ export function StudioDashboard() {
                 ]}
               />
               <p>{copy.revenueCopy}</p>
-              <ActionLink href={href("/studio/monetization")}>{copy.monetization}</ActionLink>
+              <ActionLink tone="secondary" href={href("/studio/monetization")}>
+                {copy.monetization}
+              </ActionLink>
             </section>
           </div>
           <details className={styles.panel}>
             <summary>{copy.advanced}</summary>
             <div className={styles.actions}>
-              <ActionLink href={href("/studio/tv")}>{copy.tv}</ActionLink>
-              <ActionLink href={href("/studio/channel")}>{copy.channel}</ActionLink>
-              <ActionLink href={href("/studio/playlists")}>{copy.playlists}</ActionLink>
-              <ActionLink href={href("/studio/support")}>{copy.support}</ActionLink>
+              <ActionLink tone="secondary" href={href("/studio/tv")}>
+                {copy.tv}
+              </ActionLink>
+              <ActionLink tone="secondary" href={href("/studio/channel")}>
+                {copy.channel}
+              </ActionLink>
+              <ActionLink tone="secondary" href={href("/studio/playlists")}>
+                {copy.playlists}
+              </ActionLink>
+              <ActionLink tone="secondary" href={href("/studio/support")}>
+                {copy.support}
+              </ActionLink>
             </div>
           </details>
         </>
       )}
-    </>
+    </div>
   );
 }
