@@ -6,8 +6,13 @@ import type { Prisma } from "@ayin/db";
 
 import { DatabaseService } from "../database/database.service.js";
 import { lockStaffRoleChanges } from "../database/staff-role-lock.js";
-import { badRequest, conflict, unauthorized } from "./auth.errors.js";
-import { AuthTokenService, type AuthTokenPayload } from "./auth-token.service.js";
+import { AuthHttpError, badRequest, conflict, unauthorized } from "./auth.errors.js";
+import {
+  AuthTokenService,
+  mfaChallengeTtlSeconds,
+  mfaEnrollmentTtlSeconds,
+  type AuthTokenPayload,
+} from "./auth-token.service.js";
 import { MfaCryptoService } from "./mfa-crypto.service.js";
 import { PasswordService } from "./password.service.js";
 import { SessionService } from "./session.service.js";
@@ -19,7 +24,15 @@ import {
 } from "./totp.js";
 
 const privilegedRoles = new Set(["SUPERADMIN", "ADMIN"]);
-const pendingTtlMs = 10 * 60 * 1_000;
+const pendingTtlMs = mfaEnrollmentTtlSeconds * 1_000;
+
+function invalidMfaRequest() {
+  return new AuthHttpError(
+    401,
+    "MFA_REQUEST_INVALID",
+    "This verification request expired or was already completed. Sign in again to continue.",
+  );
+}
 
 interface Assurance {
   accountId: string;
@@ -51,15 +64,19 @@ export class MfaService {
     const required = roles.some(({ role }) => privilegedRoles.has(role));
     if (!required && credential?.status !== "ENABLED") return null;
     const enrollmentRequired = credential?.status !== "ENABLED";
+    const challengeToken = this.tokens.issueMfaChallenge(
+      accountId,
+      authVersion,
+      credential?.version ?? 0,
+      enrollmentRequired ? "enroll" : "verify",
+    );
     return {
       mfaRequired: true as const,
       enrollmentRequired,
-      challengeToken: this.tokens.issueMfaChallenge(
-        accountId,
-        authVersion,
-        credential?.version ?? 0,
-        enrollmentRequired ? "enroll" : "verify",
-      ),
+      challengeToken,
+      expiresAt: new Date(
+        (Math.floor(Date.now() / 1_000) + mfaChallengeTtlSeconds) * 1_000,
+      ).toISOString(),
     };
   }
 
@@ -95,8 +112,7 @@ export class MfaService {
 
   async beginEnrollmentFromChallenge(challengeToken: string) {
     const payload = this.tokens.verifyMfaChallenge(challengeToken);
-    if (!payload || payload.intent !== "enroll")
-      throw unauthorized("The MFA enrollment request is invalid or expired.");
+    if (!payload || payload.intent !== "enroll") throw invalidMfaRequest();
     await this.assertAccountVersion(payload);
     return this.beginEnrollment(payload.sub, payload.av);
   }
@@ -108,8 +124,7 @@ export class MfaService {
 
   async confirmEnrollment(enrollmentToken: string, code: string): Promise<Assurance> {
     const payload = this.tokens.verifyMfaEnrollment(enrollmentToken);
-    if (!payload || payload.mv === undefined)
-      throw unauthorized("The MFA enrollment request is invalid or expired.");
+    if (!payload || payload.mv === undefined) throw invalidMfaRequest();
     const credentialVersion = payload.mv;
     await this.assertAccountVersion(payload);
     const credential = await this.database.client.accountMfaCredential.findUnique({
@@ -121,7 +136,7 @@ export class MfaService {
       credential.version !== credentialVersion ||
       credential.pendingExpiresAt <= new Date()
     ) {
-      throw unauthorized("The MFA enrollment request is invalid or expired.");
+      throw invalidMfaRequest();
     }
     const counter = verifyTotpCode(this.crypto.decrypt(credential.encryptedSecret), code);
     if (counter === null) throw unauthorized("The authentication code is invalid.");
@@ -185,14 +200,13 @@ export class MfaService {
     recoveryCode?: string,
   ): Promise<Assurance> {
     const payload = this.tokens.verifyMfaChallenge(challengeToken);
-    if (!payload || payload.intent !== "verify")
-      throw unauthorized("The MFA challenge is invalid or expired.");
+    if (!payload || payload.intent !== "verify") throw invalidMfaRequest();
     await this.assertAccountVersion(payload);
     const credential = await this.database.client.accountMfaCredential.findUnique({
       where: { accountId: payload.sub },
     });
     if (!credential || credential.status !== "ENABLED" || credential.version !== payload.mv) {
-      throw unauthorized("The MFA challenge is invalid or expired.");
+      throw invalidMfaRequest();
     }
     if (code) await this.consumeTotp(credential, code);
     else if (recoveryCode) await this.consumeRecoveryCode(credential, recoveryCode);
@@ -505,7 +519,7 @@ export class MfaService {
     const count = await this.database.client.account.count({
       where: { id: payload.sub, authVersion: payload.av, status: "ACTIVE" },
     });
-    if (count !== 1) throw unauthorized("The MFA request is invalid or expired.");
+    if (count !== 1) throw invalidMfaRequest();
   }
 
   private async isPrivileged(

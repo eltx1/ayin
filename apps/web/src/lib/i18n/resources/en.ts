@@ -255,6 +255,12 @@ export const enMessages = {
   "auth.verify": "Verify",
   "auth.verifying": "Verifying…",
   "auth.enableMfa": "Enable MFA",
+  "auth.restartSignIn": "Start sign-in again",
+  "auth.adminMfaPolicy": "Two-step verification is required for administrator accounts.",
+  "auth.mfaRestartRequired":
+    "This verification request expired or was already completed. Sign in again. If setup finished, enter the current code from your authenticator.",
+  "auth.mfaConnectionError":
+    "The server response could not be confirmed. You can retry, or start sign-in again if setup already finished.",
   "account.metaTitle": "Account | AYIN",
   "account.eyebrow": "Your AYIN",
   "account.title": "Account",
