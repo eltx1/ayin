@@ -26,29 +26,15 @@ jobs:
           test "$(ssh-keygen -lf "$HOME/.ssh/candidate" -E sha256 | awk 'NR == 1 {print $2}')" = 'SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y'
           mv "$HOME/.ssh/candidate" "$HOME/.ssh/known_hosts"
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes ayin@"$DEPLOY_HOST" 'cd /home/ayin/htdocs/current && git rev-parse HEAD && node deploy/run-with-env.cjs /home/ayin/env/api.env node --input-type=module' <<'JS'
-          import { createPrismaClient } from './packages/db/dist/index.js';
           import { loadMediaStorageConfig } from './apps/api/dist/media/media-storage.config.js';
-          import { R2MediaStorageAdapter } from './apps/api/dist/media/r2-media-storage.adapter.js';
-          const db=createPrismaClient();
+          import { R2SigV4 } from './apps/api/dist/media/r2-sigv4.js';
+          import { parseR2Xml,readR2XmlText } from './apps/api/dist/media/r2-xml.js';
+          const signer=new R2SigV4(loadMediaStorageConfig());
+          const values=(n,k)=>n.children.filter(x=>x.name===k).map(x=>x.text);
           try {
-            const rows=await db.$transaction(async tx=>{
-              await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
-              return tx.mediaAsset.findMany({where:{kind:'SOURCE_VIDEO',status:'PENDING',removedAt:null,sizeBytes:3735538284n,createdAt:{gte:new Date('2026-10-28T00:00:00Z'),lt:new Date('2026-10-29T00:00:00Z')}},select:{r2ObjectKey:true,sizeBytes:true,video:{select:{status:true}}},take:2});
-            });
-            if(rows.length!==1||rows[0].video?.status!=='UPLOADING')console.log('SAFE_PENDING_TRANSFER',JSON.stringify({matched:rows.length,inspected:false}));
-            else {
-              const asset=rows[0],storage=new R2MediaStorageAdapter(loadMediaStorageConfig());
-              const uploads=(await storage.listMultipartUploads(asset.r2ObjectKey)).filter(x=>x.key===asset.r2ObjectKey);
-              const observations=[];
-              for(const upload of uploads.slice(0,2)){
-                const parts=await storage.listParts({key:asset.r2ObjectKey,uploadId:upload.uploadId});
-                const sorted=[...parts].sort((a,b)=>a.partNumber-b.partNumber);
-                observations.push({initiatedAt:upload.initiatedAt,parts:parts.length,bytes:parts.reduce((n,p)=>n+p.sizeBytes,0),contiguous:sorted.every((p,i)=>p.partNumber===i+1)});
-              }
-              let object=null;
-              if(!uploads.length)try{const h=await storage.headObject(asset.r2ObjectKey);object={sizeBytes:h.sizeBytes};}catch{object={present:false};}
-              console.log('SAFE_PENDING_TRANSFER',JSON.stringify({expectedBytes:Number(asset.sizeBytes),multipartCount:uploads.length,observations,object}));
-            }
-          } catch(e){console.log('SAFE_PENDING_TRANSFER',JSON.stringify({inspected:false,code:/^[A-Za-z0-9_]{1,60}$/.test(e?.name??'')?e.name:'REDACTED'}));}
-          finally{await db.$disconnect();}
+            const signal=AbortSignal.timeout(30000);
+            const response=await signer.request({method:'GET',query:[['cors','']],signal});
+            const root=parseR2Xml(await readR2XmlText(response,65536,signal));
+            console.log('SAFE_UPLOAD_CORS',JSON.stringify({rules:root.children.filter(x=>x.name==='CORSRule').map(x=>({ayinOrigin:values(x,'AllowedOrigin').includes('https://ayin.stream'),wildcardOrigin:values(x,'AllowedOrigin').includes('*'),methods:values(x,'AllowedMethod').filter(v=>/^[A-Z]{1,12}$/.test(v)),etagExposed:values(x,'ExposeHeader').some(v=>v.toLowerCase()==='etag'||v==='*'),contentTypeAllowed:values(x,'AllowedHeader').some(v=>v.toLowerCase()==='content-type'||v==='*')}))}));
+          }catch(e){console.log('SAFE_UPLOAD_CORS',JSON.stringify({available:false,status:e?.status??null,code:/^[A-Za-z0-9_]{1,60}$/.test(e?.name??'')?e.name:'REDACTED'}));}
           JS
