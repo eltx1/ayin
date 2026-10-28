@@ -26,13 +26,15 @@ jobs:
           test "$(ssh-keygen -lf "$HOME/.ssh/candidate" -E sha256 | awk 'NR == 1 {print $2}')" = 'SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y'
           mv "$HOME/.ssh/candidate" "$HOME/.ssh/known_hosts"
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes ayin@"$DEPLOY_HOST" 'cd /home/ayin/htdocs/current && git rev-parse HEAD && node deploy/run-with-env.cjs /home/ayin/env/api.env node --input-type=module' <<'JS'
-          import { createRequire } from 'node:module';
-          const require=createRequire(new URL('./apps/api/package.json',import.meta.url));
-          const {S3Client,GetBucketLifecycleConfigurationCommand}=require('@aws-sdk/client-s3');
-          const client=new S3Client({region:process.env.R2_REGION??'auto',endpoint:'https://'+process.env.R2_ACCOUNT_ID+'.r2.cloudflarestorage.com',credentials:{accessKeyId:process.env.R2_ACCESS_KEY_ID,secretAccessKey:process.env.R2_SECRET_ACCESS_KEY}});
+          import { loadMediaStorageConfig } from './apps/api/dist/media/media-storage.config.js';
+          import { R2SigV4 } from './apps/api/dist/media/r2-sigv4.js';
+          import { parseR2Xml,readR2XmlText } from './apps/api/dist/media/r2-xml.js';
+          const signer=new R2SigV4(loadMediaStorageConfig());
+          const child=(n,k)=>n?.children.find(x=>x.name===k);
           try {
-            const r=await client.send(new GetBucketLifecycleConfigurationCommand({Bucket:process.env.R2_BUCKET}));
-            console.log('SAFE_UPLOAD_LIFECYCLE',JSON.stringify({rules:(r.Rules??[]).map(x=>({enabled:x.Status==='Enabled',abortAfterDays:x.AbortIncompleteMultipartUpload?.DaysAfterInitiation??null,hasPrefix:!!(x.Prefix||x.Filter?.Prefix),hasTagFilter:!!(x.Filter?.Tag||x.Filter?.And)}))}));
-          }catch(e){console.log('SAFE_UPLOAD_LIFECYCLE',JSON.stringify({available:false,status:e?.$metadata?.httpStatusCode??null,code:/^[A-Za-z0-9_]{1,60}$/.test(e?.name??'')?e.name:'REDACTED'}));}
-          finally {client.destroy();}
+            const signal=AbortSignal.timeout(30000);
+            const response=await signer.request({method:'GET',query:[['lifecycle','']],signal});
+            const root=parseR2Xml(await readR2XmlText(response,65536,signal));
+            console.log('SAFE_UPLOAD_LIFECYCLE',JSON.stringify({rules:root.children.filter(x=>x.name==='Rule').map(x=>({enabled:child(x,'Status')?.text==='Enabled',abortAfterDays:Number(child(child(x,'AbortIncompleteMultipartUpload'),'DaysAfterInitiation')?.text)||null,hasFilter:!!child(x,'Filter'),hasPrefix:!!child(x,'Prefix')?.text}))}));
+          }catch(e){console.log('SAFE_UPLOAD_LIFECYCLE',JSON.stringify({available:false,status:e?.status??null,code:/^[A-Za-z0-9_]{1,60}$/.test(e?.name??'')?e.name:'REDACTED'}));}
           JS
