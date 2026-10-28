@@ -20,6 +20,7 @@ import {
   changes,
   health,
   parseArguments,
+  persist,
   prepareEnvironment,
   processState,
   reload,
@@ -107,6 +108,9 @@ async function fixture(context) {
     },
     reload: async () => {
       calls.push("reload");
+    },
+    persist: async () => {
+      calls.push("save");
     },
     delay: async () => {},
     healthAttempts: 2,
@@ -228,7 +232,15 @@ test("apply writes a private exact backup and only the intended replacement", as
   assert.equal((await stat(result.backupPath)).mode & 0o777, 0o600);
   assert.equal((await stat(f.envPath)).mode & 0o777, 0o600);
   assert.equal(await readFile(f.envPath, "utf8"), prepareEnvironment(original, parseEnvText).next);
-  assert.deepEqual(f.calls, ["health", "state:134217728", "reload", "health", "state:5368709120"]);
+  assert.deepEqual(f.calls, [
+    "health",
+    "state:134217728",
+    "reload",
+    "health",
+    "state:5368709120",
+    "save",
+    "state:5368709120",
+  ]);
   assert.equal(
     (await readdir(f.root)).some((name) => name.endsWith(".tmp")),
     false,
@@ -327,6 +339,7 @@ test("failed reload restores exact bytes and reloads only after restoration", as
       {
         ...f.overrides,
         reload: async () => {
+          f.calls.push("reload");
           reloads++;
           const current = parseEnvText(await readFile(f.envPath, "utf8"));
           assert.equal(
@@ -341,6 +354,82 @@ test("failed reload restores exact bytes and reloads only after restoration", as
   );
   assert.equal(reloads, 2);
   assert.equal(await readFile(f.envPath, "utf8"), original);
+  assert.deepEqual(f.calls, [
+    "health",
+    "state:134217728",
+    "reload",
+    "reload",
+    "health",
+    "state:134217728",
+    "save",
+    "state:134217728",
+  ]);
+});
+
+test("a failed startup save restores, verifies and persists the original environment", async (t) => {
+  const f = await fixture(t);
+  let saves = 0;
+  await assert.rejects(
+    upgradeRecoveryLimits(
+      { ...f.options, apply: true },
+      {
+        ...f.overrides,
+        persist: async () => {
+          f.calls.push("save");
+          if (++saves === 1) throw new Error(sentinel);
+          assert.equal(await readFile(f.envPath, "utf8"), original);
+        },
+      },
+    ),
+    (error) =>
+      error.message.includes("rollback was verified and saved for startup") &&
+      !error.message.includes(sentinel),
+  );
+  assert.equal(await readFile(f.envPath, "utf8"), original);
+  assert.deepEqual(f.calls, [
+    "health",
+    "state:134217728",
+    "reload",
+    "health",
+    "state:5368709120",
+    "save",
+    "reload",
+    "health",
+    "state:134217728",
+    "save",
+    "state:134217728",
+  ]);
+});
+
+test("a failed rollback save never reports a fully verified rollback", async (t) => {
+  const f = await fixture(t);
+  await assert.rejects(
+    upgradeRecoveryLimits(
+      { ...f.options, apply: true },
+      {
+        ...f.overrides,
+        persist: async () => {
+          f.calls.push("save");
+          throw new Error(sentinel);
+        },
+      },
+    ),
+    (error) =>
+      error.message.includes("rollback could not be verified") && !error.message.includes(sentinel),
+  );
+  assert.equal(await readFile(f.envPath, "utf8"), original);
+  assert.deepEqual(f.calls, [
+    "health",
+    "state:134217728",
+    "reload",
+    "health",
+    "state:5368709120",
+    "save",
+    "reload",
+    "health",
+    "state:134217728",
+    "save",
+  ]);
 });
 
 test("post-reload health failure rolls back and verifies the original environment", async (t) => {
@@ -463,4 +552,9 @@ test("PM2 verification checks exact services/settings; reload command never targ
   ]);
   assert.equal(commands[0][2].env.AYIN_CURRENT_DIR, f.directory);
   assert.equal(commands[0][2].env.AYIN_API_ENV_FILE, f.envPath);
+  await persist(async (...args) => {
+    commands.push(args);
+  });
+  assert.equal(commands.length, 2);
+  assert.deepEqual(commands[1], ["pm2", ["save"]]);
 });

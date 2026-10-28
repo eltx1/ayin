@@ -273,6 +273,11 @@ export async function reload(directory, envPath, expectedSha, run = command) {
     },
   );
 }
+export async function persist(run = command) {
+  // Use the same PM2 account as the verified processes. This saves startup
+  // state without restarting any additional services; captured output is private.
+  await run("pm2", ["save"]);
+}
 async function acquireLock(path) {
   const child = spawn(
     "flock",
@@ -329,6 +334,7 @@ export async function upgradeRecoveryLimits(options, overrides = {}) {
     health,
     processState,
     reload,
+    persist,
     delay: () => new Promise((resolve) => setTimeout(resolve, 2000)),
     healthAttempts: 30,
     ...overrides,
@@ -395,6 +401,9 @@ export async function upgradeRecoveryLimits(options, overrides = {}) {
       await operations.reload(directory, settings.envPath, settings.expectedSha);
       await verify(proposed.overlay);
       await assertUnchanged(settings.envPath, replacement);
+      await operations.persist();
+      await operations.processState(directory, settings.expectedSha, proposed.overlay);
+      await assertUnchanged(settings.envPath, replacement);
       return { status: "applied", releaseSha: settings.expectedSha, changedKeys: 4, backupPath };
     } catch {
       let current;
@@ -424,13 +433,17 @@ export async function upgradeRecoveryLimits(options, overrides = {}) {
         );
         await operations.reload(directory, settings.envPath, settings.expectedSha);
         await verify(proposed.environment);
+        await assertUnchanged(settings.envPath, original.bytes);
+        await operations.persist();
+        await operations.processState(directory, settings.expectedSha, proposed.environment);
+        await assertUnchanged(settings.envPath, original.bytes);
       } catch {
         throw new GuardError(
           `Upgrade failed and rollback could not be verified. Later edits were not overwritten; inspect service state. Private backup: ${backupPath}`,
         );
       }
       throw new GuardError(
-        "Upgrade failed; the original environment was restored and API/media worker rollback was verified.",
+        "Upgrade failed; the original environment was restored and API/media worker rollback was verified and saved for startup.",
       );
     }
   } finally {
@@ -450,7 +463,7 @@ if (
     console.log(
       result.status === "dry-run"
         ? "Dry-run passed: four upload settings validated. No environment or service was changed."
-        : "Upgrade passed: four upload settings applied; API and media worker verified on the exact release.",
+        : "Upgrade passed: four upload settings applied; API and media worker verified on the exact release and saved for startup.",
     );
     if (result.backupPath) console.log(`Private rollback backup: ${result.backupPath}`);
   } catch (error) {
