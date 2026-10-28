@@ -25,12 +25,12 @@ function response(
 
 describe("quick upload processing feedback", () => {
   it.each(["INGESTING", "QUEUED", "PROCESSING", "UPLOADING", "VERIFYING", "READY"] as const)(
-    "pauses automatic reads without declaring a %s job failed",
+    "continues automatic reads without declaring a slow %s job failed",
     (status) => {
       expect(describeQuickProcessing(response(status), 29).checkNeeded).toBe(false);
       const paused = describeQuickProcessing(response(status), 30);
-      expect(paused.checkNeeded).toBe(true);
-      expect(paused.message).toContain("Automatic checks are paused");
+      expect(paused.checkNeeded).toBe(false);
+      expect(paused.message).toContain("still processing");
       expect(paused.label).not.toMatch(/Failed|Cancelled|^Ready$/);
     },
   );
@@ -38,7 +38,7 @@ describe("quick upload processing feedback", () => {
   it("keeps an absent job pending instead of assuming failure", () => {
     const pending = describeQuickProcessing({ ...response(), processing: null }, 30);
     expect(pending.label).toBe("Waiting for status");
-    expect(pending.message).toContain("pending at the last check");
+    expect(pending.message).toContain("still processing");
     expect(pending.stageLabel).toBeNull();
   });
 
@@ -58,7 +58,7 @@ describe("quick upload processing feedback", () => {
 
   it("requires authoritative playback readiness and clears a paused result on recheck", () => {
     const pending = response("READY");
-    expect(describeQuickProcessing(pending, 30).checkNeeded).toBe(true);
+    expect(describeQuickProcessing(pending, 30).checkNeeded).toBe(false);
     expect(describeQuickProcessing(pending, 1)).toMatchObject({
       label: "Checking availability",
       checkNeeded: false,

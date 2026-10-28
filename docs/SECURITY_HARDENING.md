@@ -31,7 +31,7 @@ Production rate limits cover authentication, search, comment create/edit/delete,
 
 ## Media draft lifecycle
 
-`MediaUploadService.cleanupAbandonedUploads(olderThan)` aborts stale R2 multipart uploads, deletes stale draft objects when possible, and marks stale pending source assets rejected. Operations should invoke this cleanup on a recurring job with a retention threshold appropriate to the upload URL/session TTL; failure of cleanup must be observable but must not block playback. R2 lifecycle rules may be used as a secondary safety net, not as a replacement for database state cleanup.
+`MediaUploadService.cleanupAbandonedUploads(olderThan)` aborts stale R2 multipart uploads, deletes stale draft objects when possible, and marks stale pending source assets rejected. Operations should invoke this cleanup on a recurring job. Ordinary sessions last up to 24 hours independently of their short-lived R2 URLs, so cleanup clamps its cutoff to at least 24 hours old and provider multipart lifecycle rules must retain uploads longer than 24 hours. Failure of cleanup must be observable but must not block playback. R2 lifecycle rules may be used as a secondary safety net, not as a replacement for database state cleanup.
 
 ## Secrets and deployment
 

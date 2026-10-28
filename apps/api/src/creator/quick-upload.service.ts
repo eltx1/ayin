@@ -12,8 +12,12 @@ import {
   type MediaStorageAdapter,
   MediaStorageUnavailableError,
 } from "../media/media-storage.adapter.js";
-import type { MediaStorageConfig } from "../media/media-storage.config.js";
+import {
+  MAX_UPLOAD_SESSION_TTL_SECONDS,
+  type MediaStorageConfig,
+} from "../media/media-storage.config.js";
 import { MediaUploadService } from "../media/media-upload.service.js";
+import { readUploadByteUsage } from "../media/media-upload-admission.js";
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
 
 const RIGHTS_DECLARATION_VERSION = 1;
@@ -74,6 +78,42 @@ export class QuickUploadService {
     @Inject(MEDIA_STORAGE_ADAPTER) private readonly storage: MediaStorageAdapter,
     @Inject(MEDIA_STORAGE_CONFIG) private readonly storageConfig: MediaStorageConfig,
   ) {}
+
+  async uploadCapabilities(accountId: string, channelId: string) {
+    return this.database.client.$transaction(
+      async (tx) => {
+        await this.assertOwner(accountId, channelId, tx);
+        const [maximum, quota, usedBytes] = await Promise.all([
+          this.settings.getResolvedInTransaction(tx, "uploadMaxSizeBytes"),
+          this.settings.getResolvedInTransaction(tx, "uploadChannelQuotaBytes"),
+          readUploadByteUsage(tx, channelId),
+        ]);
+        if (usedBytes === null || usedBytes > BigInt(Number.MAX_SAFE_INTEGER))
+          throw new QuickUploadError(
+            "UPLOAD_CAPACITY_UNAVAILABLE",
+            "Upload capacity could not be checked. Try again shortly.",
+            503,
+          );
+        const channelQuotaBytes = quota.value as number;
+        // A snapshot for file selection, not a reservation. createSession still
+        // rechecks current ownership and available bytes inside its write fence.
+        return {
+          actorAccountId: accountId,
+          channelId,
+          maxFileSizeBytes: maximum.value as number,
+          channelQuotaBytes,
+          usedStorageBytes: Number(usedBytes),
+          availableStorageBytes: Math.max(0, channelQuotaBytes - Number(usedBytes)),
+          multipartThresholdBytes: this.storageConfig.multipartThresholdBytes,
+          partSizeBytes: this.storageConfig.partSizeBytes,
+          uploadSessionTtlSeconds:
+            this.storageConfig.uploadSessionTtlSeconds ?? MAX_UPLOAD_SESSION_TTL_SECONDS,
+          storageAvailable: this.storage.available,
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+  }
 
   async uploadHistory(
     accountId: string,

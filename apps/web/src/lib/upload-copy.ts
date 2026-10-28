@@ -1,5 +1,78 @@
 import type { Locale } from "./i18n/config";
 const arabic: Record<string, string> = {
+  "Keep this page open until the upload finishes. You can edit the details below.":
+    "أبقِ هذه الصفحة مفتوحة حتى يكتمل الرفع. يمكنك تعديل التفاصيل أدناه.",
+  "Check your video details": "راجع تفاصيل الفيديو",
+  "Details were not saved": "لم تُحفظ التفاصيل",
+  "Thumbnail was not saved": "لم تُحفظ الصورة المصغرة",
+  "Video was not published": "لم يُنشر الفيديو",
+  "Upload needs attention": "الرفع يحتاج إلى إجراء",
+  "Upload paused. Keep this page open to continue from this file.":
+    "تم إيقاف الرفع مؤقتًا. أبقِ هذه الصفحة مفتوحة لاستكمال رفع الملف.",
+  "Choose a video file": "اختر ملف فيديو",
+  "This file cannot be uploaded yet": "تعذر بدء رفع هذا الملف",
+  "Choose a supported video": "اختر فيديو بصيغة مدعومة",
+  "Video processing needs attention": "تجهيز الفيديو يحتاج إلى إجراء",
+  "Could not check processing": "تعذر التحقق من حالة التجهيز",
+  "Your upload is saved. Retry the status check; you do not need to upload the file again.":
+    "تم حفظ الملف المرفوع. أعد التحقق من الحالة؛ لا تحتاج إلى رفع الملف مرة أخرى.",
+  "Needs attention": "يحتاج إلى إجراء",
+  Paused: "متوقف مؤقتًا",
+  "Current upload": "الرفع الحالي",
+  "Checking file": "جارٍ فحص الملف",
+  "Starting upload": "جارٍ بدء الرفع",
+  "Confirming upload": "جارٍ تأكيد الرفع",
+  Reconnecting: "جارٍ إعادة الاتصال",
+  Upload: "رفع الملف",
+  "Prepare playback": "تجهيز المشاهدة",
+  Publish: "النشر",
+  "Video transfer progress": "تقدم نقل ملف الفيديو",
+  About: "حوالي",
+  "min left": "دقيقة متبقية",
+  "This action needs checking": "يلزم التحقق من نتيجة هذا الإجراء",
+  "Continue upload": "استكمال الرفع",
+  "Retry this upload": "إعادة محاولة هذا الرفع",
+  "Pause upload": "إيقاف الرفع مؤقتًا",
+  "Choose another file": "اختيار ملف آخر",
+  "Sign in in a new tab": "تسجيل الدخول في تبويب جديد",
+  "I have signed in — continue": "سجلت الدخول — استكمال",
+  "Upload in progress": "جارٍ الرفع",
+  "Maximum file size": "الحد الأقصى لحجم الملف",
+  "Available storage": "المساحة المتاحة",
+  "You can edit the details while the video uploads. Save or publish after upload finishes.":
+    "يمكنك تعديل التفاصيل أثناء الرفع. احفظها أو انشر الفيديو بعد اكتمال الرفع.",
+  "Your file is uploaded. Publishing becomes available when playback is ready.":
+    "اكتمل رفع الملف. سيتاح النشر بعد تجهيز نسخة المشاهدة.",
+  "The final confirmation did not arrive. Retry to check and finish this same upload.":
+    "لم يصل التأكيد النهائي. أعد المحاولة للتحقق وإكمال نفس الرفع.",
+  "Your connection was interrupted. Retry to continue this upload without creating another video.":
+    "انقطع الاتصال. أعد المحاولة لاستكمال نفس الرفع دون إنشاء فيديو آخر.",
+  "We could not confirm whether the upload was saved. Check your saved videos before starting another upload.":
+    "تعذر تأكيد حفظ الرفع. راجع فيديوهاتك المحفوظة قبل بدء رفع آخر.",
+  "Video uploads are temporarily unavailable. Please try again later.":
+    "رفع الفيديو غير متاح مؤقتًا. حاول مرة أخرى لاحقًا.",
+  "This file is larger than the upload limit shown below. Choose a smaller file.":
+    "حجم الملف أكبر من الحد الموضح أدناه. اختر ملفًا أصغر.",
+  "Your channel does not have enough storage for this video. Review saved videos in Studio.":
+    "المساحة المتاحة بقناتك لا تكفي لهذا الفيديو. راجع فيديوهاتك المحفوظة في الاستوديو.",
+  "This upload session expired. Review the saved draft in Studio before starting again.":
+    "انتهت صلاحية جلسة الرفع. راجع المسودة المحفوظة في الاستوديو قبل البدء مجددًا.",
+  "Your administrator session needs verification. Open Studio to verify and review this draft.":
+    "تحتاج جلسة المسؤول إلى التحقق. افتح الاستوديو للتحقق ومراجعة هذه المسودة.",
+  "Your session ended. Keep this page open, sign in in a new tab, then return here to retry.":
+    "انتهت جلسة دخولك. أبقِ هذه الصفحة مفتوحة وسجل الدخول في تبويب جديد، ثم ارجع هنا لإعادة المحاولة.",
+  "Sign in to the account that started this upload, then retry from this page.":
+    "سجل الدخول بالحساب الذي بدأ هذا الرفع، ثم أعد المحاولة من هذه الصفحة.",
+  "You no longer have permission to upload to this channel.":
+    "لم تعد لديك صلاحية الرفع إلى هذه القناة.",
+  "Too many upload requests. Wait a moment before trying again.":
+    "طلبات الرفع كثيرة. انتظر قليلًا ثم أعد المحاولة.",
+  "Storage rejected the transfer. Retry to refresh the upload connection; your saved draft will be reused.":
+    "رفضت خدمة التخزين نقل الملف. أعد المحاولة لتجديد الاتصال واستكمال نفس المسودة المحفوظة.",
+  "The file transfer stopped after automatic retries. Check your connection, then retry this upload.":
+    "توقف نقل الملف بعد المحاولات التلقائية. تحقق من اتصالك ثم أعد محاولة نفس الرفع.",
+  "Your video is still processing. You can keep this page open or return to Studio later.":
+    "لا يزال الفيديو قيد التجهيز. يمكنك إبقاء الصفحة مفتوحة أو العودة إلى الاستوديو لاحقًا.",
   "Upload a video": "رفع فيديو",
   "Choose a format and file, review the details, then save or publish your video.":
     "اختر نوع الفيديو والملف، ثم راجع التفاصيل واحفظها أو انشر الفيديو.",
@@ -35,7 +108,7 @@ const arabic: Record<string, string> = {
   "MP4, MOV, MKV, WebM and other common video formats": "MP4 وMOV وMKV وWebM وصيغ الفيديو الشائعة",
   "Finish your video": "أكمل تفاصيل الفيديو",
   "Review the essentials while AYIN completes the upload and playback preparation.":
-    "راجع التفاصيل بعد تأكيد الرفع وتجهيز نسخة المشاهدة.",
+    "راجع التفاصيل أثناء رفع الملف وتجهيز نسخة المشاهدة.",
   Title: "العنوان",
   "Give your video a clear title": "اكتب عنوانًا واضحًا للفيديو",
   "Upload status": "حالة الرفع",

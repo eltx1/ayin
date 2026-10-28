@@ -416,6 +416,44 @@ describe("bounded, complete R2 upload observations", () => {
     expect(fetch.mock.calls.every(([, init]) => init.method === "GET")).toBe(true);
   });
 
+  it("does not age-clean valid 24-hour uploads even after reducing the configured session lifetime", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-28T12:00:00.000Z"));
+    const { storage } = fixture(
+      response(uploads(upload(key, uploadId, "2026-10-28T10:00:00.000Z"))),
+    );
+    const asset = {
+      findUnique: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
+      updateMany: vi.fn(),
+    };
+    const abort = vi.spyOn(storage, "abortMultipartUpload");
+    const remove = vi.spyOn(storage, "deleteObject");
+    const service = new MediaUploadService(
+      { client: { mediaAsset: asset } } as never,
+      {} as never,
+      storage,
+      { ...config, uploadSessionTtlSeconds: 3600 },
+      {} as never,
+      {} as never,
+    );
+    expect(await service.cleanupAbandonedUploads(new Date("2026-10-28T11:00:00.000Z"))).toEqual({
+      abortedMultipart: 0,
+      rejectedAssets: 0,
+    });
+    expect(asset.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          createdAt: { lt: new Date("2026-10-27T12:00:00.000Z") },
+          uploadIntegrityRequired: false,
+        }),
+      }),
+    );
+    expect(asset.findUnique).not.toHaveBeenCalled();
+    expect(abort).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+  });
+
   it("accepts fetch-decoded XML without comparing compressed Content-Length to decoded size", async () => {
     const { storage } = fixture(
       new Response(parts(), { headers: { "content-encoding": "gzip", "content-length": "42" } }),

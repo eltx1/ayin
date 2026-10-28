@@ -28,6 +28,7 @@ test("V2 resumes three exact parts after offline and reload without reallocating
   const region = page.getByRole("region", { name: "Recoverable uploads", exact: true });
   const button = (name: string) => region.getByRole("button", { name, exact: true });
   const reopen = async () => {
+    await page.getByText("Resume an earlier upload", { exact: true }).click();
     await region.locator("summary").click();
     await button("Check saved upload").click();
     await expect(button("Check saved upload")).toBeEnabled();

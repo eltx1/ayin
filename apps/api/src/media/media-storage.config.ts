@@ -2,6 +2,7 @@ import { z } from "zod";
 
 const MIB = 1024 * 1024;
 const GIB = 1024 * MIB;
+export const MAX_UPLOAD_SESSION_TTL_SECONDS = 86_400;
 
 const environmentSchema = z.object({
   APP_ENV: z.enum(["development", "test", "staging", "production"]).default("development"),
@@ -47,6 +48,14 @@ const environmentSchema = z.object({
   R2_SECRET_ACCESS_KEY: z.string().trim().min(1).optional(),
   R2_REGION: z.string().trim().min(1).default("auto"),
   R2_UPLOAD_URL_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
+  // A large multipart video can take hours to transfer. The authenticated
+  // session outlives each short-lived, operation-specific provider URL.
+  UPLOAD_SESSION_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(3600)
+    .max(MAX_UPLOAD_SESSION_TTL_SECONDS)
+    .default(MAX_UPLOAD_SESSION_TTL_SECONDS),
   R2_PART_SIZE_BYTES: z.coerce
     .number()
     .int()
@@ -72,6 +81,7 @@ export interface MediaStorageConfig {
   region: string;
   endpoint: string | null;
   uploadUrlTtlSeconds: number;
+  uploadSessionTtlSeconds?: number;
   partSizeBytes: number;
   multipartThresholdBytes: number;
   uploadSessionSecret: string;
@@ -154,6 +164,7 @@ export function loadMediaStorageConfig(
       ? `https://${parsed.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`
       : null,
     uploadUrlTtlSeconds: parsed.R2_UPLOAD_URL_TTL_SECONDS,
+    uploadSessionTtlSeconds: parsed.UPLOAD_SESSION_TTL_SECONDS,
     partSizeBytes: parsed.R2_PART_SIZE_BYTES,
     multipartThresholdBytes: parsed.R2_MULTIPART_THRESHOLD_BYTES,
     uploadSessionSecret:

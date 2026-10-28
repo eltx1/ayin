@@ -135,6 +135,7 @@ databaseDescribe("Current administrator upload continuation authority", () => {
         assetId: string;
         partCount?: number;
         objectKey: string;
+        expiresAt: string;
       },
     };
   }
@@ -509,13 +510,16 @@ databaseDescribe("Current administrator upload continuation authority", () => {
           { timeout: 4000, interval: 25 },
         );
         vi.spyOn(Date, "now").mockReturnValue(
-          Date.now() + (expiry === "STEP_UP" ? 301000 : 901000),
+          expiry === "STEP_UP" ? Date.now() + 301000 : new Date(f.session.expiresAt).getTime() + 1,
         );
       } finally {
         release();
       }
       await holder;
-      expect((await request).statusCode).toBe(expiry === "STEP_UP" ? 403 : 401);
+      const response = await request;
+      expect(response.statusCode).toBe(expiry === "STEP_UP" ? 403 : 401);
+      if (expiry === "UPLOAD_TOKEN")
+        expect(response.json().error.code).toBe("INVALID_UPLOAD_SESSION");
       expect(await state(f)).toEqual(before);
       noProviderCalls();
     });

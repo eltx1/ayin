@@ -204,7 +204,7 @@ test("a committed root response loss retains the file without creating another d
     .setInputFiles({ name: "workflow.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(1024) });
   await expect(
     page.getByText(
-      "Upload could not be confirmed. Review your saved uploads in Studio before starting again.",
+      "We could not confirm whether the upload was saved. Check your saved videos before starting another upload.",
       { exact: true },
     ),
   ).toBeVisible();
@@ -243,4 +243,112 @@ test("a foreign publication acknowledgment leaves the committed video reviewable
   await expect(page).toHaveURL(/\/upload/);
   expect(publishes).toBe(1);
   expect(db("find-video", { channelId }).status).toBe("PUBLISHED");
+});
+
+test("file eligibility is visible and rejects an oversized file before creating a draft", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route(`${API}/creator/videos/upload-capabilities?**`, async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ response, json: { ...(await response.json()), maxFileSizeBytes: 512 } });
+  });
+  await setup(page);
+  let drafts = 0;
+  page.on("request", (request) => {
+    if (request.url().endsWith("/creator/videos/drafts")) drafts++;
+  });
+  await expect(page.getByText(/Maximum file size/)).toBeVisible();
+  await page
+    .locator('input[type="file"][accept^="video/"]')
+    .setInputFiles({ name: "too-large.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(1024) });
+  const alert = page.getByRole("alert").filter({ hasText: "This file cannot be uploaded yet" });
+  await expect(alert).toBeInViewport();
+  await expect(alert).toContainText("Choose a smaller file");
+  await expect(
+    page.getByRole("button", { name: "Choose another file", exact: true }),
+  ).toBeEnabled();
+  expect(drafts).toBe(0);
+});
+
+test("details remain editable during transfer and a failed transfer retries the same draft", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setup(page);
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let puts = 0,
+    drafts = 0;
+  page.on("request", (request) => {
+    if (request.url().endsWith("/creator/videos/drafts")) drafts++;
+  });
+  await page.route("https://e2e-upload.invalid/**", async (route) => {
+    if (route.request().method() !== "PUT") return route.fallback();
+    puts++;
+    if (puts > 1) return route.fallback();
+    await gate;
+    await route.fulfill({ status: 403, body: "", headers: { "access-control-allow-origin": WEB } });
+  });
+  try {
+    await page
+      .locator('input[type="file"][accept^="video/"]')
+      .setInputFiles({ name: "retry.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(1024) });
+    const title = page.getByLabel("Title", { exact: true });
+    await expect(title).toBeEnabled();
+    await title.fill("Edited while uploading");
+    await expect(page.getByRole("button", { name: "Save details", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Pause upload", exact: true })).toBeEnabled();
+    release();
+    const alert = page.getByRole("alert").filter({ hasText: "Upload needs attention" });
+    await expect(alert).toBeInViewport();
+    await expect(alert).toContainText("Storage rejected the transfer");
+    await page.getByRole("button", { name: "Retry this upload", exact: true }).click();
+    await expect(
+      page.getByRole("progressbar", { name: "Upload progress", exact: true }),
+    ).toHaveAttribute("aria-valuenow", "100");
+    await expect(title).toHaveValue("Edited while uploading");
+    expect(drafts).toBe(1);
+    expect(puts).toBe(2);
+  } finally {
+    release();
+  }
+});
+
+test("retry after an acknowledged completion only reconciles the saved video", async ({ page }) => {
+  await setup(page);
+  let failed = true,
+    completions = 0,
+    drafts = 0,
+    puts = 0,
+    videoId = "";
+  page.on("request", (request) => {
+    if (request.url().endsWith("/media/uploads/sessions/complete")) completions++;
+    if (request.url().endsWith("/creator/videos/drafts")) drafts++;
+    if (request.method() === "PUT") puts++;
+  });
+  await page.route(`${API}/creator/videos/*/upload-complete`, async (route) => {
+    videoId = route.request().url().split("/").at(-2)!;
+    if (failed)
+      return route.fulfill({
+        status: 503,
+        json: { error: { code: "TEMPORARILY_UNAVAILABLE", message: "Try later" } },
+      });
+    return route.continue();
+  });
+  await page
+    .locator('input[type="file"][accept^="video/"]')
+    .setInputFiles({ name: "confirmed.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(1024) });
+  await expect(
+    page.getByRole("alert").filter({ hasText: "The final confirmation did not arrive" }),
+  ).toBeVisible();
+  db("mark-media-ready", { videoId });
+  failed = false;
+  await page.getByRole("button", { name: "Retry this upload", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Publish video", exact: true })).toBeEnabled();
+  expect(completions).toBe(1);
+  expect(drafts).toBe(1);
+  expect(puts).toBe(1);
 });

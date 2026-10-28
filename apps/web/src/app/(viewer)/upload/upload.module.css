@@ -1,6 +1,6 @@
 .page {
   min-inline-size: 0;
-  padding: clamp(24px, 4vw, 48px) var(--shell-gutter) calc(var(--space-8) + var(--ayin-safe-bottom));
+  padding: clamp(16px, 2vw, 24px) var(--shell-gutter) calc(var(--space-8) + var(--ayin-safe-bottom));
 }
 
 .workspace {
@@ -13,4 +13,21 @@
   .page {
     padding-block-end: calc(96px + var(--ayin-safe-bottom));
   }
+}
+
+.secondaryFlow {
+  border-block-start: 1px solid var(--border);
+  margin-top: 1.5rem;
+  padding-top: 0.8rem;
+}
+.secondaryFlow > summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 650;
+  padding: 0.6rem 0;
+}
+.secondaryFlow > summary:focus-visible {
+  outline: 2px solid var(--action-outline);
+  outline-offset: 4px;
 }

@@ -4,6 +4,19 @@ import { loadMediaStorageConfig } from "./media-storage.config.js";
 import { R2SigV4 } from "./r2-sigv4.js";
 
 describe("media storage configuration", () => {
+  it("separates a bounded upload session from short-lived provider URLs", () => {
+    const config = loadMediaStorageConfig({ APP_ENV: "test" });
+    expect(config.uploadUrlTtlSeconds).toBe(900);
+    expect(config.uploadSessionTtlSeconds).toBe(86_400);
+    expect(
+      loadMediaStorageConfig({ APP_ENV: "test", UPLOAD_SESSION_TTL_SECONDS: "7200" })
+        .uploadSessionTtlSeconds,
+    ).toBe(7200);
+    for (const value of ["0", "3599", "86401", "Infinity", "1.5"])
+      expect(() =>
+        loadMediaStorageConfig({ APP_ENV: "test", UPLOAD_SESSION_TTL_SECONDS: value }),
+      ).toThrow();
+  });
   it("requires an explicit default-off V2 recovery rollout switch", () => {
     expect(loadMediaStorageConfig({ APP_ENV: "test" }).recoveryV2Enabled).toBe(false);
     expect(

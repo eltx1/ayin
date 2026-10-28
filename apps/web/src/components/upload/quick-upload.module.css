@@ -4,6 +4,17 @@
   overflow-wrap: anywhere;
 }
 
+.pageHeader {
+  margin-bottom: 1.1rem;
+}
+.pageHeader h1 {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+}
+.pageHeader p {
+  font-size: 0.86rem;
+  margin-top: 0.35rem;
+}
+
 .workspace {
   display: grid;
   gap: 1rem;
@@ -833,6 +844,239 @@
   .picker,
   .progressTrack > span,
   .summaryChevron {
+    transition: none;
+  }
+}
+
+.transferPanel {
+  background: rgb(17 14 30 / 97%);
+  border: 1px solid var(--action-outline);
+  border-radius: 20px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 22%);
+  margin-block: 0 1.2rem;
+  padding: 1rem 1.2rem;
+  position: sticky;
+  top: calc(4.5rem + var(--ayin-safe-top));
+  z-index: 15;
+  scroll-margin-top: calc(5rem + var(--ayin-safe-top));
+}
+.transferPanel:focus {
+  outline: 2px solid var(--action-outline);
+  outline-offset: 3px;
+}
+.transferProblem {
+  border-color: rgb(255 96 117 / 65%);
+}
+.transferHeading {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+.transferHeading > div {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.transferHeading small {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+.transferHeading strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.95rem;
+}
+.transferBadge {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.transferProblem .transferBadge {
+  color: #ffc4cd;
+}
+.phaseSteps {
+  display: flex;
+  gap: 0.6rem;
+  list-style: none;
+  margin: 0.85rem 0;
+  padding: 0;
+}
+.phaseSteps li {
+  flex: 1;
+  color: var(--text-muted);
+  border-block-end: 2px solid var(--border);
+  padding-block-end: 0.5rem;
+  font-size: 0.75rem;
+}
+.phaseSteps li[data-state="current"] {
+  color: var(--text-primary);
+  border-color: #c58bff;
+  font-weight: 800;
+}
+.phaseSteps li[data-state="complete"] {
+  color: #b2edcd;
+  border-color: #67cc99;
+}
+.transferTrack {
+  background: rgb(255 255 255 / 9%);
+  height: 0.4rem;
+  overflow: hidden;
+  border-radius: 999px;
+}
+.transferTrack span {
+  background: var(--brand-gradient);
+  display: block;
+  height: 100%;
+  transition: width 0.3s ease;
+}
+.transferProblem .transferTrack span {
+  background: #e8657d;
+}
+.transferMetrics {
+  display: flex;
+  gap: 0.4rem 1rem;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+}
+.transferMessage {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  margin: 0.75rem 0 0;
+}
+.inlineFailure {
+  color: #ffd4dc;
+  margin-top: 0.8rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.inlineFailure p {
+  margin: 0.2rem 0 0;
+}
+.transferActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  margin-top: 0.8rem;
+}
+.transferActions:empty {
+  display: none;
+}
+.transferActions a {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  text-underline-offset: 0.2rem;
+}
+.limitHint {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  margin: 0.75rem 0 0;
+}
+.limitHint strong {
+  color: var(--text-secondary);
+}
+.formatCard .stepNumber {
+  display: none;
+}
+.formatCard .stepHeading {
+  margin-bottom: 0.65rem;
+}
+.formatCard .stepHeading h2 {
+  font-size: 1rem;
+}
+.formatCard .stepHeading p {
+  display: none;
+}
+.formatCard .typeCard {
+  min-block-size: 4.8rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 14px;
+}
+.formatCard .typeVisual {
+  height: 3rem;
+  width: 3.8rem;
+  border-radius: 10px;
+}
+.formatCard .landscapeFrame {
+  width: 2.5rem;
+}
+.formatCard .portraitFrame {
+  height: 2.35rem;
+}
+.formatCard .typeMeta {
+  display: none;
+}
+.fileCard .stepNumber {
+  display: none;
+}
+.fileCard .stepHeading {
+  margin-bottom: 0.8rem;
+}
+.fileCard .stepHeading h2 {
+  font-size: 1rem;
+}
+.fileCard .stepHeading p {
+  display: none;
+}
+.fileCard .picker {
+  min-height: 10rem;
+}
+@media (max-width: 640px) {
+  .transferPanel {
+    padding: 0.85rem;
+    border-radius: 16px;
+    top: calc(4rem + var(--ayin-safe-top));
+  }
+  .transferHeading {
+    gap: 0.5rem;
+  }
+  .transferHeading strong {
+    max-width: 53vw;
+    font-size: 0.85rem;
+  }
+  .phaseSteps {
+    gap: 0.45rem;
+  }
+  .phaseSteps li {
+    font-size: 0.7rem;
+  }
+  .transferMetrics {
+    font-size: 0.68rem;
+  }
+  .transferActions {
+    gap: 0.5rem;
+  }
+  .formatCard .typeCopy small {
+    display: none;
+  }
+  .formatCard .typeGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .formatCard .typeCard {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.5rem;
+    padding: 0.65rem;
+  }
+  .formatCard .typeVisual {
+    width: 2.7rem;
+  }
+  .formatCard .typeCopy strong {
+    font-size: 0.78rem;
+  }
+  .formatCard .typeCheck {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .transferTrack span {
     transition: none;
   }
 }
