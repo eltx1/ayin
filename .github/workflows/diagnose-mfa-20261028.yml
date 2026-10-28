@@ -1,4 +1,4 @@
-name: Diagnose MFA state (read only)
+name: Diagnose upload state (read only)
 on:
   push:
     branches: [codex/ayin-mfa-diagnostic-20261028]
@@ -11,7 +11,7 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v7
-      - name: Read only MFA status, without credentials or account identifiers
+      - name: Read only upload health, without identifiers or credentials
         shell: bash
         env:
           DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
@@ -27,48 +27,18 @@ jobs:
           mv "$HOME/.ssh/candidate" "$HOME/.ssh/known_hosts"
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes ayin@"$DEPLOY_HOST" 'cd /home/ayin/htdocs/current && git rev-parse HEAD && node deploy/run-with-env.cjs /home/ayin/env/api.env node --input-type=module' <<'JS'
           import { createPrismaClient } from './packages/db/dist/index.js';
-          const db = createPrismaClient();
+          const db=createPrismaClient();
+          const safe=x=>typeof x==='string'&&/^[A-Z0-9_]{1,128}$/.test(x)?x:x==null?null:'REDACTED';
+          const envNames=['AYIN_UPLOAD_RECOVERY_V2_ENABLED','AYIN_UPLOAD_RECOVERY_AUDIENCE','AYIN_UPLOAD_RECOVERY_SOURCE_MAX_BYTES','AYIN_UPLOAD_RECOVERY_OUTPUT_ENVELOPE_BYTES','AYIN_UPLOAD_RECOVERY_MAX_OUTSTANDING_SOURCES','AYIN_UPLOAD_RECOVERY_DEBT_ACCOUNT_BYTES','AYIN_UPLOAD_RECOVERY_DEBT_CHANNEL_BYTES','R2_PART_SIZE_BYTES','R2_MULTIPART_THRESHOLD_BYTES','R2_UPLOAD_URL_TTL_SECONDS'];
+          const config=Object.fromEntries(envNames.map(k=>[k,/^(?:[0-9]+|all|canary)$/.test(process.env[k]??'')?process.env[k]:'unset']));
           try {
-            await db.$transaction(async (tx) => {
+            await db.$transaction(async tx=>{
               await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
-              const roles = await tx.adminRoleAssignment.findMany({
-                where: { role: { in: ['ADMIN', 'SUPERADMIN'] } },
-                select: { accountId: true }
-              });
-              const ids = [...new Set(roles.map(x => x.accountId))];
-              for (let i = 0; i < ids.length; i++) {
-                const id = ids[i];
-                const account = await tx.account.findUnique({
-                  where: { id }, select: { status: true, authVersion: true, updatedAt: true }
-                });
-                const mfa = await tx.accountMfaCredential.findUnique({
-                  where: { accountId: id },
-                  select: { status: true, version: true, enabledAt: true, pendingExpiresAt: true, updatedAt: true }
-                });
-                const audits = await tx.adminAuditLog.findMany({
-                  where: { entityId: id, OR: [
-                    { action: { startsWith: 'auth.mfa' } },
-                    { action: { contains: 'password' } },
-                    { action: { contains: 'session' } },
-                    { action: { contains: 'mfa_reset' } }
-                  ] },
-                  select: { action: true, createdAt: true },
-                  orderBy: { createdAt: 'desc' }, take: 12
-                });
-                const identity = await tx.account.findUnique({
-                  where: { id },
-                  select: {
-                    viewerProfiles: { where: { deletedAt: null, isDefault: true }, take: 1, select: { id: true } },
-                    channelMemberships: { where: { role: 'OWNER' }, orderBy: { createdAt: 'asc' }, take: 1,
-                      select: { channel: { select: { primaryTvChannel: { select: { id: true } } } } } }
-                  }
-                });
-                const identityReady = Boolean(identity?.viewerProfiles.length && identity?.channelMemberships[0]?.channel.primaryTvChannel);
-                const sessionsCreatedAfterMfa = mfa?.enabledAt ? await tx.accountSession.count({
-                  where: { accountId: id, authVersion: account.authVersion, createdAt: { gte: mfa.enabledAt } }
-                }) : 0;
-                console.log(JSON.stringify({ administrator: i + 1, now: new Date(), account, mfa, audits, identityReady, sessionsCreatedAfterMfa }));
-              }
+              const settings=await tx.platformSetting.findMany({where:{key:{in:['uploadMaxSizeBytes','uploadChannelQuotaBytes']}},select:{key:true,value:true}});
+              const sessions=await tx.mediaUploadSession.findMany({take:25,orderBy:{createdAt:'desc'},select:{sourceProtocolVersion:true,state:true,mode:true,sizeBytes:true,createdAt:true,updatedAt:true,hardExpiresAt:true,cleanupRequestedAt:true,grantReservationCount:true,operations:{select:{kind:true,status:true,providerOutcome:true},take:6,orderBy:{createdAt:'desc'}}}});
+              const processing=await tx.mediaProcessingJob.findMany({take:25,orderBy:{createdAt:'desc'},select:{status:true,stage:true,errorCode:true,sourceSizeBytes:true,progressPercent:true,attempt:true,outputProtocolVersion:true,queuedAt:true,startedAt:true,completedAt:true,createdAt:true,updatedAt:true}});
+              const pendingAssets=await tx.mediaAsset.groupBy({by:['status'],where:{kind:'SOURCE_VIDEO',removedAt:null},_count:{_all:true},_sum:{sizeBytes:true}});
+              console.log(JSON.stringify({now:new Date(),config,settings:settings.map(s=>({key:s.key,value:typeof s.value==='number'?s.value:'non_numeric'})),sessions,processing:processing.map(j=>({...j,errorCode:safe(j.errorCode),stage:safe(j.stage)})),pendingAssets},(_,v)=>typeof v==='bigint'?v.toString():v));
             });
-          } finally { await db.$disconnect(); }
+          }finally{await db.$disconnect();}
           JS
