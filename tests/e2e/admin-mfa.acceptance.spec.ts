@@ -110,13 +110,17 @@ test("recovers when enrollment commits but its response is lost, then permits ad
     .getByLabel("Authentication code", { exact: true })
     .fill(generateTotpCode(secret, totpCounter()));
   await page.getByRole("button", { name: "Enable MFA" }).click();
-  await expect(page.getByRole("alert")).toContainText("server response could not be confirmed");
+  await expect(page.locator('form [role="alert"]')).toContainText(
+    "server response could not be confirmed",
+  );
   await page
     .getByLabel("Authentication code", { exact: true })
     .fill(generateTotpCode(secret, totpCounter()));
   await page.getByRole("button", { name: "Enable MFA" }).click();
   await expect(page.getByLabel("Email")).toBeVisible();
-  await expect(page.getByRole("alert")).toContainText("expired or was already completed");
+  await expect(page.locator('form [role="alert"]')).toContainText(
+    "expired or was already completed",
+  );
   await expect(page.locator("details code")).toHaveCount(0);
   await signIn(page);
   await expect(page.getByRole("heading", { name: "Two-step verification" })).toBeVisible();
@@ -144,7 +148,7 @@ test("failed enrollment start stays on the password form and can be retried", as
     { times: 1 },
   );
   await signIn(page);
-  await expect(page.getByRole("alert")).toHaveText("Temporary setup failure");
+  await expect(page.locator('form [role="alert"]')).toHaveText("Temporary setup failure");
   await expect(page.getByLabel("Email")).toBeVisible();
   await expect(page.getByLabel("Authentication or recovery code")).toHaveCount(0);
   await signIn(page);
@@ -178,11 +182,15 @@ test("expires stale enrollment on mobile resume and keeps incorrect codes retrya
   );
   await page.getByLabel("Authentication code", { exact: true }).fill("123456");
   await page.getByRole("button", { name: "Enable MFA" }).click();
-  await expect(page.getByRole("alert")).toHaveText("The authentication code is invalid.");
+  await expect(page.locator('form [role="alert"]')).toHaveText(
+    "The authentication code is invalid.",
+  );
   await expect(page.getByRole("heading", { name: "Secure your admin account" })).toBeVisible();
   await page.clock.setFixedTime(Date.now() + 120_000);
   await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
   await expect(page.getByLabel("Email")).toBeVisible();
-  await expect(page.getByRole("alert")).toContainText("expired or was already completed");
+  await expect(page.locator('form [role="alert"]')).toContainText(
+    "expired or was already completed",
+  );
   await expect(page.locator("details code")).toHaveCount(0);
 });
