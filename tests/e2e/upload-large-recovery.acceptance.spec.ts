@@ -84,6 +84,7 @@ test("primary upload resumes actual 129 MiB after reload and rejects a same-meta
   page,
   context,
   browser,
+  browserName,
 }, info) => {
   const stats = async (): Promise<TransferStats> =>
     (await page.request.get(`${PROVIDER}/stats`)).json();
@@ -94,6 +95,44 @@ test("primary upload resumes actual 129 MiB after reload and rejects a same-meta
   ).toBe(true);
   await register(page.request, "large-recovery@e2e.ayin.test");
   const fixture = await realFixtures();
+  const browserDiagnostics: {
+    pageErrors: string[];
+    failedRequests: { origin: string; pathname: string; failure: string | null }[];
+  } = { pageErrors: [], failedRequests: [] };
+  if (browserName === "webkit") {
+    page.on("pageerror", (error) => browserDiagnostics.pageErrors.push(error.message));
+    page.on("requestfailed", (request) => {
+      const url = new URL(request.url());
+      // No query strings, request headers, bodies or cookie values enter evidence.
+      browserDiagnostics.failedRequests.push({
+        origin: url.origin,
+        pathname: url.pathname,
+        failure: request.failure()?.errorText ?? null,
+      });
+    });
+    // Production is HTTPS. This isolated test server is HTTP, and WebKit applies
+    // upgrade-insecure-requests even to loopback assets. Preserve the entire CSP
+    // except that transport-only directive for this exact test document origin.
+    // Do not disable CSP, intercept API/provider requests or alter shipped code.
+    await page.route(`${WEB}/**`, async (route) => {
+      const request = route.request();
+      if (request.resourceType() !== "document" || new URL(request.url()).origin !== WEB) {
+        await route.continue();
+        return;
+      }
+      const response = await route.fetch();
+      const headers = { ...response.headers() };
+      const cspHeader = Object.keys(headers).find(
+        (name) => name.toLowerCase() === "content-security-policy",
+      );
+      if (cspHeader) {
+        headers[cspHeader] = headers[cspHeader]!.split(";")
+          .filter((directive) => directive.trim().toLowerCase() !== "upgrade-insecure-requests")
+          .join(";");
+      }
+      await route.fulfill({ response, headers });
+    });
+  }
   let held = false;
   let inspectionUrl = "";
   let release = () => {};
@@ -252,6 +291,19 @@ test("primary upload resumes actual 129 MiB after reload and rejects a same-meta
   } finally {
     release();
     await context.setOffline(false);
+    if (browserName === "webkit") {
+      const documentState = await page
+        .evaluate(() => ({
+          hidden: document.hidden,
+          focused: document.hasFocus(),
+          readyState: document.readyState,
+        }))
+        .catch(() => null);
+      await writeFile(
+        info.outputPath("webkit-browser-diagnostics.json"),
+        JSON.stringify({ ...browserDiagnostics, documentState }, null, 2),
+      );
+    }
     await rm(fixture.directory, { recursive: true, force: true });
   }
 });
