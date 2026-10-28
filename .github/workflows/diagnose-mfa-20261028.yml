@@ -55,7 +55,19 @@ jobs:
                   select: { action: true, createdAt: true },
                   orderBy: { createdAt: 'desc' }, take: 12
                 });
-                console.log(JSON.stringify({ administrator: i + 1, now: new Date(), account, mfa, audits }));
+                const identity = await tx.account.findUnique({
+                  where: { id },
+                  select: {
+                    viewerProfiles: { where: { deletedAt: null, isDefault: true }, take: 1, select: { id: true } },
+                    channelMemberships: { where: { role: 'OWNER' }, orderBy: { createdAt: 'asc' }, take: 1,
+                      select: { channel: { select: { primaryTvChannel: { select: { id: true } } } } } }
+                  }
+                });
+                const identityReady = Boolean(identity?.viewerProfiles.length && identity?.channelMemberships[0]?.channel.primaryTvChannel);
+                const sessionsCreatedAfterMfa = mfa?.enabledAt ? await tx.accountSession.count({
+                  where: { accountId: id, authVersion: account.authVersion, createdAt: { gte: mfa.enabledAt } }
+                }) : 0;
+                console.log(JSON.stringify({ administrator: i + 1, now: new Date(), account, mfa, audits, identityReady, sessionsCreatedAfterMfa }));
               }
             });
           } finally { await db.$disconnect(); }
