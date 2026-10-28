@@ -11,6 +11,7 @@ import {
 } from "./upload-recovery-contract";
 import { RECOVERY_STORAGE_KEY, loadSavedRecovery, saveRecovery } from "./upload-recovery-storage";
 import { watchUploadRecoveryLifecycle } from "./upload-recovery-lifecycle";
+import { UploadBlobError } from "./direct-video-upload";
 
 const scope: RecoveryScope = {
   accountId: randomUUID(),
@@ -798,6 +799,227 @@ describe("explicit recoverable upload controller", () => {
     expect(view.uploadedBytes).toBe(11);
     expect(writes().filter(([url]) => String(url).endsWith("/complete"))).toHaveLength(1);
     expect(writes().filter(([url]) => String(url).endsWith("/recoverable-drafts"))).toHaveLength(0);
+  });
+  it("automatically retries a transient part with a fresh grant after verifying saved sibling parts", async () => {
+    vi.useFakeTimers();
+    try {
+      let failures = 0;
+      const { value, bodies } = await multipartFixture({
+        put: async (_signal, part) => {
+          if (part === 1 && failures++ === 0)
+            throw new UploadBlobError("Storage temporarily unavailable", {
+              status: 503,
+              retryable: true,
+            });
+        },
+      });
+      const operation = value.continueUpload({ concurrency: 3, complete: true });
+      await vi.advanceTimersByTimeAsync(5000);
+      await operation;
+      expect(bodies).toEqual(["01234", "56789", "a", "01234"]);
+      const grants = writes()
+        .filter(([url]) => String(url).endsWith("/authorize"))
+        .map(([, init]) => JSON.parse(String(init?.body)));
+      expect(grants.map((grant) => grant.partNumber)).toEqual([1, 2, 3, 1]);
+      expect(new Set(grants.map((grant) => grant.requestId)).size).toBe(4);
+      expect(view.saved?.session?.state).toBe("COMPLETED");
+      expect(writes().filter(([url]) => String(url).endsWith("/complete"))).toHaveLength(1);
+      expect(writes().filter(([url]) => String(url).endsWith("/recoverable-drafts"))).toHaveLength(
+        0,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("bounds automatic transfer retry to four attempts and never completes a missing part", async () => {
+    vi.useFakeTimers();
+    try {
+      const { value } = await multipartFixture({
+        put: async (_signal, part) => {
+          if (part === 1) throw new UploadBlobError("Stalled", { retryable: true });
+        },
+      });
+      const operation = value.continueUpload({ concurrency: 3, complete: true });
+      await vi.advanceTimersByTimeAsync(5000);
+      await operation;
+      const grants = writes()
+        .filter(([url]) => String(url).endsWith("/authorize"))
+        .map(([, init]) => JSON.parse(String(init?.body)).partNumber);
+      expect(grants.filter((part) => part === 1)).toHaveLength(4);
+      expect(grants.filter((part) => part === 2)).toHaveLength(1);
+      expect(grants.filter((part) => part === 3)).toHaveLength(1);
+      expect(view.message).toBe("UPLOAD_NETWORK_FAILED");
+      expect(view.saved?.session?.state).toBe("OPEN");
+      expect(writes().filter(([url]) => String(url).endsWith("/complete"))).toHaveLength(0);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("stops an automatic retry backoff immediately without requesting another grant", async () => {
+    vi.useFakeTimers();
+    try {
+      const { value } = await multipartFixture({
+        put: async () => {
+          throw new TypeError("Network interrupted");
+        },
+      });
+      const operation = value.continueUpload({ concurrency: 3, complete: true });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(view.message).toBe("RETRYING");
+      value.stop();
+      await operation;
+      expect(view.message).toBe("STOPPED");
+      expect(writes().filter(([url]) => String(url).endsWith("/authorize"))).toHaveLength(3);
+      expect(writes().filter(([url]) => String(url).endsWith("/complete"))).toHaveLength(0);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("cancel waits for every active part to abort before revoking the same saved upload", async () => {
+    let entered!: () => void,
+      starts = 0;
+    const started = new Promise<void>((resolve) => (entered = resolve));
+    const aborted: number[] = [];
+    const { value } = await multipartFixture({
+      put: (signal, part) =>
+        new Promise<void>((_resolve, reject) => {
+          if (++starts === 3) entered();
+          signal.addEventListener(
+            "abort",
+            () => {
+              aborted.push(part);
+              reject(signal.reason);
+            },
+            { once: true },
+          );
+        }),
+    });
+    const operation = value.continueUpload({ concurrency: 3, complete: true });
+    await started;
+    await value.cancel();
+    await operation;
+    expect(aborted.sort()).toEqual([1, 2, 3]);
+    expect(view.saved?.session?.state).toBe("ABORTED");
+    expect(value.canForgetFinished()).toBe(true);
+    expect(writes().filter(([url]) => String(url).endsWith("/cancel"))).toHaveLength(1);
+    expect(writes().filter(([url]) => String(url).endsWith("/complete"))).toHaveLength(0);
+    value.forgetFinished();
+    expect(storage.length).toBe(0);
+    expect(state.state).toBe("ABORTED");
+  });
+  it("requires an authoritative terminal outcome before forgetting a closed descriptor", async () => {
+    state = { ...state, state: "REVOKED" };
+    saveRecovery(storage, saved({ session: state }));
+    const value = client();
+    await value.open();
+    expect(value.canForgetFinished()).toBe(false);
+    value.forgetFinished();
+    expect(storage.length).toBe(1);
+    await value.inspect();
+    expect(value.canForgetFinished()).toBe(true);
+    value.forgetFinished();
+    expect(storage.length).toBe(0);
+    expect(writes()).toHaveLength(0);
+  });
+  it("allows safe local exit after terminal cleanup revokes authority without reinterpreting UNKNOWN provider outcome", async () => {
+    const requestId = randomUUID();
+    state = { ...state, state: "REVOKED" };
+    saveRecovery(
+      storage,
+      saved({ creationRequestId: requestId, pending: { kind: "CREATE", requestId } }),
+    );
+    const normal = fetcher.getMockImplementation()!;
+    fetcher.mockImplementation((url, init) =>
+      String(url).includes("/operations/")
+        ? Promise.resolve(
+            response(
+              envelope(requestId, {
+                session: state,
+                operation: { requestId, status: "UNKNOWN", replayed: true },
+                cleanup: { authorityRevoked: true, settlement: "PENDING" },
+              }),
+            ),
+          )
+        : normal(url, init),
+    );
+    const value = client();
+    await value.check();
+    expect(view.saved?.pending).toEqual({ kind: "CREATE", requestId });
+    expect(value.canForgetFinished()).toBe(true);
+    value.forgetFinished();
+    expect(storage.length).toBe(0);
+    expect(writes()).toHaveLength(0);
+  });
+  it("requires explicit cancellation for an expired descriptor without server cleanup proof", async () => {
+    state = { ...state, state: "EXPIRED", expiresAt: new Date(Date.now() - 1000).toISOString() };
+    saveRecovery(storage, saved({ session: state }));
+    const value = client();
+    await value.check();
+    expect(value.canForgetFinished()).toBe(false);
+    value.forgetFinished();
+    expect(storage.length).toBe(1);
+    await value.cancel();
+    expect(value.canForgetFinished()).toBe(true);
+    value.forgetFinished();
+    expect(storage.length).toBe(0);
+    expect(writes().filter(([url]) => String(url).endsWith("/cancel"))).toHaveLength(1);
+  });
+  it("permits local exit when a lost AUTHORIZE is followed by authoritative terminal cleanup", async () => {
+    const requestId = randomUUID();
+    const descriptor = saved({ pending: { kind: "AUTHORIZE", requestId } });
+    saveRecovery(storage, descriptor);
+    const normal = fetcher.getMockImplementation()!;
+    fetcher.mockImplementation((url, init) => {
+      if (String(url).endsWith(`/operations/${requestId}`))
+        return Promise.resolve(response({ error: { code: "UPLOAD_RECOVERY_NOT_FOUND" } }, 404));
+      if (String(url).includes("/recoverable-drafts/"))
+        return Promise.resolve(
+          response(
+            envelope(descriptor.creationRequestId, {
+              session: { ...state, state: "REVOKED", revision: 3 },
+              operation: {
+                requestId: descriptor.creationRequestId,
+                status: "UNKNOWN",
+                replayed: true,
+              },
+              cleanup: { authorityRevoked: true, settlement: "PENDING" },
+            }),
+          ),
+        );
+      return normal(url, init);
+    });
+    const value = client();
+    await value.check();
+    expect(value.canForgetFinished()).toBe(true);
+    expect(view.saved?.pending).toEqual({ kind: "AUTHORIZE", requestId });
+    value.forgetFinished();
+    expect(storage.length).toBe(0);
+    expect(writes()).toHaveLength(0);
+  });
+  it("preserves the original COMPLETE marker when completion wins a cancellation race", async () => {
+    const requestId = randomUUID();
+    state = { ...state, state: "FINALIZING" };
+    saveRecovery(storage, saved({ session: state, pending: { kind: "COMPLETE", requestId } }));
+    const normal = fetcher.getMockImplementation()!;
+    fetcher.mockImplementation((url, init) => {
+      if (String(url).endsWith("/cancel")) {
+        state = { ...state, state: "COMPLETED", revision: 3 };
+        return Promise.resolve(response({ error: { code: "UPLOAD_ALREADY_ACCEPTED" } }, 409));
+      }
+      return normal(url, init);
+    });
+    const value = client();
+    await value.open();
+    await value.cancel();
+    expect(view.saved?.pending).toEqual({ kind: "COMPLETE", requestId });
+    expect(view.message).toBe("UPLOAD_ALREADY_ACCEPTED");
+    await value.check();
+    expect(view.saved?.session?.state).toBe("COMPLETED");
+    expect(value.canForgetFinished()).toBe(true);
+    expect(writes()).toHaveLength(1);
+    expect(writes()[0]?.[0]).toContain("/cancel");
   });
   it("keeps the existing three-part upload running across blur and foreground restoration without another intent", async () => {
     let release!: () => void,

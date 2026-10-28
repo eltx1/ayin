@@ -31,6 +31,21 @@ const arabic: Record<string, string> = {
   "Reselect the original video. AYIN will verify it and upload only the missing parts. The video file is not copied into browser storage.":
     "أعد اختيار الفيديو الأصلي. سيتحقق عين منه ويرفع الأجزاء المتبقية فقط، دون نسخ ملف الفيديو إلى تخزين المتصفح.",
   "Last checked": "آخر تحديث",
+  "Cancel upload": "إلغاء الرفع",
+  "The upload was already accepted. Review or remove the saved video in Studio.":
+    "تم قبول الرفع بالفعل. راجع الفيديو المحفوظ في الاستوديو أو احذفه من هناك.",
+  "Cancel this upload? Saved upload parts will be scheduled for removal. This cannot be undone.":
+    "هل تريد إلغاء الرفع؟ ستُجدول الأجزاء المحفوظة للحذف. لا يمكن التراجع عن هذا الإجراء.",
+  "This upload can no longer continue. Check or cancel it before starting another upload.":
+    "لا يمكن استكمال هذا الرفع. تحقق منه أو ألغِه قبل بدء رفع آخر.",
+  "This upload is closed. Cleanup may continue in the background. You can start another video.":
+    "أُغلقت عملية الرفع. قد يستمر تنظيف الملفات في الخلفية، ويمكنك بدء فيديو آخر.",
+  "Connection interrupted. Checking saved parts and retrying automatically…":
+    "انقطع الاتصال. جارٍ التحقق من الأجزاء المحفوظة وإعادة المحاولة تلقائيًا…",
+  "The connection or upload stalled after four attempts. Check your connection, then retry; saved parts will be reused.":
+    "توقف الاتصال أو الرفع بعد أربع محاولات. تحقق من اتصالك ثم أعد المحاولة؛ ستُستخدم الأجزاء المحفوظة.",
+  "Storage rejected this upload. Retry to request a new connection; if it still fails, review the upload in Studio.":
+    "رفض التخزين الرفع. أعد المحاولة للحصول على اتصال جديد؛ وإذا استمر الرفض، راجع الرفع في الاستوديو.",
   "Leaving pauses the upload. Saved parts remain; reselect the original video to resume. Unsaved detail changes may be lost.":
     "مغادرة الصفحة توقف الرفع مؤقتًا. تبقى الأجزاء المحفوظة؛ أعد اختيار الفيديو الأصلي لاستكماله. قد تفقد تعديلات التفاصيل غير المحفوظة.",
   "Upload paused": "توقف الرفع مؤقتًا",

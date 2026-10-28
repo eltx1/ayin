@@ -6,6 +6,7 @@ import { UploadProtocolError } from "./upload-session";
 import { identifyUploadFile } from "./upload-file-identity";
 import { titleFromFilename } from "./title-from-filename";
 import { isSupportedVideoFile, videoMimeTypeForUpload } from "./video-inspection";
+import { UploadBlobError } from "./direct-video-upload";
 import {
   parseRecoveryInspection,
   parseRecoveryScope,
@@ -102,6 +103,8 @@ export class UploadRecoveryClient {
   private file: File | null = null;
   private identity: UploadFileIdentity | null = null;
   private operation: AbortController | null = null;
+  private operationSettled: Promise<void> = Promise.resolve();
+  private terminalExitConfirmed = false;
   private loginSessionId: string | null = null;
   private readonly fetcher: typeof fetch;
   constructor(private readonly dependencies: RecoveryDependencies) {
@@ -118,6 +121,7 @@ export class UploadRecoveryClient {
     this.view.saved = saved;
   }
   private discardAuthority() {
+    this.terminalExitConfirmed = false;
     this.loginSessionId = null;
     this.file = null;
     this.identity = null;
@@ -138,6 +142,7 @@ export class UploadRecoveryClient {
   }
   /** Hide private facts immediately on pagehide/background; require a fresh authenticated read. */
   suspend(verifiedViewerScope?: RecoveryScope) {
+    this.terminalExitConfirmed = false;
     this.loginSessionId = null;
     this.operation?.abort();
     this.operation = null;
@@ -264,6 +269,8 @@ export class UploadRecoveryClient {
     if (this.operation) return;
     const controller = new AbortController();
     this.operation = controller;
+    let settled!: () => void;
+    this.operationSettled = new Promise<void>((resolve) => (settled = resolve));
     this.view.busy = true;
     this.view.message = "WORKING";
     this.publish();
@@ -299,6 +306,7 @@ export class UploadRecoveryClient {
         this.view.busy = false;
         this.publish();
       }
+      settled();
     }
   }
   async open() {
@@ -307,6 +315,7 @@ export class UploadRecoveryClient {
     });
   }
   private async openWorkspace(signal: AbortSignal, keepFile = false) {
+    this.terminalExitConfirmed = false;
     const previousSessionId = this.view.saved?.session?.sessionId;
     if (!keepFile) {
       this.file = null;
@@ -468,6 +477,13 @@ export class UploadRecoveryClient {
     saved: SavedRecovery,
     keepPending = false,
   ) {
+    const terminal = ["ABORTED", "REVOKED", "EXPIRED"].includes(response.session.state);
+    this.terminalExitConfirmed =
+      (response.session.state === "COMPLETED" && response.operation.status === "SUCCEEDED") ||
+      (terminal &&
+        (response.cleanup?.authorityRevoked === true ||
+          (response.operation.status === "SUCCEEDED" &&
+            (response.session.state !== "EXPIRED" || saved.pending?.kind === "CANCEL"))));
     this.retain({
       ...saved,
       session: response.session,
@@ -522,7 +538,11 @@ export class UploadRecoveryClient {
       if (!response.operation.replayed) throw new UploadProtocolError();
       if (
         unusedAuthorization &&
-        (response.operation.status !== "SUCCEEDED" || response.session.state !== "OPEN")
+        !(
+          (response.operation.status === "SUCCEEDED" && response.session.state === "OPEN") ||
+          (["ABORTED", "REVOKED", "EXPIRED"].includes(response.session.state) &&
+            response.cleanup?.authorityRevoked === true)
+        )
       )
         throw new RecoveryError("UNCERTAIN");
       await this.scope(signal);
@@ -530,7 +550,7 @@ export class UploadRecoveryClient {
       this.accept(response, saved);
       saved = this.view.saved!;
       if (response.operation.status !== "SUCCEEDED") {
-        this.view.message = "UNCERTAIN";
+        this.view.message = this.terminalExitConfirmed ? "CANCELLED_PENDING" : "UNCERTAIN";
         return;
       }
     }
@@ -541,7 +561,11 @@ export class UploadRecoveryClient {
           ? "COMPLETED"
           : saved.session.state === "ABORTED"
             ? "CANCELLED_PENDING"
-            : "UNRESOLVED";
+            : this.terminalExitConfirmed
+              ? "CLOSED"
+              : saved.session.state === "EXPIRED"
+                ? "EXPIRED"
+                : "UNRESOLVED";
       return;
     }
     const inspection = parseRecoveryInspection(
@@ -589,6 +613,7 @@ export class UploadRecoveryClient {
       if (
         error instanceof RecoveryError &&
         (rejectedBeforeDispatch.has(error.code) ||
+          (kind === "CANCEL" && error.code === "UPLOAD_ALREADY_ACCEPTED") ||
           (["RESUME", "CANCEL"].includes(kind) && atomicRejections.has(error.code)))
       )
         this.retain(saved);
@@ -759,7 +784,8 @@ export class UploadRecoveryClient {
     });
   }
   private async uploadBatches(signal: AbortSignal) {
-    const sent = new Set<number>();
+    const attempts = new Map<number, number>();
+    let highestBytes = this.observedBytes();
     while (!this.canComplete()) {
       signal.throwIfAborted();
       const session = this.view.saved?.session;
@@ -778,8 +804,9 @@ export class UploadRecoveryClient {
       for (let part = 1; part <= session.partCount && missing.length < 3; part++) {
         if (!observed.has(part)) missing.push(part);
       }
-      if (!missing.length || missing.some((part) => sent.has(part)))
-        throw new RecoveryError("TRANSFER_UNCERTAIN");
+      if (!missing.length) throw new RecoveryError("TRANSFER_UNCERTAIN");
+      if (missing.some((part) => (attempts.get(part) ?? 0) >= 4))
+        throw new RecoveryError("UPLOAD_NETWORK_FAILED");
       const before = this.observedBytes();
       const prepared: {
         partNumber: number;
@@ -814,22 +841,31 @@ export class UploadRecoveryClient {
       const abort = () => batch.abort(signal.reason);
       signal.addEventListener("abort", abort, { once: true });
       const bytes = new Map<number, number>();
+      this.view.uploadedBytes = Math.max(highestBytes, before);
+      this.view.uploadProgress = Math.min(
+        99,
+        Math.floor((100 * this.view.uploadedBytes) / session.sizeBytes),
+      );
       this.view.message = "UPLOADING";
       this.publish();
+      let transferError: unknown;
       try {
         await Promise.allSettled(
           prepared.map(async ({ partNumber, blob, grant }) => {
             try {
               batch.signal.throwIfAborted();
-              sent.add(partNumber);
+              attempts.set(partNumber, (attempts.get(partNumber) ?? 0) + 1);
               await this.transferGrant(grant, blob, batch.signal, (loaded) => {
                 if (batch.signal.aborted) return;
                 bytes.set(
                   partNumber,
                   Math.max(bytes.get(partNumber) ?? 0, Math.min(blob.size, loaded)),
                 );
-                this.view.uploadedBytes =
-                  before + [...bytes.values()].reduce((sum, value) => sum + value, 0);
+                highestBytes = Math.max(
+                  highestBytes,
+                  before + [...bytes.values()].reduce((sum, value) => sum + value, 0),
+                );
+                this.view.uploadedBytes = highestBytes;
                 this.view.uploadProgress = Math.min(
                   99,
                   Math.floor((100 * this.view.uploadedBytes) / session.sizeBytes),
@@ -843,6 +879,9 @@ export class UploadRecoveryClient {
           }),
         );
         batch.signal.throwIfAborted();
+      } catch (error) {
+        signal.throwIfAborted();
+        transferError = error;
       } finally {
         signal.removeEventListener("abort", abort);
       }
@@ -850,6 +889,45 @@ export class UploadRecoveryClient {
       await this.inspectSaved(signal);
       if (this.view.saved?.pending || this.view.saved?.session?.state !== "OPEN") return;
       const next = this.view.inspection?.observation;
+      const missingAfter = missing.filter(
+        (partNumber) =>
+          next?.kind !== "STORED_UNVERIFIED" &&
+          (next?.kind !== "PARTS_OBSERVED" ||
+            !next.parts.some((part) => part.partNumber === partNumber)),
+      );
+      if (transferError && missingAfter.length) {
+        const retryable =
+          transferError instanceof UploadBlobError
+            ? transferError.retryable
+            : transferError instanceof TypeError ||
+              (transferError instanceof RecoveryError &&
+                transferError.code === "TRANSFER_UNCERTAIN") ||
+              (transferError instanceof DOMException && transferError.name === "TimeoutError");
+        if (!retryable) throw new RecoveryError("UPLOAD_STORAGE_REJECTED");
+        const attempt = Math.max(
+          ...missingAfter.map((partNumber) => attempts.get(partNumber) ?? 1),
+        );
+        if (attempt >= 4) throw new RecoveryError("UPLOAD_NETWORK_FAILED");
+        this.view.message = "RETRYING";
+        this.publish();
+        await new Promise<void>((resolve, reject) => {
+          const abort = () => {
+            clearTimeout(timer);
+            signal.removeEventListener("abort", abort);
+            reject(signal.reason);
+          };
+          const timer = setTimeout(
+            () => {
+              signal.removeEventListener("abort", abort);
+              resolve();
+            },
+            500 * 2 ** Math.max(0, attempt - 1),
+          );
+          signal.addEventListener("abort", abort, { once: true });
+          if (signal.aborted) abort();
+        });
+        continue;
+      }
       if (
         next?.kind !== "STORED_UNVERIFIED" &&
         (next?.kind !== "PARTS_OBSERVED" ||
@@ -897,7 +975,11 @@ export class UploadRecoveryClient {
           signal: controller.signal,
         });
         void response.body?.cancel().catch(() => undefined);
-        if (!response.ok) throw new RecoveryError("TRANSFER_UNCERTAIN");
+        if (!response.ok)
+          throw new UploadBlobError("Storage rejected this upload part.", {
+            status: response.status,
+            retryable: [408, 425, 429].includes(response.status) || response.status >= 500,
+          });
       }
       controller.signal.throwIfAborted();
       progress(blob.size);
@@ -986,6 +1068,8 @@ export class UploadRecoveryClient {
     });
   }
   async cancel() {
+    this.stop();
+    await this.operationSettled;
     await this.run(async (signal) => {
       if (
         !this.view.saved?.session ||
@@ -999,13 +1083,11 @@ export class UploadRecoveryClient {
       this.view.fileMatched = false;
     });
   }
+  canForgetFinished() {
+    return !this.operation && this.terminalExitConfirmed && Boolean(this.view.saved?.session);
+  }
   forgetFinished() {
-    if (
-      this.operation ||
-      !this.view.saved?.session ||
-      !["COMPLETED", "CANCELLED_PENDING"].includes(this.view.message)
-    )
-      return;
+    if (!this.canForgetFinished()) return;
     try {
       clearSavedRecovery(this.dependencies.storage);
       this.file = null;
@@ -1016,6 +1098,7 @@ export class UploadRecoveryClient {
       this.view.fileMatched = false;
       this.view.uploadProgress = 0;
       this.view.uploadedBytes = 0;
+      this.terminalExitConfirmed = false;
       this.view.message = this.view.supported ? "CHOOSE_FILE" : "UPLOAD_RECOVERY_UNSUPPORTED";
     } catch {
       this.view.message = "STORAGE_UNAVAILABLE";

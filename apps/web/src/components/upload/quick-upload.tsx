@@ -110,6 +110,8 @@ export function QuickUpload() {
   const recoveryInput = useRef<HTMLInputElement | null>(null);
   const [recoveryView, setRecoveryView] = useState<RecoveryView | null>(null);
   const [resumedUpload, setResumedUpload] = useState(false);
+  const cancelling = useRef(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
   const phaseRef = useRef<TransferPhase>("idle");
   const feedback = useRef<HTMLDivElement | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
@@ -318,6 +320,13 @@ export function QuickUpload() {
                 "You can pause or reopen this page. Keep the original video to resume with the saved parts.",
               ),
             );
+          } else if (next.message === "RETRYING") {
+            changePhase("retrying");
+            setTransferRate(null);
+            speedSample.current = { time: 0, bytes: 0 };
+            setMessage(
+              copy("Connection interrupted. Checking saved parts and retrying automatically…"),
+            );
           } else if (next.message === "FINALIZING") {
             changePhase("finalizing");
             setMessage(copy("Confirming upload…"));
@@ -433,6 +442,12 @@ export function QuickUpload() {
           "This saved upload has expired. Review it in Studio before starting another upload.",
         VIDEO_TOO_LARGE:
           "This file is larger than the upload limit shown below. Choose a smaller file.",
+        UPLOAD_NETWORK_FAILED:
+          "The connection or upload stalled after four attempts. Check your connection, then retry; saved parts will be reused.",
+        UPLOAD_STORAGE_REJECTED:
+          "Storage rejected this upload. Retry to request a new connection; if it still fails, review the upload in Studio.",
+        UPLOAD_ALREADY_ACCEPTED:
+          "The upload was already accepted. Review or remove the saved video in Studio.",
       };
       const detail =
         recoveryMessages[code] ??
@@ -448,7 +463,12 @@ export function QuickUpload() {
             ? "choose"
             : ["AUTHORITY_CHANGED", "AUTHORITY_UNVERIFIED"].includes(code)
               ? "signin"
-              : ["EXPIRED", "UPLOAD_RECOVERY_EXPIRED", "SAVED_UPLOAD_EXISTS"].includes(code)
+              : [
+                    "EXPIRED",
+                    "UPLOAD_RECOVERY_EXPIRED",
+                    "SAVED_UPLOAD_EXISTS",
+                    "UPLOAD_ALREADY_ACCEPTED",
+                  ].includes(code)
                 ? "review"
                 : durableActive.current && file && recoveryClient.current?.getSnapshot().saved
                   ? "retry"
@@ -628,7 +648,13 @@ export function QuickUpload() {
   }
 
   async function retryUpload() {
-    if (mutation.current || (!prepared.current && !durableActive.current) || !identity) return;
+    if (
+      cancelling.current ||
+      mutation.current ||
+      (!prepared.current && !durableActive.current) ||
+      !identity
+    )
+      return;
     const controller = new AbortController();
     operation.current = controller;
     mutation.current = true;
@@ -675,8 +701,76 @@ export function QuickUpload() {
     setFailure(null);
   }
 
+  function resetFinishedUpload() {
+    durableActive.current = false;
+    durableSessionId.current = null;
+    prepared.current = null;
+    thumbnailCapture.current?.abort();
+    releaseLocalThumbnailChoices(choicesRef.current);
+    choicesRef.current = [];
+    setThumbnailChoices([]);
+    setSelectedThumbnailId(null);
+    setFile(null);
+    setVideoId(null);
+    setInspection(null);
+    setTitle("");
+    setDescription("");
+    setScheduledPublishAt("");
+    setMetadataDraft({ ...EMPTY_METADATA_DRAFT });
+    setSavedSignature("");
+    setUploadComplete(false);
+    setProcessingReady(false);
+    setProcessingPercent(0);
+    setProcessingCheckedAt(null);
+    setProcessingCheckNeeded(false);
+    setProgress(0);
+    setTransferredBytes(0);
+    setTransferRate(null);
+    setPublished(false);
+    setResumedUpload(false);
+    setFailure(null);
+    setUncertain(false);
+    setMessage(null);
+    changePhase("idle");
+  }
+
+  async function cancelSavedUpload() {
+    const client = recoveryClient.current;
+    if (
+      !client ||
+      cancelling.current ||
+      !window.confirm(
+        copy(
+          "Cancel this upload? Saved upload parts will be scheduled for removal. This cannot be undone.",
+        ),
+      )
+    )
+      return;
+    cancelling.current = true;
+    setCancelBusy(true);
+    operation.current?.abort();
+    try {
+      await client.cancel();
+      if (!client.canForgetFinished()) throw new RecoveryError(client.getSnapshot().message);
+      resetFinishedUpload();
+    } catch (error) {
+      showUploadFailure(error, phaseRef.current);
+    } finally {
+      cancelling.current = false;
+      setCancelBusy(false);
+    }
+  }
+
+  function startAnotherUpload() {
+    const client = recoveryClient.current;
+    if (!client?.canForgetFinished() || cancelling.current) return;
+    resetFinishedUpload();
+    client.forgetFinished();
+  }
+
   async function chooseFile(selected: File | null) {
     if (
+      cancelling.current ||
       !selected ||
       !identity ||
       !capabilities ||
@@ -846,7 +940,7 @@ export function QuickUpload() {
 
   async function resumeSavedFile(selected: File | null) {
     const client = recoveryClient.current;
-    if (!selected || !client || !identity || mutation.current) return;
+    if (!selected || !client || !identity || mutation.current || cancelling.current) return;
     const controller = new AbortController();
     operation.current = controller;
     mutation.current = true;
@@ -883,7 +977,8 @@ export function QuickUpload() {
 
   function handleDragOver(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
-    if (!identity || mutation.current || videoId || uncertain || published) return;
+    if (!identity || mutation.current || cancelling.current || videoId || uncertain || published)
+      return;
     event.dataTransfer.dropEffect = "copy";
     setDragActive(true);
   }
@@ -896,7 +991,8 @@ export function QuickUpload() {
   function handleDrop(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
     setDragActive(false);
-    if (!identity || mutation.current || videoId || uncertain || published) return;
+    if (!identity || mutation.current || cancelling.current || videoId || uncertain || published)
+      return;
     const selected = Array.from(event.dataTransfer.files).find(isSupportedVideoFile);
     if (!selected) {
       setFailure({
@@ -993,7 +1089,7 @@ export function QuickUpload() {
   }, [processingReady, published, uploadComplete, videoId, processingAttempt, uncertain, copy]);
 
   async function saveDetails() {
-    if (!videoId || mutation.current || uncertain || published) return;
+    if (!videoId || mutation.current || cancelling.current || uncertain || published) return;
     let payload;
     try {
       payload = detailsPayload();
@@ -1054,7 +1150,7 @@ export function QuickUpload() {
   }
 
   async function saveThumbnail(selected: Blob, choiceId: string) {
-    if (!videoId || mutation.current || uncertain || published) return;
+    if (!videoId || mutation.current || cancelling.current || uncertain || published) return;
     if (
       !["image/png", "image/jpeg"].includes(selected.type) ||
       selected.size < 1 ||
@@ -1100,6 +1196,7 @@ export function QuickUpload() {
 
   async function publish() {
     if (
+      cancelling.current ||
       !videoId ||
       !uploadComplete ||
       !processingReady ||
@@ -1278,7 +1375,13 @@ export function QuickUpload() {
             {copy(
               recoveryView.saved.session?.state === "COMPLETED"
                 ? "Your upload was already received. Review the same video in Studio."
-                : "Reselect the original video. AYIN will verify it and upload only the missing parts. The video file is not copied into browser storage.",
+                : ["ABORTED", "REVOKED", "EXPIRED"].includes(
+                      recoveryView.saved.session?.state ?? "",
+                    )
+                  ? recoveryClient.current?.canForgetFinished()
+                    ? "This upload is closed. Cleanup may continue in the background. You can start another video."
+                    : "This upload can no longer continue. Check or cancel it before starting another upload."
+                  : "Reselect the original video. AYIN will verify it and upload only the missing parts. The video file is not copied into browser storage.",
             )}
           </p>
           {!failure &&
@@ -1290,6 +1393,7 @@ export function QuickUpload() {
             "STORED_UNVERIFIED",
             "COMPLETED",
             "CANCELLED_PENDING",
+            "CLOSED",
             "HASHING",
             "FILE_CHECKED",
             "RESUMED",
@@ -1346,12 +1450,24 @@ export function QuickUpload() {
             <ActionLink href={href("/studio/content")}>
               {copy("Review saved uploads in Studio")}
             </ActionLink>
-            {["COMPLETED", "CANCELLED_PENDING"].includes(recoveryView.message) ? (
+            {!durableActive.current &&
+            recoveryView.saved.session &&
+            !["COMPLETED", "ABORTED", "REVOKED"].includes(recoveryView.saved.session.state) ? (
+              <ActionButton
+                type="button"
+                tone="danger"
+                disabled={cancelBusy}
+                onClick={() => void cancelSavedUpload()}
+              >
+                {copy("Cancel upload")}
+              </ActionButton>
+            ) : null}
+            {recoveryClient.current?.canForgetFinished() ? (
               <ActionButton
                 type="button"
                 tone="secondary"
-                disabled={busy}
-                onClick={() => recoveryClient.current?.forgetFinished()}
+                disabled={busy || cancelBusy}
+                onClick={startAnotherUpload}
               >
                 {copy("Start another upload")}
               </ActionButton>
@@ -1454,6 +1570,28 @@ export function QuickUpload() {
             </p>
           ) : null}
           <div className={styles.transferActions}>
+            {durableActive.current && recoveryClient.current?.canForgetFinished() ? (
+              <ActionButton
+                type="button"
+                tone="secondary"
+                disabled={busy || cancelBusy}
+                onClick={startAnotherUpload}
+              >
+                {copy("Start another upload")}
+              </ActionButton>
+            ) : null}
+            {durableActive.current &&
+            recoveryView?.saved?.session &&
+            !["COMPLETED", "ABORTED", "REVOKED"].includes(recoveryView.saved.session.state) ? (
+              <ActionButton
+                type="button"
+                tone="danger"
+                disabled={cancelBusy}
+                onClick={() => void cancelSavedUpload()}
+              >
+                {copy("Cancel upload")}
+              </ActionButton>
+            ) : null}
             {phase === "paused" || failure?.action === "retry" ? (
               <ActionButton type="button" disabled={busy} onClick={() => void retryUpload()}>
                 {phase === "paused" ? copy("Continue upload") : copy("Retry this upload")}
