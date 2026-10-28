@@ -1,0 +1,32 @@
+name: Upgrade AYIN large-upload recovery limits
+on:
+  push:
+    branches: [codex/ayin-large-recovery-rollout-20261028]
+permissions:
+  contents: read
+concurrency:
+  group: ayin-production-deploy
+  cancel-in-progress: false
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate and apply four recovery settings on the exact healthy release
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: 13.63.216.89
+          SSH_PORT: "22"
+        run: |
+          set -euo pipefail
+          umask 077
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          bash deploy/acquire-ssh-host-key.sh "$HOME/.ssh/candidate"
+          test "$(ssh-keygen -lf "$HOME/.ssh/candidate" -E sha256 | awk 'NR == 1 {print $2}')" = 'SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y'
+          mv "$HOME/.ssh/candidate" "$HOME/.ssh/known_hosts"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=10 ayin@"$DEPLOY_HOST" 'set -eu; test "$(whoami)" = ayin; test ! -w /home/horusapp; cd /home/ayin/htdocs/current; node deploy/media/upgrade-recovery-limits.mjs 90374085970ad158fa39fa61cae3103177b6b7ed; node deploy/media/upgrade-recovery-limits.mjs 90374085970ad158fa39fa61cae3103177b6b7ed --apply'
+
