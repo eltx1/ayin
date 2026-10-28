@@ -1,0 +1,50 @@
+name: Verify live large-upload recovery (read only)
+on:
+  push:
+    branches: [codex/ayin-large-upload-proof-20261028]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+      - name: Read exact test upload and integrity results without credentials or identifiers
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: 13.63.216.89
+          SSH_PORT: "22"
+        run: |
+          set -euo pipefail
+          umask 077
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          bash deploy/acquire-ssh-host-key.sh "$HOME/.ssh/candidate"
+          test "$(ssh-keygen -lf "$HOME/.ssh/candidate" -E sha256 | awk 'NR == 1 {print $2}')" = 'SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y'
+          mv "$HOME/.ssh/candidate" "$HOME/.ssh/known_hosts"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes ayin@"$DEPLOY_HOST" 'cd /home/ayin/htdocs/current && git rev-parse HEAD && node deploy/run-with-env.cjs /home/ayin/env/api.env node --input-type=module' <<'JS'
+          import { createPrismaClient } from './packages/db/dist/index.js';
+          const db = createPrismaClient();
+          const expectedDigest = 'f138cbede048d36ab2e67f958f9dce94d52d1aa074236a505014567a3ea04e6d';
+          try {
+            const result = await db.$transaction(async tx => {
+              await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
+              const sources = await tx.mediaAsset.findMany({where:{kind:'SOURCE_VIDEO',sizeBytes:3736813160n,createdAt:{gte:new Date('2026-10-28T18:00:00Z')}},select:{videoId:true,status:true,createdAt:true,updatedAt:true,uploadIntegrityRequired:true},take:3});
+              const rows = [];
+              for (const source of sources) {
+                const video = await tx.video.findUnique({where:{id:source.videoId},select:{status:true,visibility:true}});
+                const sessions = await tx.mediaUploadSession.findMany({where:{videoId:source.videoId},select:{sourceProtocolVersion:true,state:true,sizeBytes:true,partSizeBytes:true,contentIdentityDigest:true,operations:{select:{kind:true,status:true}}}});
+                const jobs = await tx.mediaProcessingJob.findMany({where:{videoId:source.videoId},select:{status:true,stage:true,progressPercent:true,attempt:true,errorCode:true,createdAt:true,queuedAt:true,startedAt:true,completedAt:true,sourceSizeBytes:true,outputSizeBytes:true,outputProtocolVersion:true,inputIntegrityVersion:true,inputIntegrityDigest:true,inputVerifiedAt:true,outputVerifiedAt:true}});
+                rows.push({source:{status:source.status,createdAt:source.createdAt,integrityRequired:source.uploadIntegrityRequired},video,sessions:sessions.map(({contentIdentityDigest,operations,...session})=>({...session,identityMatchesFixture:contentIdentityDigest===expectedDigest,operations:operations.reduce((counts,op)=>{const key=op.kind+':'+op.status;counts[key]=(counts[key]??0)+1;return counts;},{})})),jobs:jobs.map(({inputIntegrityDigest,...job})=>({...job,inputMatchesFixture:inputIntegrityDigest===expectedDigest}))});
+              }
+              return {matched:sources.length,rows};
+            });
+            console.log('SAFE_LARGE_RECOVERY_PROOF',JSON.stringify(result,(_,value)=>typeof value==='bigint'?String(value):value));
+          } catch (error) {
+            console.log('SAFE_LARGE_RECOVERY_PROOF',JSON.stringify({inspected:false,errorType:error?.name??'UNKNOWN'}));
+            process.exitCode=1;
+          } finally { await db.$disconnect(); }
+          JS
