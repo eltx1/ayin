@@ -1,9 +1,8 @@
 import { MediaUploadError } from "./media-upload-error.js";
 import { capturedMediaClaim } from "./media-output-attempt.js";
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
-import { copyFile, mkdir, rm } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { copyFile, rm } from "node:fs/promises";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
 import type { MediaProcessingJob } from "@ayin/db";
@@ -21,6 +20,7 @@ import {
 } from "./media-processing-integrity.js";
 import { MediaProcessingLifecycleService } from "./media-processing-lifecycle.service.js";
 import { MediaProcessingQueueService } from "./media-processing-queue.service.js";
+import { MediaScratchService } from "./media-scratch.service.js";
 import { MediaProcessingStorageService } from "./media-processing-storage.service.js";
 import { resolveMediaProcessingTimeouts } from "./media-processing-timeouts.js";
 import { parseFfprobeOutput, type MediaProbeMetadata } from "./media-probe.js";
@@ -30,7 +30,6 @@ const execFileAsync = promisify(execFile);
 @Injectable()
 export class MediaProcessingExecutorService {
   private readonly logger = new Logger(MediaProcessingExecutorService.name);
-  private readonly workRoot: string;
   private readonly ffmpegPath: string;
   private readonly ffprobePath: string;
   private readonly ffprobeTimeoutMs: number;
@@ -45,11 +44,8 @@ export class MediaProcessingExecutorService {
     private readonly adaptive: MediaAdaptiveProcessingService,
     @Inject(MediaAutoThumbnailService) private readonly thumbnails: MediaAutoThumbnailService,
     @Inject(PlatformSettingsService) private readonly settings: PlatformSettingsService,
+    @Inject(MediaScratchService) private readonly scratch: MediaScratchService,
   ) {
-    this.workRoot = process.env.MEDIA_PROCESSING_WORKDIR?.trim() || "/tmp/ayin-media-processing";
-    if (!isAbsolute(this.workRoot)) {
-      throw new Error("MEDIA_PROCESSING_WORKDIR must be an absolute path.");
-    }
     this.ffmpegPath = process.env.FFMPEG_PATH?.trim() || "ffmpeg";
     this.ffprobePath = process.env.FFPROBE_PATH?.trim() || "ffprobe";
     const timeouts = resolveMediaProcessingTimeouts();
@@ -60,10 +56,7 @@ export class MediaProcessingExecutorService {
   async process(job: MediaProcessingJob, workerId: string, signal?: AbortSignal): Promise<void> {
     const ownershipAbort = new AbortController();
     signal = signal ? AbortSignal.any([signal, ownershipAbort.signal]) : ownershipAbort.signal;
-    const claimScratchId = createHash("sha256").update(workerId).digest("hex").slice(0, 16);
-    const workDirectory = join(this.workRoot, `${job.id}-${claimScratchId}`);
-    const inputPath = join(workDirectory, `input${sourceExtension(job.sourceMimeType)}`);
-    const outputPath = join(workDirectory, "canonical.mp4");
+    let workDirectory: string | null = null;
     let heartbeatTimer: NodeJS.Timeout | null = null;
 
     const stopHeartbeat = () => {
@@ -76,8 +69,9 @@ export class MediaProcessingExecutorService {
 
     try {
       signal?.throwIfAborted();
-      await rm(workDirectory, { recursive: true, force: true });
-      await mkdir(workDirectory, { recursive: true });
+      workDirectory = await this.scratch.create(job.id, workerId);
+      const inputPath = join(workDirectory, `input${sourceExtension(job.sourceMimeType)}`);
+      const outputPath = join(workDirectory, "canonical.mp4");
       heartbeatTimer = setInterval(() => {
         void this.queue
           .heartbeat(job.id, workerId)
@@ -268,6 +262,8 @@ export class MediaProcessingExecutorService {
         await this.storage.deleteObject(job.inputR2ObjectKey);
       }
 
+      // No local media work follows this durable seal; READY must never precede it.
+      await this.scratch.seal(workDirectory);
       const finalized = await this.lifecycle.finalizeReady({
         jobId: job.id,
         ...capturedMediaClaim(job),
@@ -293,7 +289,7 @@ export class MediaProcessingExecutorService {
     } finally {
       stopHeartbeat();
       signal?.removeEventListener("abort", stopHeartbeat);
-      await rm(workDirectory, { recursive: true, force: true }).catch(() => undefined);
+      if (workDirectory) await this.scratch.release(workDirectory);
     }
   }
 

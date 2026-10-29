@@ -8,6 +8,7 @@ import { ObservabilityService } from "../observability/observability.service.js"
 import { releaseSha, StructuredLoggerService } from "../observability/structured-logger.service.js";
 import { MEDIA_ARCHITECTURE_VERSION } from "./media-architecture-v2.js";
 import { MediaProcessingExecutorService } from "./media-processing-executor.service.js";
+import { MEDIA_SCRATCH_SWEEP_MS, MediaScratchService } from "./media-scratch.service.js";
 import { MediaProcessingQueueService } from "./media-processing-queue.service.js";
 
 const MAX_LOCAL_SLOTS = 128;
@@ -48,6 +49,7 @@ export class MediaProcessingWorkerService {
     private readonly executor: MediaProcessingExecutorService,
     @Inject(StructuredLoggerService) private readonly logger: StructuredLoggerService,
     @Inject(ObservabilityService) private readonly observability: ObservabilityService,
+    @Inject(MediaScratchService) private readonly scratch: MediaScratchService,
   ) {}
 
   async run(): Promise<void> {
@@ -76,6 +78,10 @@ export class MediaProcessingWorkerService {
       WORKER_HEARTBEAT_MS,
     );
     heartbeatTimer.unref();
+    const sweep = () => void this.scratch.sweep((id) => this.queue.scratchJobState(id));
+    sweep();
+    const scratchTimer = setInterval(sweep, MEDIA_SCRATCH_SWEEP_MS);
+    scratchTimer.unref();
 
     try {
       while (!this.stopping) {
@@ -125,6 +131,7 @@ export class MediaProcessingWorkerService {
       }
     } finally {
       clearInterval(heartbeatTimer);
+      clearInterval(scratchTimer);
       await this.queue
         .heartbeatWorker(this.instanceId, this.active.size, "DRAINING")
         .catch((error: unknown) => {
