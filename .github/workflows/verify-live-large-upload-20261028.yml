@@ -55,7 +55,7 @@ jobs:
               scanned.push({jobId:match?.[1]??null,isDirectory:st.isDirectory(),isSymlink:st.isSymbolicLink(),bytes:await measure(path),modifiedAt:st.mtime.toISOString()});
             }
               const procAccess={sameUidProcesses:0,descriptors:0,permissionErrors:0,otherErrors:0};
-            for(const pid of (await readdir('/proc')).filter(p=>/^\\d+$/.test(p)).slice(0,4096)){
+            for(const pid of (await readdir('/proc')).filter(p=>/^[0-9]+$/.test(p)).slice(0,4096)){
               try{
                 const base='/proc/'+pid;
                 if((await lstat(base)).uid!==process.getuid())continue;
