@@ -63,6 +63,26 @@ jobs:
             }
             results.push({status:video.status,visibility:video.visibility,createdAt:video.createdAt,updatedAt:video.updatedAt,assets,processing:video.mediaProcessingJobs});
            }
+          
+           const logRead=spawnSync('pm2',['logs','ayin-api','--lines','30000','--nostream','--raw'],{encoding:'utf8',timeout:20000,maxBuffer:24000000});
+           const events=[];
+           for(const line of (logRead.stdout+'\n'+logRead.stderr).split('\n')){
+            const start=line.indexOf('{"');if(start<0)continue;
+            try{const event=JSON.parse(line.slice(start));if(event.timestamp)events.push(event);}catch{}
+           }
+           const windowStart=Date.parse('2026-10-28T12:51:00Z'),windowEnd=Date.parse('2026-10-28T13:00:00Z');
+           const grouped=new Map();
+           for(const event of events){
+            const when=Date.parse(event.timestamp);
+            if(when<windowStart||when>windowEnd||event.event!=='http.request'||!/(media\/uploads|creator\/videos)/.test(event.path??''))continue;
+            const path=String(event.path).split('?')[0].replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/ig,':id');
+            const key=JSON.stringify({method:event.method,path,status:event.statusCode});
+            const group=grouped.get(key)??{...JSON.parse(key),count:0,first:event.timestamp,last:event.timestamp};
+            group.count++;if(event.timestamp<group.first)group.first=event.timestamp;if(event.timestamp>group.last)group.last=event.timestamp;grouped.set(key,group);
+           }
+           const timestamps=events.map(e=>e.timestamp).sort();
+           console.log('SAFE_ORIGINAL_UPLOAD_LOG_WINDOW',JSON.stringify({readOnly:true,logReadSucceeded:logRead.status===0,structuredEvents:events.length,firstRetained:timestamps[0]??null,lastRetained:timestamps.at(-1)??null,nearAttemptHttpRequests:[...grouped.values()].sort((a,b)=>a.first.localeCompare(b.first))}));
+          
            const heartbeat=JSON.parse(await readFile(process.env.MEDIA_WORKER_HEARTBEAT_PATH||'/tmp/ayin-media-worker-heartbeat.json','utf8'));
            const scratch=await readdir(process.env.MEDIA_PROCESSING_WORKDIR||'/tmp/ayin-media-processing');
            console.log('SAFE_ORIGINAL_UPLOAD_AUDIT',JSON.stringify({readOnly:true,matchingVideos:rows.length,results,worker:{releaseMatches:heartbeat.releaseSha===expected,status:heartbeat.status,fresh:Date.now()-Date.parse(heartbeat.heartbeatAt)<90000},scratchEntries:scratch.length}));
