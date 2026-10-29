@@ -1,4 +1,4 @@
-name: Verify automatic local media cleanup
+name: Diagnose original upload (read only)
 on:
   push:
     branches: [codex/ayin-large-upload-proof-20261028]
@@ -11,7 +11,7 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v7
-      - name: Verify deployed worker automatically removes sealed synthetic scratch
+      - name: Inspect original upload state and scoped R2 objects without mutations
         shell: bash
         env:
           DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
@@ -26,33 +26,47 @@ jobs:
           test "$(ssh-keygen -lf "$HOME/.ssh/candidate" -E sha256 | awk 'NR == 1 {print $2}')" = 'SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y'
           mv "$HOME/.ssh/candidate" "$HOME/.ssh/known_hosts"
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes ayin@"$DEPLOY_HOST" 'cd /home/ayin/htdocs/current && git rev-parse HEAD && node deploy/run-with-env.cjs /home/ayin/env/api.env node --input-type=module' <<'JS'
+          import { createPrismaClient } from './packages/db/dist/index.js';
+          import { R2MediaStorageAdapter } from './apps/api/dist/media/r2-media-storage.adapter.js';
+          import { loadMediaStorageConfig } from './apps/api/dist/media/media-storage.config.js';
           import { spawnSync } from 'node:child_process';
-          import { lstat, readFile, readdir } from 'node:fs/promises';
-          import { resolve, dirname } from 'node:path';
-          const expectedRelease='633a0dd4a2b9ab08eb7dc1a8ce91a3b9fe3b15f2';
-          const release=spawnSync('git',['rev-parse','HEAD'],{encoding:'utf8'});
-          if(release.status!==0||release.stdout.trim()!==expectedRelease)throw new Error('UnexpectedProductionRelease');
-          const heartbeatPath=process.env.MEDIA_WORKER_HEARTBEAT_PATH||'/tmp/ayin-media-worker-heartbeat.json';
-          const heartbeat=JSON.parse(await readFile(heartbeatPath,'utf8'));
-          if(heartbeat.releaseSha!==expectedRelease||heartbeat.status!=='running'||Date.now()-Date.parse(heartbeat.heartbeatAt)>90000)throw new Error('ExpectedWorkerNotRunning');
-          const helper=spawnSync(process.execPath,['--input-type=module','-e',"import { createPrismaClient } from './packages/db/dist/index.js';\nimport { MediaScratchService } from './apps/api/dist/media/media-scratch.service.js';\nimport { randomUUID } from 'node:crypto';\nimport { writeFile } from 'node:fs/promises';\nimport { join } from 'node:path';\nconst db=createPrismaClient();\ntry {\n const job=await db.$transaction(async tx=>{\n  await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');\n  return tx.mediaProcessingJob.findFirst({where:{status:'READY',sourceSizeBytes:3736813160n,video:{title:'AYIN 3.48 GiB reopen verification — private test',visibility:'PRIVATE'}},select:{id:true}});\n });\n if(!job)throw new Error('PrivateReadyFixtureMissing');\n const scratch=new MediaScratchService();\n const directory=await scratch.create(job.id,randomUUID());\n const payload=Buffer.from('AYIN synthetic automatic cleanup acceptance only\\n');\n await writeFile(join(directory,'synthetic-cleanup-proof.tmp'),payload,{flag:'wx',mode:0o600});\n await scratch.seal(directory);\n process.stdout.write(JSON.stringify({directory,payloadBytes:payload.length}));\n} catch(error){process.stderr.write(error?.name??'UnknownError');process.exitCode=1;}\nfinally{await db.$disconnect();}\n"],{encoding:'utf8',timeout:30000,maxBuffer:100000});
-          if(helper.status!==0)throw new Error('SyntheticFixtureCreationFailed');
-          const fixture=JSON.parse(helper.stdout);
-          const root=resolve(process.env.MEDIA_PROCESSING_WORKDIR?.trim()||'/tmp/ayin-media-processing');
-          if(dirname(fixture.directory)!==root)throw new Error('FixtureRootMismatch');
-          const initial=await lstat(fixture.directory);
-          if(!initial.isDirectory()||initial.isSymbolicLink())throw new Error('FixtureNotDirectory');
-          console.log('SAFE_AUTOMATIC_CLEANUP_ACCEPTANCE',JSON.stringify({created:true,payloadBytes:fixture.payloadBytes,helperExited:true,manualDeletion:false}));
-          const started=Date.now();
-          let removed=false;
-          for(let n=0;n<42;n++){
-           await new Promise(resolve=>setTimeout(resolve,10000));
-           try{await lstat(fixture.directory);}catch(error){if(error.code==='ENOENT'){removed=true;break;}throw error;}
-           if(n%3===2)console.log('SAFE_AUTOMATIC_CLEANUP_WAIT',JSON.stringify({elapsedSeconds:Math.round((Date.now()-started)/1000)}));
-          }
-          const finalHeartbeat=JSON.parse(await readFile(heartbeatPath,'utf8'));
-          const workerLogs=spawnSync('pm2',['logs','ayin-media-worker','--lines','80','--nostream','--raw'],{encoding:'utf8',timeout:15000,maxBuffer:1000000});
-          const workerSweepLogged=/media_scratch[.]sweep: inspected=[0-9]+ removed=[1-9][0-9]* retained=[0-9]+/.test(workerLogs.stdout??'');
-          console.log('SAFE_AUTOMATIC_CLEANUP_ACCEPTANCE',JSON.stringify({removedByWorker:removed,workerSweepLogged,manualDeletion:false,elapsedSeconds:Math.round((Date.now()-started)/1000),workerReleaseMatches:finalHeartbeat.releaseSha===expectedRelease,remainingScratchEntries:(await readdir(root)).length}));
-          if(!removed||!workerSweepLogged||finalHeartbeat.releaseSha!==expectedRelease||finalHeartbeat.status!=='running'||Date.now()-Date.parse(finalHeartbeat.heartbeatAt)>90000)process.exitCode=1;
+          import { readFile,readdir } from 'node:fs/promises';
+          const expected='633a0dd4a2b9ab08eb7dc1a8ce91a3b9fe3b15f2';
+          if(spawnSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).stdout.trim()!==expected)throw Error('ReleaseMismatch');
+          const db=createPrismaClient();
+          try{
+           const rows=await db.$transaction(async tx=>{
+            await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
+            return tx.video.findMany({where:{title:'ScreenRecording 09 08 2026 18 37 19 1',removedAt:null},take:5,
+             select:{status:true,visibility:true,createdAt:true,updatedAt:true,
+              mediaAssets:{where:{kind:'SOURCE_VIDEO'},select:{status:true,sizeBytes:true,r2ObjectKey:true,createdAt:true,updatedAt:true,removedAt:true,uploadSession:{select:{state:true,createdAt:true,hardExpiresAt:true,sourceProtocolVersion:true,operations:{select:{kind:true,status:true,providerOutcome:true,createdAt:true}}}}}},
+              mediaProcessingJobs:{select:{status:true,stage:true,errorCode:true,createdAt:true,queuedAt:true,startedAt:true,completedAt:true,attempt:true}}}});
+           },{timeout:15000});
+           const config=loadMediaStorageConfig(); if(config.mode!=='r2')throw Error('ExpectedR2');
+           const storage=new R2MediaStorageAdapter(config);
+           const results=[];
+           for(const video of rows){
+            const assets=[];
+            for(const asset of video.mediaAssets){
+             let head,parts;
+             try{const h=await storage.headObject(asset.r2ObjectKey);head={present:true,sizeBytes:h.sizeBytes,expectedSizeMatches:BigInt(h.sizeBytes)===asset.sizeBytes};}
+             catch(e){head={readSucceeded:false,errorType:e.name,status:e.status??e.statusCode??null};}
+             try{
+              const pending=await storage.listMultipartUploads(asset.r2ObjectKey);
+              parts=[];
+              for(const upload of pending.filter(x=>x.key===asset.r2ObjectKey).slice(0,5)){
+               const entries=await storage.listParts({key:upload.key,uploadId:upload.uploadId});
+               parts.push({initiatedAt:upload.initiatedAt,partCount:entries.length,storedBytes:entries.reduce((n,x)=>n+x.sizeBytes,0)});
+              }
+             }catch(e){parts={readSucceeded:false,errorType:e.name,status:e.status??e.statusCode??null};}
+             assets.push({status:asset.status,expectedBytes:asset.sizeBytes.toString(),createdAt:asset.createdAt,updatedAt:asset.updatedAt,removed:!!asset.removedAt,session:asset.uploadSession,head,multipart:parts});
+            }
+            results.push({status:video.status,visibility:video.visibility,createdAt:video.createdAt,updatedAt:video.updatedAt,assets,processing:video.mediaProcessingJobs});
+           }
+           const heartbeat=JSON.parse(await readFile(process.env.MEDIA_WORKER_HEARTBEAT_PATH||'/tmp/ayin-media-worker-heartbeat.json','utf8'));
+           const scratch=await readdir(process.env.MEDIA_PROCESSING_WORKDIR||'/tmp/ayin-media-processing');
+           console.log('SAFE_ORIGINAL_UPLOAD_AUDIT',JSON.stringify({readOnly:true,matchingVideos:rows.length,results,worker:{releaseMatches:heartbeat.releaseSha===expected,status:heartbeat.status,fresh:Date.now()-Date.parse(heartbeat.heartbeatAt)<90000},scratchEntries:scratch.length}));
+          }catch(e){console.error('SAFE_AUDIT_FAILURE',JSON.stringify({name:e.name,code:e.code??null}));process.exitCode=1;}
+          finally{await db.$disconnect();}
+          
           JS
