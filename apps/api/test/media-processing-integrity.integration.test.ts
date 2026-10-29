@@ -1,3 +1,4 @@
+import { MediaScratchService } from "../src/media/media-scratch.service.js";
 import { PrivacyLifecycleService } from "../src/privacy/privacy-lifecycle.service.js";
 import { MediaAdaptiveProcessingService } from "../src/media/media-adaptive-processing.service.js";
 import {
@@ -566,6 +567,7 @@ databaseDescribe("durable worker byte identity and atomic readiness", () => {
       { process: vi.fn() } as never,
       { ensureForCanonical: vi.fn().mockResolvedValue({ created: false }) } as never,
       new PlatformSettingsService(database),
+      new MediaScratchService(),
     );
     const probe = vi
       .spyOn(subject as unknown as { probe(path: string): Promise<MediaProbeMetadata> }, "probe")
@@ -1310,6 +1312,7 @@ databaseDescribe("durable worker byte identity and atomic readiness", () => {
         adaptiveWork as never,
         { ensureForCanonical: vi.fn() } as never,
         new PlatformSettingsService(database),
+        new MediaScratchService(),
       );
       const probe = vi.spyOn(
         subject as unknown as { probe(path: string): Promise<MediaProbeMetadata> },
@@ -1708,6 +1711,7 @@ databaseDescribe("durable worker byte identity and atomic readiness", () => {
         hls,
         thumbnails,
         new PlatformSettingsService(database),
+        new MediaScratchService(),
       );
       vi.spyOn(
         executor as unknown as { probe(path: string): Promise<MediaProbeMetadata> },

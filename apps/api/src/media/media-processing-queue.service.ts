@@ -54,6 +54,13 @@ export class MediaProcessingQueueService {
     @Inject(PlatformSettingsService) private readonly settings: PlatformSettingsService,
   ) {}
 
+  async scratchJobState(jobId: string) {
+    return this.database.client.mediaProcessingJob.findUnique({
+      where: { id: jobId },
+      select: { status: true, leaseOwner: true, leaseExpiresAt: true },
+    });
+  }
+
   async capacity(): Promise<MediaProcessingCapacity> {
     const values = await this.settings.getMany([
       "mediaProcessingEnabled",

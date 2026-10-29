@@ -28,6 +28,7 @@ import { MediaProcessingLifecycleService } from "./media-processing-lifecycle.se
 import { MediaProcessingQueueService } from "./media-processing-queue.service.js";
 import { MediaProcessingStorageService } from "./media-processing-storage.service.js";
 import { MediaOutputWriteJournalService } from "./media-output-write-journal.js";
+import { MediaScratchService } from "./media-scratch.service.js";
 import { MediaProcessingWorkerService } from "./media-processing-worker.service.js";
 import { MediaUploadController } from "./media-upload.controller.js";
 import { MediaUploadService } from "./media-upload.service.js";
@@ -74,6 +75,7 @@ import { UploadSessionTokenService } from "./upload-session-token.service.js";
     MediaAdaptiveProcessingService,
     MediaAdaptiveRolloutService,
     MediaAutoThumbnailService,
+    MediaScratchService,
     MediaProcessingExecutorService,
     MediaProcessingWorkerService,
   ],
@@ -88,6 +90,7 @@ import { UploadSessionTokenService } from "./upload-session-token.service.js";
     MediaAdaptiveLifecycleService,
     MediaAdaptiveProcessingService,
     MediaAdaptiveRolloutService,
+    MediaScratchService,
     MediaProcessingExecutorService,
     MediaProcessingWorkerService,
   ],

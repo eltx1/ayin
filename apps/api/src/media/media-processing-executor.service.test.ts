@@ -1,3 +1,4 @@
+import { MediaScratchService } from "./media-scratch.service.js";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -55,6 +56,7 @@ it("copies validated backfill MP4 into an independent generation without transco
     adaptive as never,
     { ensureForCanonical: vi.fn().mockResolvedValue({ created: false }) } as never,
     { get: vi.fn() } as never,
+    new MediaScratchService(),
   );
   vi.spyOn(
     subject as unknown as { probe(path: string): Promise<MediaProbeMetadata> },
@@ -154,6 +156,7 @@ async function requiredFixture(
     adaptive as never,
     { ensureForCanonical: vi.fn().mockResolvedValue({ created: false }) } as never,
     { get: vi.fn() } as never,
+    new MediaScratchService(),
   );
   const probe = vi
     .spyOn(subject as unknown as { probe(path: string): Promise<MediaProbeMetadata> }, "probe")
@@ -283,4 +286,16 @@ it("reports the explicit output-envelope failure without publishing or deleting 
   );
   expect(f.lifecycle.finalizeReady).not.toHaveBeenCalled();
   expect(f.storage.deleteObject).not.toHaveBeenCalled();
+});
+
+it("does not commit READY if the durable local-work completion seal cannot be saved", async () => {
+  const f = await requiredFixture();
+  vi.spyOn(MediaScratchService.prototype, "seal").mockRejectedValueOnce(
+    Object.assign(new Error("disk full"), { code: "ENOSPC" }),
+  );
+  await f.subject.process(f.job, "claim");
+  expect(f.lifecycle.finalizeReady).not.toHaveBeenCalled();
+  expect(f.queue.requeueAfterFailure).toHaveBeenCalledOnce();
+  expect(f.storage.deleteObject).not.toHaveBeenCalled();
+  expect(f.objects.has(f.sourceKey)).toBe(true);
 });

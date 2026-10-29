@@ -126,3 +126,41 @@ Before relying on horizontal capacity, verify these cases in staging or controll
 - confirm workers running different processing versions are visible in the registry before allowing mixed-version processing.
 
 Task 85 CI includes concurrent PostgreSQL tests for duplicate-claim prevention, expired-lease fencing, crash recovery and exactly-one finalization.
+
+## Automatic local scratch cleanup
+
+Every media-worker attempt uses its own private directory under
+`MEDIA_PROCESSING_WORKDIR` (default `/tmp/ayin-media-processing`). The executor
+removes the source before adaptive packaging when possible and removes the entire
+attempt directory when processing settles, including failure paths. This does not
+wait for the creator to publish. Required playback objects and thumbnails stay on
+R2; database metadata and diagnostic logs are not local video copies.
+
+The worker also checks for retained local scratch at startup and every five minutes,
+without changing processing concurrency. A failed immediate removal is logged as
+`media_scratch.cleanup_failed` with a sanitized error code, then retried. Scans are
+limited to 256 entries per tick and retain their iterator so skipped entries cannot
+starve later directories. Summaries report counts without private object keys.
+
+After all local media processes have finished, the executor durably seals the
+ownership record **before** committing READY. Retried deletion of these completed
+attempts does not depend on inspecting unrelated system processes, even after a
+worker restart; an active database lease still prevents the sweep. Failure to save
+the seal prevents READY and requeues the job instead.
+
+For unsealed interrupted attempts, crash recovery is conservative: only directories created with the new durable owner
+marker qualify. On Linux it verifies the same host, boot identity, process start
+identity, an inactive database job without a lease, and the absence of same-user
+processes referencing the directory via arguments, working directory or open file
+descriptors. This also protects orphan ffmpeg children after a worker is killed. A host that denies inspection of same-user processes retains these unsealed crash attempts with a visible warning; it does not guess from process names.
+An active attempt remains protected even after READY is committed. Symlinks,
+unknown directories, inaccessible process evidence, database failures and another
+host's markers are retained rather than guessed safe. `media_scratch.retry_deferred`
+and `media_scratch.sweep_failed` expose inspection errors for operations review.
+
+Keep the work root on local Linux storage with `/proc` visible to the media-worker
+OS account. Non-Linux workers retain immediate cleanup but do not perform crash
+sweeps. Legacy/unmarked directories require separate investigation; a crash before
+the ownership marker is persisted can leave an empty directory, but the executor
+does not download media until marker creation has succeeded. No broad cron deletion
+of `/tmp`, release trees, or unrelated applications is used.
