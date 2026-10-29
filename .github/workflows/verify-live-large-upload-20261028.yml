@@ -50,9 +50,9 @@ jobs:
             await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
             const results=[];
             for(const owner of owners){
-             const job=await tx.mediaProcessingJob.findUnique({where:{id:owner.jobId},select:{status:true,stage:true,leaseOwner:true,leaseExpiresAt:true,video:{select:{status:true}}}});
+             const job=await tx.mediaProcessingJob.findUnique({where:{id:owner.jobId},select:{status:true,stage:true,leaseOwner:true,leaseExpiresAt:true,startedAt:true,attempt:true,video:{select:{status:true}}}});
              const leaseMatches=!!job?.leaseOwner&&createHash('sha256').update(job.leaseOwner).digest('hex').slice(0,16)===owner.claimHash;
-             results.push({jobPresent:!!job,status:job?.status??null,stage:job?.stage??null,videoStatus:job?.video.status??null,localWorkSettled:owner.localWorkSettled===true,leaseMatches,leaseActive:!!job?.leaseExpiresAt&&job.leaseExpiresAt.getTime()>Date.now()});
+             results.push({jobPresent:!!job,startedAt:job?.startedAt??null,attempt:job?.attempt??null,status:job?.status??null,stage:job?.stage??null,videoStatus:job?.video.status??null,localWorkSettled:owner.localWorkSettled===true,leaseMatches,leaseActive:!!job?.leaseExpiresAt&&job.leaseExpiresAt.getTime()>Date.now()});
             }
             return results;
            },{timeout:15000});
