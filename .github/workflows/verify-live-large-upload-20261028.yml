@@ -27,24 +27,44 @@ jobs:
           mv "$HOME/.ssh/candidate" "$HOME/.ssh/known_hosts"
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes ayin@"$DEPLOY_HOST" 'cd /home/ayin/htdocs/current && git rev-parse HEAD && node deploy/run-with-env.cjs /home/ayin/env/api.env node --input-type=module' <<'JS'
           import { createPrismaClient } from './packages/db/dist/index.js';
+          import { readdir, lstat, statfs } from 'node:fs/promises';
+          import { join, isAbsolute } from 'node:path';
           const db = createPrismaClient();
-          const expectedDigest = '6f54a24028407cdd6d004742c971b303cb44d8d2ee73445a757fae7049ef7ad2';
+          const root = process.env.MEDIA_PROCESSING_WORKDIR?.trim() || '/tmp/ayin-media-processing';
+          const totals = {files:0,bytes:0,symlinksSkipped:0,scanLimitReached:false};
+          async function measure(path,depth=0) {
+            if(depth>12 || totals.files>100000){totals.scanLimitReached=true;return 0;}
+            const st=await lstat(path);
+            if(st.isSymbolicLink()){totals.symlinksSkipped++;return 0;}
+            if(st.isFile()){totals.files++;totals.bytes+=st.size;return st.size;}
+            if(!st.isDirectory()) return 0;
+            let size=0;
+            for(const e of await readdir(path)) size+=await measure(join(path,e),depth+1);
+            return size;
+          }
           try {
-            const result = await db.$transaction(async tx => {
+            if(!isAbsolute(root)) throw new Error('UnsafeScratchRoot');
+            let entries=[],rootPresent=true;
+            try { const st=await lstat(root); if(!st.isDirectory()||st.isSymbolicLink()) throw new Error('UnexpectedScratchRoot'); entries=await readdir(root,{withFileTypes:true}); }
+            catch(e){if(e.code==='ENOENT')rootPresent=false;else throw e;}
+            if(entries.length>2000) throw new Error('ScratchEntryLimit');
+            const scanned=[];
+            for(const e of entries){
+              const match=/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:-[0-9a-f]{16})?$/.exec(e.name);
+              const path=join(root,e.name), st=await lstat(path);
+              scanned.push({jobId:match?.[1]??null,isDirectory:st.isDirectory(),isSymlink:st.isSymbolicLink(),bytes:await measure(path),modifiedAt:st.mtime.toISOString()});
+            }
+            const result=await db.$transaction(async tx=>{
               await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
-              const sources = await tx.mediaAsset.findMany({where:{kind:'SOURCE_VIDEO',sizeBytes:3736813160n,createdAt:{gte:new Date('2026-10-28T18:00:00Z')}},select:{videoId:true,status:true,createdAt:true,updatedAt:true,uploadIntegrityRequired:true},take:3});
-              const rows = [];
-              for (const source of sources) {
-                const video = await tx.video.findUnique({where:{id:source.videoId},select:{status:true,visibility:true}});
-                const sessions = await tx.mediaUploadSession.findMany({where:{videoId:source.videoId},select:{sourceProtocolVersion:true,state:true,sizeBytes:true,partSizeBytes:true,contentIdentityAlgorithm:true,contentIdentityDigest:true,operations:{select:{kind:true,status:true}}}});
-                const jobs = await tx.mediaProcessingJob.findMany({where:{videoId:source.videoId},select:{status:true,stage:true,progressPercent:true,attempt:true,errorCode:true,createdAt:true,queuedAt:true,startedAt:true,completedAt:true,sourceSizeBytes:true,outputSizeBytes:true,outputProtocolVersion:true,inputIntegrityVersion:true,inputIntegrityAlgorithm:true,inputIntegrityDigest:true,inputIntegrityRedactedAt:true,inputVerifiedAt:true,outputVerifiedAt:true}});
-                rows.push({source:{status:source.status,createdAt:source.createdAt,integrityRequired:source.uploadIntegrityRequired},video,sessions:sessions.map(({contentIdentityDigest,operations,...session})=>({...session,identityMatchesFixture:contentIdentityDigest===expectedDigest,operations:operations.reduce((counts,op)=>{const key=op.kind+':'+op.status;counts[key]=(counts[key]??0)+1;return counts;},{})})),jobs:jobs.map(({inputIntegrityDigest,...job})=>({...job,inputMatchesFixture:inputIntegrityDigest===expectedDigest}))});
-              }
-              return {matched:sources.length,rows};
+              const fixtureJobs=await tx.mediaProcessingJob.findMany({where:{sourceSizeBytes:3736813160n,createdAt:{gte:new Date('2026-10-28T16:00:00Z')}},select:{id:true,status:true,completedAt:true,inputVerifiedAt:true,outputVerifiedAt:true,sourceSizeBytes:true,outputSizeBytes:true}});
+              const jobs=await tx.mediaProcessingJob.findMany({where:{id:{in:scanned.flatMap(e=>e.jobId?[e.jobId]:[])}},select:{id:true,status:true,leaseExpiresAt:true,completedAt:true}});
+              const byId=new Map(jobs.map(j=>[j.id,j]));
+              const groups={};
+              for(const entry of scanned){const job=byId.get(entry.jobId),status=job?.status??'UNRECOGNIZED';const g=groups[status]??={directories:0,bytes:0,unexpiredLeases:0};g.directories++;g.bytes+=entry.bytes;if(job?.leaseExpiresAt>new Date())g.unexpiredLeases++;}
+              const cleanup=await tx.privacyMediaDeletionJob.groupBy({by:['status'],where:{scope:'PROCESSING_SOURCE',processingJobId:{in:fixtureJobs.map(j=>j.id)}},_count:{_all:true}});
+              return {rootPresent,rootIsDefault:root==='/tmp/ayin-media-processing',entryCount:entries.length,totals,groups,fixtureJobs:fixtureJobs.map(({id,...job})=>({...job,localScratchDirectories:scanned.filter(e=>e.jobId===id).length,localScratchBytes:scanned.filter(e=>e.jobId===id).reduce((n,e)=>n+e.bytes,0)})),fixtureSourceCleanup:cleanup.map(x=>({status:x.status,count:x._count._all}))};
             });
-            console.log('SAFE_LARGE_RECOVERY_PROOF',JSON.stringify(result,(_,value)=>typeof value==='bigint'?String(value):value));
-          } catch (error) {
-            console.log('SAFE_LARGE_RECOVERY_PROOF',JSON.stringify({inspected:false,errorType:error?.name??'UNKNOWN'}));
-            process.exitCode=1;
-          } finally { await db.$disconnect(); }
-          JS
+            console.log('SAFE_LOCAL_MEDIA_CLEANUP_AUDIT',JSON.stringify(result,(_,v)=>typeof v==='bigint'?String(v):v));
+          } catch(e){console.log('SAFE_LOCAL_MEDIA_CLEANUP_AUDIT',JSON.stringify({inspected:false,errorType:e?.name,errorCode:e?.code}));process.exitCode=1;}
+          finally{await db.$disconnect();}
+                    JS
