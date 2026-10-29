@@ -54,20 +54,26 @@ jobs:
               const path=join(root,e.name), st=await lstat(path);
               scanned.push({jobId:match?.[1]??null,isDirectory:st.isDirectory(),isSymlink:st.isSymbolicLink(),bytes:await measure(path),modifiedAt:st.mtime.toISOString()});
             }
-              const procAccess={sameUidProcesses:0,descriptors:0,permissionErrors:0,otherErrors:0};
-            for(const pid of (await readdir('/proc')).filter(p=>/^[0-9]+$/.test(p)).slice(0,4096)){
-              try{
-                const base='/proc/'+pid;
-                if((await lstat(base)).uid!==process.getuid())continue;
-                procAccess.sameUidProcesses++;
-                await readFile(base+'/cmdline');
-                try{await readlink(base+'/cwd');}catch(e){if(e.code!=='ENOENT')throw e;}
-                for(const fd of (await readdir(base+'/fd')).slice(0,4096)){
-                  try{await readlink(base+'/fd/'+fd);procAccess.descriptors++;}catch(e){if(e.code!=='ENOENT')throw e;}
-                }
-              }catch(e){if(e.code==='EACCES'||e.code==='EPERM')procAccess.permissionErrors++;else if(e.code!=='ENOENT')procAccess.otherErrors++;}
-            }
-            console.log('SAFE_LOCAL_PROCESS_VISIBILITY',JSON.stringify(procAccess));
+            const procAccess={sameUidProcesses:0,descriptors:0,denied:{}};
+          for(const pid of (await readdir('/proc')).filter(p=>/^[0-9]+$/.test(p)).slice(0,4096)){
+            let stage='uid',kind='unknown';
+            try{
+              const base='/proc/'+pid;
+              if((await lstat(base)).uid!==process.getuid())continue;
+              procAccess.sameUidProcesses++;
+              const comm=(await readFile(base+'/comm','utf8')).trim();
+              kind=/^(sshd|bash|node|sh|ffmpeg|ffprobe|PM2|npm|pnpm)/.test(comm)?comm:'other';
+              stage='cmdline';await readFile(base+'/cmdline');
+              stage='cwd';try{await readlink(base+'/cwd');}catch(e){if(e.code!=='ENOENT')throw e;}
+              stage='fd-list';
+              const fds=await readdir(base+'/fd');
+              stage='fd-link';
+              for(const fd of fds.slice(0,4096)){
+                try{await readlink(base+'/fd/'+fd);procAccess.descriptors++;}catch(e){if(e.code!=='ENOENT')throw e;}
+              }
+            }catch(e){if(e.code!=='ENOENT'){const key=kind+':'+stage+':'+e.code;procAccess.denied[key]=(procAccess.denied[key]??0)+1;}}
+          }
+          console.log('SAFE_LOCAL_PROCESS_VISIBILITY',JSON.stringify(procAccess));
           const result=await db.$transaction(async tx=>{
               await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
               const fixtureJobs=await tx.mediaProcessingJob.findMany({where:{sourceSizeBytes:3736813160n,createdAt:{gte:new Date('2026-10-28T16:00:00Z')}},select:{id:true,status:true,completedAt:true,inputVerifiedAt:true,outputVerifiedAt:true,sourceSizeBytes:true,outputSizeBytes:true}});
