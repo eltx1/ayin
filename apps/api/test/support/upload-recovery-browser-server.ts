@@ -364,11 +364,6 @@ const provider = createServer(async (request, reply) => {
                     .map(([partNumber, bytes]) => ({ partNumber, bytes: bytes.length }))
                     .sort((left, right) => left.partNumber - right.partNumber),
                 ),
-                storedObjects: [...objects.values()].map(({ bytes, contentType }) => ({
-                  bytes: bytes.length,
-                  sha256: createHash("sha256").update(bytes).digest("hex"),
-                  contentType,
-                })),
                 uploadedSources: await db.mediaAsset.count({
                   where: { kind: "SOURCE_VIDEO", status: "UPLOADED" },
                 }),
@@ -378,6 +373,11 @@ const provider = createServer(async (request, reply) => {
                 validatingVideos: await db.video.count({ where: { status: "VALIDATING" } }),
               }
             : {}),
+          storedObjects: [...objects.values()].map(({ bytes, contentType }) => ({
+            bytes: bytes.length,
+            sha256: createHash("sha256").update(bytes).digest("hex"),
+            contentType,
+          })),
           sessions: await db.mediaUploadSession.count(),
           journal: await db.mediaUploadOperation.count(),
           queued: await db.mediaProcessingJob.count({ where: { stage: "INTEGRITY_QUEUED" } }),

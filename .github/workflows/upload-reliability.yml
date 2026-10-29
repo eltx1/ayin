@@ -13,6 +13,7 @@ on:
       - "apps/web/src/components/upload/**"
       - "apps/web/src/lib/*upload*"
       - "tests/e2e/upload*"
+      - "tests/recovery/**"
       - "playwright.upload-large-recovery.config.ts"
       - ".github/workflows/upload-reliability.yml"
 
@@ -81,10 +82,15 @@ jobs:
       - name: Verify actual 129 MiB multipart transfer and reload recovery
         if: (success() || failure()) && steps.upload_build.outcome == 'success'
         run: pnpm exec playwright test --config playwright.upload-large-recovery.config.ts
+      - name: Verify standard upload fallback and dormant recovery
+        if: (success() || failure()) && steps.upload_build.outcome == 'success'
+        run: pnpm test:e2e:recovery
       - name: Preserve browser verification evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: upload-reliability-browser-evidence
-          path: test-results/
+          path: |
+            test-results/
+            test-results-recovery/
           retention-days: 7
