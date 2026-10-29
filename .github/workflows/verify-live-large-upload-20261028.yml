@@ -1,4 +1,4 @@
-name: Verify live large-upload recovery (read only)
+name: Verify automatic local media cleanup
 on:
   push:
     branches: [codex/ayin-large-upload-proof-20261028]
@@ -7,11 +7,11 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     environment: production
     steps:
       - uses: actions/checkout@v7
-      - name: Read exact test upload and integrity results without credentials or identifiers
+      - name: Verify deployed worker automatically removes sealed synthetic scratch
         shell: bash
         env:
           DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
@@ -26,65 +26,33 @@ jobs:
           test "$(ssh-keygen -lf "$HOME/.ssh/candidate" -E sha256 | awk 'NR == 1 {print $2}')" = 'SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y'
           mv "$HOME/.ssh/candidate" "$HOME/.ssh/known_hosts"
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes ayin@"$DEPLOY_HOST" 'cd /home/ayin/htdocs/current && git rev-parse HEAD && node deploy/run-with-env.cjs /home/ayin/env/api.env node --input-type=module' <<'JS'
-          import { createPrismaClient } from './packages/db/dist/index.js';
-          import { readdir, lstat, readFile, readlink } from 'node:fs/promises';
-          import { join, isAbsolute } from 'node:path';
-          const db = createPrismaClient();
-          const root = process.env.MEDIA_PROCESSING_WORKDIR?.trim() || '/tmp/ayin-media-processing';
-          const totals = {files:0,bytes:0,symlinksSkipped:0,scanLimitReached:false};
-          async function measure(path,depth=0) {
-            if(depth>12 || totals.files>100000){totals.scanLimitReached=true;return 0;}
-            const st=await lstat(path);
-            if(st.isSymbolicLink()){totals.symlinksSkipped++;return 0;}
-            if(st.isFile()){totals.files++;totals.bytes+=st.size;return st.size;}
-            if(!st.isDirectory()) return 0;
-            let size=0;
-            for(const e of await readdir(path)) size+=await measure(join(path,e),depth+1);
-            return size;
+          import { spawnSync } from 'node:child_process';
+          import { lstat, readFile, readdir } from 'node:fs/promises';
+          import { resolve, dirname } from 'node:path';
+          const expectedRelease='633a0dd4a2b9ab08eb7dc1a8ce91a3b9fe3b15f2';
+          const release=spawnSync('git',['rev-parse','HEAD'],{encoding:'utf8'});
+          if(release.status!==0||release.stdout.trim()!==expectedRelease)throw new Error('UnexpectedProductionRelease');
+          const heartbeatPath=process.env.MEDIA_WORKER_HEARTBEAT_PATH||'/tmp/ayin-media-worker-heartbeat.json';
+          const heartbeat=JSON.parse(await readFile(heartbeatPath,'utf8'));
+          if(heartbeat.releaseSha!==expectedRelease||heartbeat.status!=='running'||Date.now()-Date.parse(heartbeat.heartbeatAt)>90000)throw new Error('ExpectedWorkerNotRunning');
+          const helper=spawnSync(process.execPath,['--input-type=module','-e',"import { createPrismaClient } from './packages/db/dist/index.js';\nimport { MediaScratchService } from './apps/api/dist/media/media-scratch.service.js';\nimport { randomUUID } from 'node:crypto';\nimport { writeFile } from 'node:fs/promises';\nimport { join } from 'node:path';\nconst db=createPrismaClient();\ntry {\n const job=await db.$transaction(async tx=>{\n  await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');\n  return tx.mediaProcessingJob.findFirst({where:{status:'READY',sourceSizeBytes:3736813160n,video:{title:'AYIN 3.48 GiB reopen verification — private test',visibility:'PRIVATE'}},select:{id:true}});\n });\n if(!job)throw new Error('PrivateReadyFixtureMissing');\n const scratch=new MediaScratchService();\n const directory=await scratch.create(job.id,randomUUID());\n const payload=Buffer.from('AYIN synthetic automatic cleanup acceptance only\\n');\n await writeFile(join(directory,'synthetic-cleanup-proof.tmp'),payload,{flag:'wx',mode:0o600});\n await scratch.seal(directory);\n process.stdout.write(JSON.stringify({directory,payloadBytes:payload.length}));\n} catch(error){process.stderr.write(error?.name??'UnknownError');process.exitCode=1;}\nfinally{await db.$disconnect();}\n"],{encoding:'utf8',timeout:30000,maxBuffer:100000});
+          if(helper.status!==0)throw new Error('SyntheticFixtureCreationFailed');
+          const fixture=JSON.parse(helper.stdout);
+          const root=resolve(process.env.MEDIA_PROCESSING_WORKDIR?.trim()||'/tmp/ayin-media-processing');
+          if(dirname(fixture.directory)!==root)throw new Error('FixtureRootMismatch');
+          const initial=await lstat(fixture.directory);
+          if(!initial.isDirectory()||initial.isSymbolicLink())throw new Error('FixtureNotDirectory');
+          console.log('SAFE_AUTOMATIC_CLEANUP_ACCEPTANCE',JSON.stringify({created:true,payloadBytes:fixture.payloadBytes,helperExited:true,manualDeletion:false}));
+          const started=Date.now();
+          let removed=false;
+          for(let n=0;n<42;n++){
+           await new Promise(resolve=>setTimeout(resolve,10000));
+           try{await lstat(fixture.directory);}catch(error){if(error.code==='ENOENT'){removed=true;break;}throw error;}
+           if(n%3===2)console.log('SAFE_AUTOMATIC_CLEANUP_WAIT',JSON.stringify({elapsedSeconds:Math.round((Date.now()-started)/1000)}));
           }
-          try {
-            if(!isAbsolute(root)) throw new Error('UnsafeScratchRoot');
-            let entries=[],rootPresent=true;
-            try { const st=await lstat(root); if(!st.isDirectory()||st.isSymbolicLink()) throw new Error('UnexpectedScratchRoot'); entries=await readdir(root,{withFileTypes:true}); }
-            catch(e){if(e.code==='ENOENT')rootPresent=false;else throw e;}
-            if(entries.length>2000) throw new Error('ScratchEntryLimit');
-            const scanned=[];
-            for(const e of entries){
-              const match=/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:-[0-9a-f]{16})?$/.exec(e.name);
-              const path=join(root,e.name), st=await lstat(path);
-              scanned.push({jobId:match?.[1]??null,isDirectory:st.isDirectory(),isSymlink:st.isSymbolicLink(),bytes:await measure(path),modifiedAt:st.mtime.toISOString()});
-            }
-            const procAccess={sameUidProcesses:0,descriptors:0,denied:{}};
-          for(const pid of (await readdir('/proc')).filter(p=>/^[0-9]+$/.test(p)).slice(0,4096)){
-            let stage='uid',kind='unknown';
-            try{
-              const base='/proc/'+pid;
-              if((await lstat(base)).uid!==process.getuid())continue;
-              procAccess.sameUidProcesses++;
-              const comm=(await readFile(base+'/comm','utf8')).trim();
-              kind=/^(sshd|bash|node|sh|ffmpeg|ffprobe|PM2|npm|pnpm)/.test(comm)?comm:'other';
-              stage='cmdline';await readFile(base+'/cmdline');
-              stage='cwd';try{await readlink(base+'/cwd');}catch(e){if(e.code!=='ENOENT')throw e;}
-              stage='fd-list';
-              const fds=await readdir(base+'/fd');
-              stage='fd-link';
-              for(const fd of fds.slice(0,4096)){
-                try{await readlink(base+'/fd/'+fd);procAccess.descriptors++;}catch(e){if(e.code!=='ENOENT')throw e;}
-              }
-            }catch(e){if(e.code!=='ENOENT'){const key=kind+':'+stage+':'+e.code;procAccess.denied[key]=(procAccess.denied[key]??0)+1;}}
-          }
-          console.log('SAFE_LOCAL_PROCESS_VISIBILITY',JSON.stringify(procAccess));
-          const result=await db.$transaction(async tx=>{
-              await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
-              const fixtureJobs=await tx.mediaProcessingJob.findMany({where:{sourceSizeBytes:3736813160n,createdAt:{gte:new Date('2026-10-28T16:00:00Z')}},select:{id:true,status:true,completedAt:true,inputVerifiedAt:true,outputVerifiedAt:true,sourceSizeBytes:true,outputSizeBytes:true}});
-              const jobs=await tx.mediaProcessingJob.findMany({where:{id:{in:scanned.flatMap(e=>e.jobId?[e.jobId]:[])}},select:{id:true,status:true,leaseExpiresAt:true,completedAt:true}});
-              const byId=new Map(jobs.map(j=>[j.id,j]));
-              const groups={};
-              for(const entry of scanned){const job=byId.get(entry.jobId),status=job?.status??'UNRECOGNIZED';const g=groups[status]??={directories:0,bytes:0,unexpiredLeases:0};g.directories++;g.bytes+=entry.bytes;if(job?.leaseExpiresAt>new Date())g.unexpiredLeases++;}
-              const cleanup=await tx.privacyMediaDeletionJob.groupBy({by:['status'],where:{scope:'PROCESSING_SOURCE',processingJobId:{in:fixtureJobs.map(j=>j.id)}},_count:{_all:true}});
-              return {rootPresent,rootIsDefault:root==='/tmp/ayin-media-processing',entryCount:entries.length,totals,groups,fixtureJobs:fixtureJobs.map(({id,...job})=>({...job,localScratchDirectories:scanned.filter(e=>e.jobId===id).length,localScratchBytes:scanned.filter(e=>e.jobId===id).reduce((n,e)=>n+e.bytes,0)})),fixtureSourceCleanup:cleanup.map(x=>({status:x.status,count:x._count._all}))};
-            });
-            console.log('SAFE_LOCAL_MEDIA_CLEANUP_AUDIT',JSON.stringify(result,(_,v)=>typeof v==='bigint'?String(v):v));
-          } catch(e){console.log('SAFE_LOCAL_MEDIA_CLEANUP_AUDIT',JSON.stringify({inspected:false,errorType:e?.name,errorCode:e?.code}));process.exitCode=1;}
-          finally{await db.$disconnect();}
+          const finalHeartbeat=JSON.parse(await readFile(heartbeatPath,'utf8'));
+          const workerLogs=spawnSync('pm2',['logs','ayin-media-worker','--lines','80','--nostream','--raw'],{encoding:'utf8',timeout:15000,maxBuffer:1000000});
+          const workerSweepLogged=/media_scratch[.]sweep: inspected=[0-9]+ removed=[1-9][0-9]* retained=[0-9]+/.test(workerLogs.stdout??'');
+          console.log('SAFE_AUTOMATIC_CLEANUP_ACCEPTANCE',JSON.stringify({removedByWorker:removed,workerSweepLogged,manualDeletion:false,elapsedSeconds:Math.round((Date.now()-started)/1000),workerReleaseMatches:finalHeartbeat.releaseSha===expectedRelease,remainingScratchEntries:(await readdir(root)).length}));
+          if(!removed||!workerSweepLogged||finalHeartbeat.releaseSha!==expectedRelease||finalHeartbeat.status!=='running'||Date.now()-Date.parse(finalHeartbeat.heartbeatAt)>90000)process.exitCode=1;
           JS
