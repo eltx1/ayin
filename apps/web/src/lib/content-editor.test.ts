@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { contentDraft, contentPayload } from "./content-editor";
+import { contentDraft, contentPayload, contentReadiness } from "./content-editor";
+import type { QuickProcessingStatus } from "./quick-upload";
 import {
   getStudioContent,
   updateStudioVideo,
@@ -30,6 +31,37 @@ const video: StudioVideo = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("focused content editing boundaries", () => {
+  it("distinguishes an incomplete upload from background processing and terminal failures", () => {
+    const incomplete: QuickProcessingStatus = {
+      videoId: "owned-id",
+      ready: false,
+      videoStatus: "UPLOADING",
+      processing: null,
+    };
+    expect(contentReadiness(incomplete)).toBe("incomplete");
+    expect(contentReadiness({ ...incomplete, videoStatus: "VALIDATING" })).toBe("waiting");
+    const processing: NonNullable<QuickProcessingStatus["processing"]> = {
+      generation: 1,
+      status: "QUEUED",
+      stage: "QUEUED",
+      progressPercent: 0,
+      errorCode: null,
+      errorMessage: null,
+      attempt: 0,
+      completedAt: null,
+    };
+    expect(contentReadiness({ ...incomplete, processing })).toBe("waiting");
+    expect(
+      contentReadiness({ ...incomplete, processing: { ...processing, status: "FAILED" } }),
+    ).toBe("failed");
+    expect(
+      contentReadiness({ ...incomplete, processing: { ...processing, status: "CANCELLED" } }),
+    ).toBe("cancelled");
+    expect(
+      contentReadiness({ ...incomplete, processing: { ...processing, status: "READY" } }),
+    ).toBe("waiting");
+    expect(contentReadiness({ ...incomplete, ready: true, processing })).toBe("ready");
+  });
   it("creates independent editable drafts, preserves basic values and never sends rights fields", () => {
     const draft = contentDraft(video);
     draft.title = "  Updated  ";

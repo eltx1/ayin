@@ -11,8 +11,12 @@ on:
       - "apps/api/test/support/upload-recovery-browser-server.ts"
       - "apps/web/src/app/(viewer)/upload/**"
       - "apps/web/src/components/upload/**"
+      - "apps/web/src/components/studio/studio-video-editor.tsx"
+      - "apps/web/src/lib/content-editor*"
+      - "apps/web/src/lib/i18n/resources/content-editor.ts"
       - "apps/web/src/lib/*upload*"
       - "tests/e2e/upload*"
+      - "tests/e2e/content-editor.acceptance.spec.ts"
       - "tests/recovery/**"
       - "playwright.upload-large-recovery.config.ts"
       - ".github/workflows/upload-reliability.yml"
@@ -85,6 +89,9 @@ jobs:
       - name: Verify standard upload fallback and dormant recovery
         if: (success() || failure()) && steps.upload_build.outcome == 'success'
         run: pnpm test:e2e:recovery
+      - name: Verify incomplete upload guidance and publication boundaries in Studio
+        if: (success() || failure()) && steps.upload_build.outcome == 'success'
+        run: pnpm exec playwright test tests/e2e/content-editor.acceptance.spec.ts --grep 'unfinished uploads|incomplete upload'
       - name: Preserve browser verification evidence
         if: always()
         uses: actions/upload-artifact@v7
