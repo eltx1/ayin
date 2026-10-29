@@ -7,6 +7,7 @@ import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { useContentI18n } from "@/lib/i18n/content-copy";
 import {
   ActionButton,
+  ActionLink,
   FormSection,
   PageHeader,
   SelectField,
@@ -19,6 +20,7 @@ import { VideoMetadataFields } from "@/components/upload/video-metadata-fields";
 import {
   contentDraft,
   contentPayload,
+  contentReadiness,
   contentVisibility,
   type ContentDraft,
 } from "@/lib/content-editor";
@@ -49,7 +51,7 @@ export function StudioVideoEditor({
   onClose: () => void;
   onCommitted: (message: ContentTranslationKey) => void;
 }) {
-  const { t, direction } = useContentI18n();
+  const { t, direction, href } = useContentI18n();
   const router = useRouter();
   const [confirmation, setConfirmation] = useState<ConfirmationIntent | null>(null);
   const confirmationIntent = useRef<ConfirmationIntent | null>(null);
@@ -119,9 +121,9 @@ export function StudioVideoEditor({
   const disabled = busy || captionBusy || uncertain || video.status === "REMOVED";
   const heading = useRef<HTMLDivElement>(null);
   const canPublish = ["DRAFT", "UPLOADING", "VALIDATING"].includes(video.status);
-  const [readiness, setReadiness] = useState<"checking" | "ready" | "waiting" | "error">(
-    "checking",
-  );
+  const [readiness, setReadiness] = useState<
+    "checking" | "error" | ReturnType<typeof contentReadiness>
+  >("checking");
   const [readinessCheck, setReadinessCheck] = useState(0);
 
   useEffect(() => {
@@ -130,7 +132,7 @@ export function StudioVideoEditor({
     void getQuickProcessingStatus(video.id, controller.signal).then(
       (result) => {
         if (!controller.signal.aborted && !captionScopeClosed.current)
-          setReadiness(result.ready ? "ready" : "waiting");
+          setReadiness(contentReadiness(result));
       },
       () => {
         if (!controller.signal.aborted && !captionScopeClosed.current) setReadiness("error");
@@ -525,7 +527,14 @@ export function StudioVideoEditor({
       />
       {canPublish && !captionConcealed ? (
         <div data-caption-parent-private>
-          <StatusNotice tone={readiness === "error" ? "warning" : "info"}>
+          <StatusNotice
+            tone={
+              ["error", "incomplete", "failed", "cancelled"].includes(readiness)
+                ? "warning"
+                : "info"
+            }
+            announce="polite"
+          >
             {t(
               readiness === "ready"
                 ? "content.readyToPublish"
@@ -533,9 +542,18 @@ export function StudioVideoEditor({
                   ? "content.checkingProcessing"
                   : readiness === "error"
                     ? "content.processingCheckError"
-                    : "content.processingNotReady",
+                    : readiness === "incomplete"
+                      ? "content.uploadIncomplete"
+                      : readiness === "failed"
+                        ? "content.processingFailed"
+                        : readiness === "cancelled"
+                          ? "content.processingCancelled"
+                          : "content.processingNotReady",
             )}
           </StatusNotice>
+          {["incomplete", "failed", "cancelled"].includes(readiness) ? (
+            <ActionLink href={href("/upload")}>{t("content.returnToUpload")}</ActionLink>
+          ) : null}
           {readiness !== "ready" ? (
             <ActionButton
               tone="secondary"

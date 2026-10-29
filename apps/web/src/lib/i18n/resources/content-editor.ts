@@ -68,6 +68,13 @@ export const contentEditorEn = {
     "Your video is not ready to publish yet. Check again after uploading and processing finish.",
   "content.processingCheckError": "We could not check whether your video is ready. Try again.",
   "content.checkProcessing": "Check processing status",
+  "content.uploadIncomplete":
+    "The file upload is incomplete, so processing has not started. Return to Upload and choose the original file to continue or start again.",
+  "content.processingFailed":
+    "Video processing failed. This video is not ready to publish. Check its status again or upload the original file again.",
+  "content.processingCancelled":
+    "Video processing was cancelled. This video is not ready to publish. Return to Upload if you want to upload it again.",
+  "content.returnToUpload": "Return to Upload",
   "content.confirmPublish":
     "Publish “{title}” with its saved visibility and schedule? By publishing, you confirm that you own this video or have all rights and permissions required to publish it.",
   "content.unpublish": "Unpublish",
@@ -160,6 +167,13 @@ export const contentEditorAr: Record<keyof typeof contentEditorEn, string> = {
     "الفيديو غير جاهز للنشر بعد. تحقق مجددًا بعد اكتمال الرفع والمعالجة.",
   "content.processingCheckError": "تعذر التحقق من جاهزية الفيديو. أعد المحاولة.",
   "content.checkProcessing": "التحقق من حالة المعالجة",
+  "content.uploadIncomplete":
+    "رفع الملف غير مكتمل، ولم تبدأ المعالجة. ارجع إلى صفحة الرفع واختر الملف الأصلي للاستكمال أو بدء رفع جديد.",
+  "content.processingFailed":
+    "فشلت معالجة الفيديو، وهو غير جاهز للنشر. تحقق من حالته مجددًا أو أعد رفع الملف الأصلي.",
+  "content.processingCancelled":
+    "أُلغيت معالجة الفيديو، وهو غير جاهز للنشر. ارجع إلى صفحة الرفع إذا أردت رفعه مجددًا.",
+  "content.returnToUpload": "العودة إلى صفحة الرفع",
   "content.confirmPublish":
     "هل تريد نشر «{title}» بإعدادات الخصوصية والجدولة المحفوظة؟ بالنشر، تؤكد أنك تملك الفيديو أو لديك جميع الحقوق والأذونات اللازمة لنشره.",
   "content.unpublish": "إلغاء النشر",

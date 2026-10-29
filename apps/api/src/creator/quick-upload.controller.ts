@@ -79,12 +79,20 @@ export class QuickUploadController {
         channelId,
       );
       const recovery = await this.recovery.capability(request.ayinAuth, channelId);
+      // Automatic recovery requires a bounded source size. The dormant V1
+      // capability has no bound; advertising it as supported with a null limit
+      // makes the browser reject the entire workspace, including standard upload.
+      const recoveryMaxBytes =
+        recovery.supported && "maxSourceBytes" in recovery ? recovery.maxSourceBytes : null;
+      const boundedRecovery =
+        typeof recoveryMaxBytes === "number" &&
+        Number.isSafeInteger(recoveryMaxBytes) &&
+        recoveryMaxBytes > 0;
       return {
         ...capabilities,
         durableRecovery: {
-          supported: recovery.supported,
-          maxFileSizeBytes:
-            recovery.supported && "maxSourceBytes" in recovery ? recovery.maxSourceBytes : null,
+          supported: boundedRecovery,
+          maxFileSizeBytes: boundedRecovery ? recoveryMaxBytes : null,
         },
       };
     });

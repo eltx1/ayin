@@ -708,7 +708,9 @@ test("Studio blocks unfinished uploads and does not replay an uncertain publicat
   await openFirst(page, "Editor video 1");
   const publish = page.getByRole("button", { name: "Publish video", exact: true });
   await expect(
-    page.getByText("Your video is not ready to publish yet.", { exact: false }),
+    page.getByText("The file upload is incomplete, so processing has not started.", {
+      exact: false,
+    }),
   ).toBeVisible();
   await expect(publish).toBeDisabled();
   await page.getByRole("button", { name: "Back to videos", exact: true }).click();
@@ -731,3 +733,55 @@ test("Studio blocks unfinished uploads and does not replay an uncertain publicat
   await expect(publish).toBeDisabled();
   expect(publications).toBe(1);
 });
+
+for (const locale of ["en", "ar"])
+  test(`Studio explains an incomplete upload and offers a guarded return to Upload ${locale}`, async ({
+    page,
+  }) => {
+    await seed(page);
+    await page.goto(`${locale === "ar" ? "/ar" : ""}/studio/content?lang=${locale}`);
+    await page
+      .getByRole("row", { name: /Editor video 0/ })
+      .getByRole("button", {
+        name: locale === "ar" ? "تعديل الفيديو" : "Edit video",
+        exact: true,
+      })
+      .click();
+    await expect(
+      page.getByText(
+        locale === "ar"
+          ? "رفع الملف غير مكتمل، ولم تبدأ المعالجة."
+          : "The file upload is incomplete, so processing has not started.",
+        { exact: false },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: locale === "ar" ? "نشر الفيديو" : "Publish video",
+        exact: true,
+      }),
+    ).toBeDisabled();
+    const retry = page.getByRole("link", {
+      name: locale === "ar" ? "العودة إلى صفحة الرفع" : "Return to Upload",
+      exact: true,
+    });
+    await expect(retry).toHaveAttribute("href", locale === "ar" ? "/ar/upload" : "/upload");
+    const title = page.getByLabel(locale === "ar" ? "العنوان" : "Title", { exact: true });
+    await title.fill("Unsaved retry title");
+    await retry.click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: locale === "ar" ? "إلغاء" : "Cancel", exact: true })
+      .click();
+    await expect(title).toHaveValue("Unsaved retry title");
+    await title.fill("Editor video 0");
+    await retry.click();
+    await expect(page).toHaveURL(new RegExp(`${locale === "ar" ? "/ar" : ""}/upload$`));
+    await expect(
+      page.getByRole("heading", {
+        name: locale === "ar" ? "رفع فيديو" : "Upload a video",
+        exact: true,
+      }),
+    ).toBeVisible();
+  });

@@ -5,6 +5,19 @@ import {
 } from "@/components/upload/video-metadata-fields";
 import type { StudioVideo } from "./studio";
 import type { ContentTranslationKey } from "./i18n/content-copy";
+import type { QuickProcessingStatus } from "./quick-upload";
+
+export function contentReadiness(result: QuickProcessingStatus) {
+  if (result.ready) return "ready";
+  if (result.processing?.status === "FAILED") return "failed";
+  if (result.processing?.status === "CANCELLED") return "cancelled";
+  if (
+    result.videoStatus === "UPLOADING" &&
+    (!result.processing || result.processing.status === "INGESTING")
+  )
+    return "incomplete";
+  return "waiting";
+}
 
 export type ContentDraft = Pick<
   StudioVideo,
