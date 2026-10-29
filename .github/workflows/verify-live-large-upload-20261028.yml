@@ -1,4 +1,4 @@
-name: Diagnose original upload (read only)
+name: Verify release and automatic local cleanup (read only)
 on:
   push:
     branches: [codex/ayin-large-upload-proof-20261028]
@@ -11,7 +11,7 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v7
-      - name: Inspect original upload state and scoped R2 objects without mutations
+      - name: Verify exact deployed release, worker heartbeat and local scratch inventory
         shell: bash
         env:
           DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
@@ -26,67 +26,26 @@ jobs:
           test "$(ssh-keygen -lf "$HOME/.ssh/candidate" -E sha256 | awk 'NR == 1 {print $2}')" = 'SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y'
           mv "$HOME/.ssh/candidate" "$HOME/.ssh/known_hosts"
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes ayin@"$DEPLOY_HOST" 'cd /home/ayin/htdocs/current && git rev-parse HEAD && node deploy/run-with-env.cjs /home/ayin/env/api.env node --input-type=module' <<'JS'
-          import { createPrismaClient } from './packages/db/dist/index.js';
-          import { R2MediaStorageAdapter } from './apps/api/dist/media/r2-media-storage.adapter.js';
-          import { loadMediaStorageConfig } from './apps/api/dist/media/media-storage.config.js';
           import { spawnSync } from 'node:child_process';
-          import { readFile,readdir } from 'node:fs/promises';
-          const expected='633a0dd4a2b9ab08eb7dc1a8ce91a3b9fe3b15f2';
-          if(spawnSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).stdout.trim()!==expected)throw Error('ReleaseMismatch');
-          const db=createPrismaClient();
-          try{
-           const rows=await db.$transaction(async tx=>{
-            await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
-            return tx.video.findMany({where:{title:'ScreenRecording 09 08 2026 18 37 19 1',removedAt:null},take:5,
-             select:{status:true,visibility:true,createdAt:true,updatedAt:true,
-              mediaAssets:{where:{kind:'SOURCE_VIDEO'},select:{status:true,sizeBytes:true,r2ObjectKey:true,createdAt:true,updatedAt:true,removedAt:true,uploadSession:{select:{state:true,createdAt:true,hardExpiresAt:true,sourceProtocolVersion:true,operations:{select:{kind:true,status:true,providerOutcome:true,createdAt:true}}}}}},
-              mediaProcessingJobs:{select:{status:true,stage:true,errorCode:true,createdAt:true,queuedAt:true,startedAt:true,completedAt:true,attempt:true}}}});
-           },{timeout:15000});
-           const config=loadMediaStorageConfig(); if(config.mode!=='r2')throw Error('ExpectedR2');
-           const storage=new R2MediaStorageAdapter(config);
-           const results=[];
-           for(const video of rows){
-            const assets=[];
-            for(const asset of video.mediaAssets){
-             let head,parts;
-             try{const h=await storage.headObject(asset.r2ObjectKey);head={present:true,sizeBytes:h.sizeBytes,expectedSizeMatches:BigInt(h.sizeBytes)===asset.sizeBytes};}
-             catch(e){head={readSucceeded:false,errorType:e.name,status:e.status??e.statusCode??null};}
-             try{
-              const pending=await storage.listMultipartUploads(asset.r2ObjectKey);
-              parts=[];
-              for(const upload of pending.filter(x=>x.key===asset.r2ObjectKey).slice(0,5)){
-               const entries=await storage.listParts({key:upload.key,uploadId:upload.uploadId});
-               parts.push({initiatedAt:upload.initiatedAt,partCount:entries.length,storedBytes:entries.reduce((n,x)=>n+x.sizeBytes,0)});
-              }
-             }catch(e){parts={readSucceeded:false,errorType:e.name,status:e.status??e.statusCode??null};}
-             assets.push({status:asset.status,expectedBytes:asset.sizeBytes.toString(),createdAt:asset.createdAt,updatedAt:asset.updatedAt,removed:!!asset.removedAt,session:asset.uploadSession,head,multipart:parts});
-            }
-            results.push({status:video.status,visibility:video.visibility,createdAt:video.createdAt,updatedAt:video.updatedAt,assets,processing:video.mediaProcessingJobs});
-           }
-          
-           const logRead=spawnSync('pm2',['logs','ayin-api','--lines','30000','--nostream','--raw'],{encoding:'utf8',timeout:20000,maxBuffer:24000000});
-           const events=[];
-           for(const line of (logRead.stdout+'\n'+logRead.stderr).split('\n')){
-            const start=line.indexOf('{"');if(start<0)continue;
-            try{const event=JSON.parse(line.slice(start));if(event.timestamp)events.push(event);}catch{}
-           }
-           const windowStart=Date.parse('2026-10-28T12:51:00Z'),windowEnd=Date.parse('2026-10-28T13:00:00Z');
-           const grouped=new Map();
-           for(const event of events){
-            const when=Date.parse(event.timestamp);
-            if(when<windowStart||when>windowEnd||event.event!=='http.request'||!/(media\/uploads|creator\/videos)/.test(event.path??''))continue;
-            const path=String(event.path).split('?')[0].replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/ig,':id');
-            const key=JSON.stringify({method:event.method,path,status:event.statusCode});
-            const group=grouped.get(key)??{...JSON.parse(key),count:0,first:event.timestamp,last:event.timestamp};
-            group.count++;if(event.timestamp<group.first)group.first=event.timestamp;if(event.timestamp>group.last)group.last=event.timestamp;grouped.set(key,group);
-           }
-           const timestamps=events.map(e=>e.timestamp).sort();
-           console.log('SAFE_ORIGINAL_UPLOAD_LOG_WINDOW',JSON.stringify({readOnly:true,logReadSucceeded:logRead.status===0,structuredEvents:events.length,firstRetained:timestamps[0]??null,lastRetained:timestamps.at(-1)??null,nearAttemptHttpRequests:[...grouped.values()].sort((a,b)=>a.first.localeCompare(b.first))}));
-          
-           const heartbeat=JSON.parse(await readFile(process.env.MEDIA_WORKER_HEARTBEAT_PATH||'/tmp/ayin-media-worker-heartbeat.json','utf8'));
-           const scratch=await readdir(process.env.MEDIA_PROCESSING_WORKDIR||'/tmp/ayin-media-processing');
-           console.log('SAFE_ORIGINAL_UPLOAD_AUDIT',JSON.stringify({readOnly:true,matchingVideos:rows.length,results,worker:{releaseMatches:heartbeat.releaseSha===expected,status:heartbeat.status,fresh:Date.now()-Date.parse(heartbeat.heartbeatAt)<90000},scratchEntries:scratch.length}));
-          }catch(e){console.error('SAFE_AUDIT_FAILURE',JSON.stringify({name:e.name,code:e.code??null}));process.exitCode=1;}
-          finally{await db.$disconnect();}
-          
+          import { readFile,readdir,lstat } from 'node:fs/promises';
+          import { join } from 'node:path';
+          const expected='a4eaf5ac4cfd12d8a30854b72f70c82cab5e1df8';
+          const actual=spawnSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).stdout.trim();
+          if(actual!==expected)throw Error('ReleaseMismatch');
+          const heartbeat=JSON.parse(await readFile(process.env.MEDIA_WORKER_HEARTBEAT_PATH||'/tmp/ayin-media-worker-heartbeat.json','utf8'));
+          const root=process.env.MEDIA_PROCESSING_WORKDIR||'/tmp/ayin-media-processing';
+          let entries;
+          try{entries=await readdir(root,{withFileTypes:true});}catch(e){if(e.code!=='ENOENT')throw e;entries=[];}
+          let files=0,bytes=0,directories=0;
+          const queue=[...entries.map(e=>join(root,e.name))];
+          for(let i=0;i<queue.length;i++){
+           if(i>=1000)throw Error('ScratchInventoryBoundExceeded');
+           const stat=await lstat(queue[i]);
+           if(stat.isSymbolicLink())throw Error('UnexpectedScratchSymlink');
+           if(stat.isDirectory()){directories++;queue.push(...(await readdir(queue[i])).map(n=>join(queue[i],n)));}
+           else if(stat.isFile()){files++;bytes+=stat.size;}
+          }
+          const worker={releaseMatches:heartbeat.releaseSha===expected,status:heartbeat.status,fresh:Date.now()-Date.parse(heartbeat.heartbeatAt)<90000};
+          console.log('SAFE_RELEASE_CLEANUP_VERIFY',JSON.stringify({readOnly:true,releaseMatches:true,worker,scratch:{entries:entries.length,directories,files,bytes}}));
+          if(!worker.releaseMatches||!worker.fresh)process.exitCode=1;
           JS
