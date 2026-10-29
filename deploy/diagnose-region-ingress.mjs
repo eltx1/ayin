@@ -80,8 +80,27 @@ function origin() {
         report.nginx.push({ hostFile: name, readable: false });
       }
     }
-  } catch {
+  } catch (error) {
     report.nginxDirectoryUnavailable = true;
+    report.nginxDirectoryError = ["EACCES", "ENOENT", "EPERM"].includes(error.code)
+      ? error.code
+      : "unavailable";
+  }
+  // An existing operator grant may permit reading these exact AYIN files. This
+  // does not request or create sudo access and never emits their raw contents.
+  if (report.nginx.length === 0) {
+    for (const host of hosts) {
+      try {
+        const text = execFileSync("sudo", ["-n", "cat", dir + "/" + host + ".conf"], {
+          encoding: "utf8",
+          timeout: 5000,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        report.nginx.push({ hostFile: host + ".conf", ...nginxSummary(text) });
+      } catch {
+        report.nginx.push({ hostFile: host + ".conf", privilegedReadAvailable: false });
+      }
+    }
   }
   console.log(JSON.stringify(report));
 }
