@@ -27,7 +27,7 @@ jobs:
           mv "$HOME/.ssh/candidate" "$HOME/.ssh/known_hosts"
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes ayin@"$DEPLOY_HOST" 'cd /home/ayin/htdocs/current && git rev-parse HEAD && node deploy/run-with-env.cjs /home/ayin/env/api.env node --input-type=module' <<'JS'
           import { createPrismaClient } from './packages/db/dist/index.js';
-          import { readdir, lstat, statfs } from 'node:fs/promises';
+          import { readdir, lstat, readFile, readlink } from 'node:fs/promises';
           import { join, isAbsolute } from 'node:path';
           const db = createPrismaClient();
           const root = process.env.MEDIA_PROCESSING_WORKDIR?.trim() || '/tmp/ayin-media-processing';
@@ -54,7 +54,21 @@ jobs:
               const path=join(root,e.name), st=await lstat(path);
               scanned.push({jobId:match?.[1]??null,isDirectory:st.isDirectory(),isSymlink:st.isSymbolicLink(),bytes:await measure(path),modifiedAt:st.mtime.toISOString()});
             }
-            const result=await db.$transaction(async tx=>{
+              const procAccess={sameUidProcesses:0,descriptors:0,permissionErrors:0,otherErrors:0};
+            for(const pid of (await readdir('/proc')).filter(p=>/^\\d+$/.test(p)).slice(0,4096)){
+              try{
+                const base='/proc/'+pid;
+                if((await lstat(base)).uid!==process.getuid())continue;
+                procAccess.sameUidProcesses++;
+                await readFile(base+'/cmdline');
+                try{await readlink(base+'/cwd');}catch(e){if(e.code!=='ENOENT')throw e;}
+                for(const fd of (await readdir(base+'/fd')).slice(0,4096)){
+                  try{await readlink(base+'/fd/'+fd);procAccess.descriptors++;}catch(e){if(e.code!=='ENOENT')throw e;}
+                }
+              }catch(e){if(e.code==='EACCES'||e.code==='EPERM')procAccess.permissionErrors++;else if(e.code!=='ENOENT')procAccess.otherErrors++;}
+            }
+            console.log('SAFE_LOCAL_PROCESS_VISIBILITY',JSON.stringify(procAccess));
+          const result=await db.$transaction(async tx=>{
               await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
               const fixtureJobs=await tx.mediaProcessingJob.findMany({where:{sourceSizeBytes:3736813160n,createdAt:{gte:new Date('2026-10-28T16:00:00Z')}},select:{id:true,status:true,completedAt:true,inputVerifiedAt:true,outputVerifiedAt:true,sourceSizeBytes:true,outputSizeBytes:true}});
               const jobs=await tx.mediaProcessingJob.findMany({where:{id:{in:scanned.flatMap(e=>e.jobId?[e.jobId]:[])}},select:{id:true,status:true,leaseExpiresAt:true,completedAt:true}});
