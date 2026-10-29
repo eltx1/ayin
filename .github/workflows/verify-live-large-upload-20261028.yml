@@ -1,4 +1,4 @@
-name: Verify release and automatic local cleanup (read only)
+name: Verify active scratch ownership (read only)
 on:
   push:
     branches: [codex/ayin-large-upload-proof-20261028]
@@ -26,26 +26,36 @@ jobs:
           test "$(ssh-keygen -lf "$HOME/.ssh/candidate" -E sha256 | awk 'NR == 1 {print $2}')" = 'SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y'
           mv "$HOME/.ssh/candidate" "$HOME/.ssh/known_hosts"
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes ayin@"$DEPLOY_HOST" 'cd /home/ayin/htdocs/current && git rev-parse HEAD && node deploy/run-with-env.cjs /home/ayin/env/api.env node --input-type=module' <<'JS'
+          import { createPrismaClient } from './packages/db/dist/index.js';
+          import { createHash } from 'node:crypto';
           import { spawnSync } from 'node:child_process';
           import { readFile,readdir,lstat } from 'node:fs/promises';
           import { join } from 'node:path';
           const expected='a4eaf5ac4cfd12d8a30854b72f70c82cab5e1df8';
-          const actual=spawnSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).stdout.trim();
-          if(actual!==expected)throw Error('ReleaseMismatch');
-          const heartbeat=JSON.parse(await readFile(process.env.MEDIA_WORKER_HEARTBEAT_PATH||'/tmp/ayin-media-worker-heartbeat.json','utf8'));
+          if(spawnSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).stdout.trim()!==expected)throw Error('ReleaseMismatch');
           const root=process.env.MEDIA_PROCESSING_WORKDIR||'/tmp/ayin-media-processing';
-          let entries;
-          try{entries=await readdir(root,{withFileTypes:true});}catch(e){if(e.code!=='ENOENT')throw e;entries=[];}
-          let files=0,bytes=0,directories=0;
-          const queue=[...entries.map(e=>join(root,e.name))];
-          for(let i=0;i<queue.length;i++){
-           if(i>=1000)throw Error('ScratchInventoryBoundExceeded');
-           const stat=await lstat(queue[i]);
-           if(stat.isSymbolicLink())throw Error('UnexpectedScratchSymlink');
-           if(stat.isDirectory()){directories++;queue.push(...(await readdir(queue[i])).map(n=>join(queue[i],n)));}
-           else if(stat.isFile()){files++;bytes+=stat.size;}
-          }
-          const worker={releaseMatches:heartbeat.releaseSha===expected,status:heartbeat.status,fresh:Date.now()-Date.parse(heartbeat.heartbeatAt)<90000};
-          console.log('SAFE_RELEASE_CLEANUP_VERIFY',JSON.stringify({readOnly:true,releaseMatches:true,worker,scratch:{entries:entries.length,directories,files,bytes}}));
-          if(!worker.releaseMatches||!worker.fresh)process.exitCode=1;
+          const db=createPrismaClient();
+          try{
+           const entries=await readdir(root,{withFileTypes:true});
+           const owners=[];
+           for(const entry of entries){
+            if(!entry.isDirectory()||!/^([a-f0-9-]{36})-([a-f0-9]{16})$/.test(entry.name))throw Error('UnrecognizedScratchEntry');
+            const marker=join(root,entry.name,'.ayin-scratch-owner.json');
+            const stat=await lstat(marker);if(!stat.isFile()||stat.isSymbolicLink())throw Error('UnrecognizedScratchMarker');
+            const owner=JSON.parse(await readFile(marker,'utf8'));
+            if(entry.name!==owner.jobId+'-'+owner.claimHash)throw Error('MarkerIdentityMismatch');
+            owners.push(owner);
+           }
+           const states=await db.$transaction(async tx=>{
+            await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
+            const results=[];
+            for(const owner of owners){
+             const job=await tx.mediaProcessingJob.findUnique({where:{id:owner.jobId},select:{status:true,stage:true,leaseOwner:true,leaseExpiresAt:true,video:{select:{status:true}}}});
+             const leaseMatches=!!job?.leaseOwner&&createHash('sha256').update(job.leaseOwner).digest('hex').slice(0,16)===owner.claimHash;
+             results.push({jobPresent:!!job,status:job?.status??null,stage:job?.stage??null,videoStatus:job?.video.status??null,localWorkSettled:owner.localWorkSettled===true,leaseMatches,leaseActive:!!job?.leaseExpiresAt&&job.leaseExpiresAt.getTime()>Date.now()});
+            }
+            return results;
+           },{timeout:15000});
+           console.log('SAFE_SCRATCH_OWNERSHIP',JSON.stringify({readOnly:true,releaseMatches:true,directories:owners.length,states}));
+          }finally{await db.$disconnect();}
           JS
