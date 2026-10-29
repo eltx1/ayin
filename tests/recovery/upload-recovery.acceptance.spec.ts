@@ -21,9 +21,13 @@ const region = (page: Page, locale = "en") =>
 const button = (page: Page, name: string) =>
   region(page).getByRole("button", { name, exact: true });
 async function openRecovery(page: Page, locale = "en") {
-  await page
-    .getByText(text(locale, "Resume an earlier upload", "استئناف رفع سابق"), { exact: true })
-    .click();
+  const disclosure = page
+    .locator("#ayin-content")
+    .getByText(text(locale, "Resume an earlier upload", "استئناف رفع سابق"), { exact: true });
+  // Wait for the route to finish hydration before opening its disclosure.
+  await expect(disclosure).toHaveCount(1);
+  await expect(disclosure).toBeVisible();
+  await disclosure.click();
   await region(page, locale).locator("summary").click();
 }
 async function stats(page: Page) {
@@ -971,7 +975,8 @@ for (const locale of ["en", "ar"])
       storageAvailable: true,
       durableRecovery: { supported: false, maxFileSizeBytes: null },
     });
-    const picker = page.locator('input[type="file"][accept^="video/"]');
+    const picker = page.locator('#ayin-content input[type="file"][accept^="video/"]');
+    await expect(picker).toHaveCount(1);
     await expect(picker).toBeEnabled();
     await page.request.post(`${PROVIDER}/control`, { data: { supported: false } });
     await region(page, locale)
@@ -986,7 +991,7 @@ for (const locale of ["en", "ar"])
         exact: true,
       }),
     ).toBeDisabled();
-    await expect(page.locator('input[type="file"][accept^="video/"]')).toBeEnabled();
+    await expect(picker).toBeEnabled();
     expect((await stats(page)).sessions).toBe(0);
     for (const width of [390, 1440]) {
       await page.setViewportSize({ width, height: 900 });
@@ -1030,8 +1035,10 @@ for (const locale of ["en", "ar"])
     ).toBeHidden();
 
     // Reopen with recovery already unavailable and complete the ordinary
-    // upload using real fixture bytes through the synthetic storage provider.
+    // upload using direct HTTP fixture bytes, without route body forwarding.
+    await page.request.post(`${PROVIDER}/control`, { data: { directSingleTransfer: true } });
     await page.reload();
+    await expect(picker).toHaveCount(1);
     await expect(picker).toBeEnabled();
     const fixture = path.resolve("tests/e2e/fixtures/clips-viewport.webm");
     const confirmation = page.waitForResponse(

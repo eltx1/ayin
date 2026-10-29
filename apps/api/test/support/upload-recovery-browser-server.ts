@@ -63,6 +63,10 @@ const requestStarts = new WeakMap<object, number>();
 let supported = true,
   failAuthorize = false,
   failCompleteAfterStore = false;
+// Opt in only the ordinary fallback case: browser route forwarding does not
+// preserve File-backed binary request bodies reliably. Other V1 cases retain
+// their fault-injection transport. This server is guarded to isolated tests above.
+let directSingleTransfer = false;
 let failPutPartOnce: number | null = null;
 let counters = { allocations: 0, authorizations: 0, puts: 0, completes: 0 };
 const uploads = new Map<
@@ -128,9 +132,10 @@ function authorize(input: {
     expiresAt = new Date((input.now ?? new Date()).getTime() + input.expiresInSeconds * 1000);
   grants.set(token, { ...input, expiresAt, used: false });
   return {
-    url: directTransfer
-      ? `http://127.0.0.1:3001${directPrefix}${token}`
-      : `https://recovery-provider.invalid/${token}`,
+    url:
+      directTransfer || (directSingleTransfer && !input.uploadId)
+        ? `http://127.0.0.1:3001${directPrefix}${token}`
+        : `https://recovery-provider.invalid/${token}`,
     expiresAt,
   };
 }
@@ -290,19 +295,18 @@ app.enableCors({
   credentials: true,
   allowedHeaders: ["content-type", "x-ayin-expected-account", "x-ayin-expected-session"],
   exposedHeaders: ["etag"],
-  methods: ["GET", "POST", "OPTIONS", ...(directTransfer ? ["PUT"] : [])],
+  methods: ["GET", "POST", "OPTIONS", "PUT"],
 });
 app
   .getHttpAdapter()
   .getInstance()
   .addHook("onRequest", async (request, reply) => {
-    if (directTransfer && request.url.startsWith(directPrefix))
-      requestStarts.set(request, performance.now());
+    if (request.url.startsWith(directPrefix)) requestStarts.set(request, performance.now());
     applyApiSecurityHeaders(reply, request);
     if (!isAllowedCookieMutationOrigin(request, "http://127.0.0.1:3000"))
       await reply.code(403).send({ error: { code: "CSRF_ORIGIN_REJECTED" } });
   });
-if (directTransfer) {
+{
   const server = app.getHttpAdapter().getInstance();
   server.addContentTypeParser(
     // Multipart V2 sends an untyped Blob and deliberately omits Content-Type.
@@ -400,6 +404,7 @@ const provider = createServer(async (request, reply) => {
       const input = JSON.parse(body.toString()) as {
         reset?: boolean;
         supported?: boolean;
+        directSingleTransfer?: boolean;
         failAuthorize?: boolean;
         failCompleteAfterStore?: boolean;
         failPutPartOnce?: number;
@@ -414,12 +419,15 @@ const provider = createServer(async (request, reply) => {
         objects.clear();
         grants.clear();
         supported = true;
+        directSingleTransfer = false;
         failAuthorize = false;
         failCompleteAfterStore = false;
         failPutPartOnce = null;
         counters = { allocations: 0, authorizations: 0, puts: 0, completes: 0 };
       }
       if (typeof input.supported === "boolean") supported = input.supported;
+      if (typeof input.directSingleTransfer === "boolean")
+        directSingleTransfer = input.directSingleTransfer;
       if (typeof input.failAuthorize === "boolean") failAuthorize = input.failAuthorize;
       if (typeof input.failCompleteAfterStore === "boolean")
         failCompleteAfterStore = input.failCompleteAfterStore;

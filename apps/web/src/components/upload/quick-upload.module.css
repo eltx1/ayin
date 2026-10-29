@@ -264,7 +264,10 @@
   opacity: 0.68;
 }
 
-.fileInput {
+/* Keep the accessible picker clipped when mobile globals size visible file fields. */
+.fileInput[type="file"] {
+  clip-path: inset(50%);
+  max-inline-size: 1px;
   height: 1px;
   left: 50%;
   opacity: 0;
