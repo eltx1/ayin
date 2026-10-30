@@ -1301,6 +1301,7 @@ export function QuickUpload() {
   }
 
   const formatLabel = videoForm === "CLIP" ? copy("AYIN Clip") : copy("Standard video");
+  const savedUploadComplete = recoveryView?.saved?.session?.state === "COMPLETED";
   const recoveryIdentityCurrent = Boolean(
     recoveryView?.scope &&
     viewerIdentity &&
@@ -1372,12 +1373,16 @@ export function QuickUpload() {
           aria-label={copy("Saved upload")}
         >
           <div className={styles.transferHeading}>
-            <strong>{copy("Resume your saved upload")}</strong>
-            <span className={styles.transferBadge}>{recoveryView.uploadProgress}%</span>
+            <strong>
+              {copy(savedUploadComplete ? "Saved upload" : "Resume your saved upload")}
+            </strong>
+            <span className={styles.transferBadge}>
+              {savedUploadComplete ? 100 : recoveryView.uploadProgress}%
+            </span>
           </div>
           <p className={styles.transferMessage}>
             {copy(
-              recoveryView.saved.session?.state === "COMPLETED"
+              savedUploadComplete
                 ? "Your upload was already received. Review the same video in Studio."
                 : ["ABORTED", "REVOKED", "EXPIRED"].includes(
                       recoveryView.saved.session?.state ?? "",
@@ -1418,8 +1423,12 @@ export function QuickUpload() {
           ) : null}
           {recoveryView.saved.session ? (
             <p className={styles.transferMetrics}>
-              {formatFileSize(recoveryView.uploadedBytes)} /{" "}
-              {formatFileSize(recoveryView.saved.session.sizeBytes)}
+              {formatFileSize(
+                savedUploadComplete
+                  ? recoveryView.saved.session.sizeBytes
+                  : recoveryView.uploadedBytes,
+              )}{" "}
+              / {formatFileSize(recoveryView.saved.session.sizeBytes)}
             </p>
           ) : null}
           <div className={styles.transferActions}>
