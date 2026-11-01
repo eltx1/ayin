@@ -253,7 +253,11 @@ databaseDescribe("Task 83 privacy-aware cohort analytics", () => {
 
   it("computes subscriber retention from pseudonymous subscription episodes and suppresses undersized creator cohorts", async () => {
     const { channel, firstVideo } = await fixture();
-    const cohortDay = new Date("2026-08-01T00:00:00.000Z");
+    // Keep this mature D30 cohort inside channelMetrics' rolling 90-day window.
+    // A fixed calendar fixture eventually tests absence rather than suppression.
+    const cohortDay = new Date();
+    cohortDay.setUTCHours(0, 0, 0, 0);
+    cohortDay.setUTCDate(cohortDay.getUTCDate() - 40);
     const smallDay = new Date(cohortDay.getTime() + 2 * DAY_MS);
     const to = new Date(cohortDay.getTime() + 32 * DAY_MS);
 
