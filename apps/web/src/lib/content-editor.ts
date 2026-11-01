@@ -5,7 +5,7 @@ import {
 } from "@/components/upload/video-metadata-fields";
 import type { StudioVideo } from "./studio";
 import type { ContentTranslationKey } from "./i18n/content-copy";
-import type { QuickProcessingStatus } from "./quick-upload";
+import type { QuickProcessingStatus, RightsBasis } from "./quick-upload";
 
 export function contentReadiness(result: QuickProcessingStatus) {
   if (result.ready) return "ready";
@@ -58,3 +58,27 @@ export const contentVisibility = {
   UNLISTED: "content.unlisted",
   PRIVATE: "content.private",
 } as const satisfies Record<StudioVideo["visibility"], ContentTranslationKey>;
+
+// Rights are a publication declaration, not an ordinary Studio metadata save.
+export function publicationRights(video: StudioVideo) {
+  return {
+    rightsBasis: (video.metadata?.rightsBasis || "AUTHORIZED") as RightsBasis,
+    rightsNote: video.metadata?.rightsNote ?? "",
+  };
+}
+
+export function contentPublishPayload(
+  video: StudioVideo,
+  rights: ReturnType<typeof publicationRights>,
+) {
+  // Republishing never edits an existing confirmed declaration.
+  if (video.metadata?.rightsBasis) return { rightsConfirmed: true as const };
+  if (!["OWNED", "LICENSED", "AUTHORIZED", "PUBLIC_DOMAIN", "OTHER"].includes(rights.rightsBasis))
+    throw new Error("INVALID_RIGHTS_BASIS");
+  if (rights.rightsNote.length > 1000) throw new Error("INVALID_RIGHTS_NOTE");
+  return {
+    rightsConfirmed: true as const,
+    rightsBasis: rights.rightsBasis,
+    rightsNote: rights.rightsNote.trim() || null,
+  };
+}

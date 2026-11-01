@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { contentDraft, contentPayload, contentReadiness } from "./content-editor";
+import {
+  contentDraft,
+  contentPayload,
+  contentReadiness,
+  publicationRights,
+  contentPublishPayload,
+} from "./content-editor";
 import type { QuickProcessingStatus } from "./quick-upload";
 import {
   getStudioContent,
@@ -182,5 +188,40 @@ describe("focused content editing boundaries", () => {
     const existing = { ...enMessages, ...navigationEn, ...playlistEn, ...studioFeedbackEn };
     for (const key of Object.keys(contentEditorEn)) expect(existing).not.toHaveProperty(key);
     for (const text of Object.values(contentEditorAr)) expect(text.trim()).not.toBe("");
+  });
+});
+
+describe("Studio publication rights", () => {
+  it("uses standard authorization only when no confirmed declaration exists", () => {
+    expect(publicationRights(video)).toEqual({ rightsBasis: "AUTHORIZED", rightsNote: "" });
+  });
+  it.each(["OWNED", "LICENSED", "AUTHORIZED", "PUBLIC_DOMAIN", "OTHER"] as const)(
+    "retains an existing %s declaration and note when republishing",
+    (basis) => {
+      const existing = {
+        ...video,
+        metadata: { rightsBasis: basis, rightsNote: "Existing permission" },
+      } as StudioVideo;
+      expect(contentPublishPayload(existing, publicationRights(existing))).toEqual({
+        rightsConfirmed: true,
+      });
+    },
+  );
+  it("sends the owner's selected first-publication basis and note, without ordinary metadata", () => {
+    const rights = publicationRights(video);
+    rights.rightsBasis = "LICENSED";
+    rights.rightsNote = " CC BY-SA 4.0; creator attribution retained ";
+    expect(contentPublishPayload(video, rights)).toEqual({
+      rightsConfirmed: true,
+      rightsBasis: "LICENSED",
+      rightsNote: "CC BY-SA 4.0; creator attribution retained",
+    });
+    expect(publicationRights(video)).toEqual({ rightsBasis: "AUTHORIZED", rightsNote: "" });
+  });
+  it("clears a note only through the explicit publication payload and rejects invalid input", () => {
+    expect(contentPublishPayload(video, publicationRights(video)).rightsNote).toBeNull();
+    expect(() =>
+      contentPublishPayload(video, { rightsBasis: "LICENSED", rightsNote: "x".repeat(1001) }),
+    ).toThrow();
   });
 });
