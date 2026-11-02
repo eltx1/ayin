@@ -1,5 +1,24 @@
 import type { Locale } from "./i18n/config";
 const arabic: Record<string, string> = {
+  Reference: "الرمز المرجعي",
+  Stage: "المرحلة",
+  "Client error": "خطأ في المتصفح",
+  "Local file checks": "فحوص الملف المحلية",
+  "Local video metadata": "بيانات الفيديو المحلية",
+  "Upload recovery checks": "فحوص استئناف الرفع",
+  "Local source hashing": "حساب بصمة الملف محليًا",
+  "Local upload setup": "إعداد الرفع محليًا",
+  "Server initialization / reservation": "تهيئة الرفع وحجز الموارد على الخادم",
+  "Existing uploads or cleanup work have reached the upload allowance. Review saved uploads in Studio before starting another.":
+    "بلغت عمليات الرفع أو تنظيف الملفات الحالية الحد المسموح. راجع عمليات الرفع المحفوظة في الاستوديو قبل بدء رفع آخر.",
+  "The upload storage allowance is unavailable. Existing uploads or cleanup may still be using it.":
+    "المساحة المخصصة للرفع غير متاحة. قد تظل قيد الاستخدام لعمليات رفع أو تنظيف ملفات قائمة.",
+  "A processing storage allowance is not available. Video uploads are temporarily unavailable.":
+    "لا تتوفر مساحة مخصصة لتجهيز الفيديو. رفع الفيديوهات غير متاح مؤقتًا.",
+  "Upload capacity is busy. Wait briefly before trying again.":
+    "سعة الرفع مشغولة حاليًا. انتظر قليلًا قبل إعادة المحاولة.",
+  "The upload result could not be verified. Check saved uploads in Studio before trying again.":
+    "تعذر التحقق من نتيجة الرفع. راجع عمليات الرفع المحفوظة في الاستوديو قبل إعادة المحاولة.",
   "Saved upload": "الرفع المحفوظ",
   "Resume your saved upload": "استكمل رفع الفيديو المحفوظ",
   "Reselect original video": "أعد اختيار الفيديو الأصلي",

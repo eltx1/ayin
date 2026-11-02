@@ -1,6 +1,12 @@
 "use client";
 import { uploadText } from "@/lib/upload-copy";
 import { UploadRecoveryClient, RecoveryError, type RecoveryView } from "@/lib/upload-recovery";
+import {
+  uploadRecoveryDiagnostic,
+  uploadFailureContext,
+  type UploadDiagnosticStage,
+  type UploadFailureContext,
+} from "@/lib/upload-recovery-diagnostics";
 import { RECOVERY_STORAGE_KEY } from "@/lib/upload-recovery-storage";
 import { watchUploadRecoveryLifecycle } from "@/lib/upload-recovery-lifecycle";
 import { useViewerProduct } from "@/components/viewer/viewer-product-context";
@@ -59,6 +65,7 @@ import {
   VideoMetadataFields,
 } from "./video-metadata-fields";
 import styles from "./quick-upload.module.css";
+import { UploadDiagnosticReference } from "./upload-diagnostic-reference";
 
 type Visibility = "PUBLIC" | "UNLISTED" | "PRIVATE";
 type TransferPhase =
@@ -75,6 +82,8 @@ type TransferPhase =
 type UploadFailure = {
   title: string;
   detail: string;
+  reference?: string | null;
+  diagnostic?: UploadFailureContext;
   action: "retry" | "review" | "signin" | "choose" | "processing" | "edit";
 };
 type PreparedUpload = {
@@ -418,46 +427,31 @@ export function QuickUpload() {
     setPhase(next);
   }
 
-  function showUploadFailure(error: unknown, stage: TransferPhase) {
+  function showUploadFailure(
+    error: unknown,
+    stage: TransferPhase,
+    sourceStage: UploadDiagnosticStage | null = null,
+  ) {
+    const capturedDiagnostic = durableActive.current
+      ? recoveryClient.current?.getSnapshot().failureDiagnostic
+      : null;
+    const diagnosticContext = capturedDiagnostic
+      ? { ...capturedDiagnostic, stage: capturedDiagnostic.stage ?? sourceStage }
+      : uploadFailureContext(
+          sourceStage,
+          error instanceof RecoveryError || error instanceof UploadRequestError ? undefined : error,
+        );
     if (error instanceof RecoveryError || durableActive.current) {
       const code = error instanceof RecoveryError ? error.code : "TRANSFER_UNCERTAIN";
-      const recoveryMessages: Record<string, string> = {
-        UPLOAD_FILE_CHANGED:
-          "This is not the original video. Reselect the exact original file to resume the saved upload.",
-        SAVED_UPLOAD_EXISTS:
-          "A saved upload is waiting. Resume it below before starting another video.",
-        STORAGE_UNAVAILABLE:
-          "This browser cannot save upload recovery details. Allow site storage, then choose the video again.",
-        UPLOAD_CAPACITY_BUSY:
-          "Uploads are busy right now. Your saved upload is safe; wait briefly and try again.",
-        UPLOAD_CANARY_BUSY:
-          "Uploads are busy right now. Your saved upload is safe; wait briefly and try again.",
-        AUTHORITY_CHANGED:
-          "Sign in to the account that started this upload, then check the saved upload.",
-        AUTHORITY_UNVERIFIED:
-          "Your current account could not be verified. Check your connection and sign in again.",
-        EXPIRED:
-          "This saved upload has expired. Review it in Studio before starting another upload.",
-        UPLOAD_RECOVERY_EXPIRED:
-          "This saved upload has expired. Review it in Studio before starting another upload.",
-        VIDEO_TOO_LARGE:
-          "This file is larger than the upload limit shown below. Choose a smaller file.",
-        UPLOAD_NETWORK_FAILED:
-          "The connection or upload stalled after four attempts. Check your connection, then retry; saved parts will be reused.",
-        UPLOAD_STORAGE_REJECTED:
-          "Storage rejected this upload. Retry to request a new connection; if it still fails, review the upload in Studio.",
-        UPLOAD_ALREADY_ACCEPTED:
-          "The upload was already accepted. Review or remove the saved video in Studio.",
-      };
-      const detail =
-        recoveryMessages[code] ??
-        "The transfer needs checking. Retry will inspect the saved parts and continue this same video.";
+      const diagnostic = uploadRecoveryDiagnostic(code);
       setUncertain(false);
       changePhase("failed");
       setMessage(null);
       setFailure({
         title: copy("Upload needs attention"),
-        detail: copy(detail),
+        detail: copy(diagnostic.detail),
+        reference: diagnostic.reference,
+        diagnostic: diagnosticContext,
         action:
           code === "UPLOAD_FILE_CHANGED"
             ? "choose"
@@ -494,25 +488,36 @@ export function QuickUpload() {
       !signIn &&
       !(error instanceof UploadProtocolError) &&
       !(error instanceof UploadRequestError && error.status === 403);
+    // Source-init diagnostics must not expose a backend's arbitrary message.
+    const sourceRequestDiagnostic =
+      sourceStage === "SERVER_INIT" && error instanceof UploadRequestError
+        ? uploadRecoveryDiagnostic(error.code ?? "")
+        : null;
     setUncertain(!safeRetry && !rejectedBeforeDraft);
     changePhase("failed");
     setMessage(null);
     setFailure({
       title: copy("Upload needs attention"),
       detail: copy(
-        (error instanceof UploadProtocolError
-          ? "The upload response could not be verified. Review this upload in Studio before trying again."
-          : error instanceof UploadBlobError
-            ? error.status && error.status >= 400 && error.status < 500
-              ? "Storage rejected the transfer. Retry to refresh the upload connection; your saved draft will be reused."
-              : "The file transfer stopped after automatic retries. Check your connection, then retry this upload."
-            : uploadErrorMessage(error)) ??
+        (sourceRequestDiagnostic
+          ? sourceRequestDiagnostic.reference
+            ? sourceRequestDiagnostic.detail
+            : uploadRecoveryDiagnostic("UNCERTAIN").detail
+          : error instanceof UploadProtocolError
+            ? "The upload response could not be verified. Review this upload in Studio before trying again."
+            : error instanceof UploadBlobError
+              ? error.status && error.status >= 400 && error.status < 500
+                ? "Storage rejected the transfer. Retry to refresh the upload connection; your saved draft will be reused."
+                : "The file transfer stopped after automatic retries. Check your connection, then retry this upload."
+              : uploadErrorMessage(error)) ??
           (safeRetry
             ? stage === "finalizing"
               ? "The final confirmation did not arrive. Retry to check and finish this same upload."
               : "Your connection was interrupted. Retry to continue this upload without creating another video."
             : "We could not confirm whether the upload was saved. Check your saved videos before starting another upload."),
       ),
+      reference: sourceRequestDiagnostic?.reference ?? null,
+      diagnostic: diagnosticContext,
       action: signIn ? "signin" : safeRetry ? "retry" : rejectedBeforeDraft ? "choose" : "review",
     });
   }
@@ -785,6 +790,7 @@ export function QuickUpload() {
         title: copy("Choose a video file"),
         detail: copy("Drop one supported video file to start an upload."),
         action: "choose",
+        diagnostic: uploadFailureContext("LOCAL_PREFLIGHT"),
       });
       return;
     }
@@ -802,6 +808,7 @@ export function QuickUpload() {
               : "Your channel does not have enough storage for this video. Review saved videos in Studio.",
         ),
         action: "choose",
+        diagnostic: uploadFailureContext("LOCAL_PREFLIGHT"),
       });
       return;
     }
@@ -839,6 +846,7 @@ export function QuickUpload() {
     setMutationKind("upload");
     const nextTitle = titleFromFilename(selected.name);
     setTitle(nextTitle);
+    let sourceStage: UploadDiagnosticStage | null = "LOCAL_METADATA";
     try {
       const result = await inspectVideoFile(selected);
       controller.signal.throwIfAborted();
@@ -848,6 +856,7 @@ export function QuickUpload() {
           title: copy("Choose a supported video"),
           detail: copy(result.message),
           action: "choose",
+          diagnostic: uploadFailureContext("LOCAL_METADATA"),
         });
         changePhase("failed");
         return;
@@ -858,6 +867,7 @@ export function QuickUpload() {
         capabilities.durableRecovery?.supported &&
         selected.size <= (capabilities.durableRecovery.maxFileSizeBytes ?? 0)
       ) {
+        sourceStage = "RECOVERY_CHECK";
         const client = recoveryClient.current;
         if (!client) throw new RecoveryError("STORAGE_UNAVAILABLE");
         await recoveryOpening.current;
@@ -871,10 +881,12 @@ export function QuickUpload() {
         if (recovery.saved) throw new RecoveryError("SAVED_UPLOAD_EXISTS");
         if (!recovery.supported || !recovery.scope) throw new RecoveryError(recovery.message);
         durableActive.current = true;
+        sourceStage = "SOURCE_HASH";
         await client.choose(selected);
         recovery = client.getSnapshot();
         if (!recovery.fileName) throw new RecoveryError(recovery.message);
         controller.signal.throwIfAborted();
+        sourceStage = "SERVER_INIT";
         await client.create({
           title: nextTitle,
           durationMs: result.durationSeconds ? Math.round(result.durationSeconds * 1000) : null,
@@ -887,9 +899,11 @@ export function QuickUpload() {
         durableSessionId.current = recovery.saved.session.sessionId;
         setVisibility("PRIVATE");
         captureThumbnails(selected, capture.signal);
+        sourceStage = null;
         await transferRecovery(client, controller.signal);
         return;
       }
+      sourceStage = "SERVER_INIT";
       const draft = await createQuickDraft({
         channelId: identity.channel.id,
         title: nextTitle,
@@ -914,10 +928,11 @@ export function QuickUpload() {
 
       captureThumbnails(selected, capture.signal);
 
+      sourceStage = null;
       await transfer(prepared.current, controller.signal);
     } catch (error) {
       if (controller.signal.aborted) return;
-      showUploadFailure(error, phaseRef.current);
+      showUploadFailure(error, phaseRef.current, sourceStage);
     } finally {
       mutation.current = false;
       setBusy(false);
@@ -1576,6 +1591,12 @@ export function QuickUpload() {
             <div className={styles.inlineFailure} role="alert">
               <strong>{failure?.title ?? copy("This action needs checking")}</strong>
               <p>{failure?.detail ?? message}</p>
+              <UploadDiagnosticReference
+                code={failure?.reference}
+                locale={locale}
+                stage={failure?.diagnostic?.stage ?? null}
+                clientErrorName={failure?.diagnostic?.clientErrorName ?? null}
+              />
             </div>
           ) : message ? (
             <p className={styles.transferMessage} role="status" aria-live="polite">
