@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 
 import { TvFocusScope } from "@/components/tv/tv-focus-scope";
 import { ownsDialogFocus, trapDialogTab } from "@/lib/dialog-focus";
@@ -17,6 +17,7 @@ export interface ConfirmationDialogProps {
   cancelLabel: string;
   direction: "ltr" | "rtl";
   busy?: boolean;
+  children?: ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -34,6 +35,7 @@ function OpenConfirmation({
   cancelLabel,
   direction,
   busy = false,
+  children,
   onConfirm,
   onCancel,
 }: Omit<ConfirmationDialogProps, "open">) {
@@ -107,6 +109,7 @@ function OpenConfirmation({
           <p id={`${id}-description`} dir="auto">
             {description}
           </p>
+          {children}
           <div className={styles.actions}>
             <ActionButton
               data-dialog-cancel

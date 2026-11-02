@@ -1,5 +1,9 @@
 "use client";
 
+import { useI18n } from "@/components/i18n/i18n-provider";
+import { uploadText } from "@/lib/upload-copy";
+import type { RightsBasis } from "@/lib/quick-upload";
+
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -19,6 +23,8 @@ import { EditorTabs } from "@/components/ui/editor-tabs";
 import { VideoMetadataFields } from "@/components/upload/video-metadata-fields";
 import {
   contentDraft,
+  publicationRights,
+  contentPublishPayload,
   contentPayload,
   contentReadiness,
   contentVisibility,
@@ -53,6 +59,9 @@ export function StudioVideoEditor({
 }) {
   const { t, direction, href } = useContentI18n();
   const router = useRouter();
+  const { locale } = useI18n();
+  const rightsCopy = (text: string) => uploadText(text, locale);
+  const [rights, setRights] = useState(() => publicationRights(video));
   const [confirmation, setConfirmation] = useState<ConfirmationIntent | null>(null);
   const confirmationIntent = useRef<ConfirmationIntent | null>(null);
   const [draft, setDraft] = useState(() => contentDraft(video));
@@ -107,6 +116,7 @@ export function StudioVideoEditor({
         dialog.hidden = true;
         dialog.close();
       });
+      setRights({ rightsBasis: "AUTHORIZED", rightsNote: "" });
       confirmationIntent.current = null;
       setConfirmation(null);
       setTab("captions");
@@ -219,11 +229,13 @@ export function StudioVideoEditor({
       confirmationIntent.current
     )
       return;
+    if (intent === "publish") setRights(publicationRights(video));
     confirmationIntent.current = intent;
     setConfirmation(intent);
   }
 
   function cancelConfirmation() {
+    setRights({ rightsBasis: "AUTHORIZED", rightsNote: "" });
     confirmationIntent.current = null;
     setConfirmation(null);
   }
@@ -338,12 +350,21 @@ export function StudioVideoEditor({
       if (dirty || captionDraft) return;
     }
     if (kind === "publish" && (!canPublish || readiness !== "ready")) return;
+    let publishPayload: ReturnType<typeof contentPublishPayload> | undefined;
+    if (kind === "publish") {
+      try {
+        publishPayload = contentPublishPayload(video, rights);
+      } catch {
+        setError("content.metadataError");
+        return;
+      }
+    }
     pending.current = true;
     setBusy(true);
     setError(null);
     try {
       if (kind === "save") await updateStudioVideo(video.id, payload!);
-      else if (kind === "publish") await publishQuickVideo(video.id, { rightsConfirmed: true });
+      else if (kind === "publish") await publishQuickVideo(video.id, publishPayload!);
       else if (kind === "unpublish") await unpublishStudioVideo(video.id);
       else await removeStudioVideo(video.id);
       if (!mounted.current || captionScopeClosed.current || captionReview.current) return;
@@ -639,7 +660,38 @@ export function StudioVideoEditor({
         cancelLabel={t("content.keepEditing")}
         onConfirm={acceptConfirmation}
         onCancel={cancelConfirmation}
-      />
+      >
+        {confirmation === "publish" && !video.metadata?.rightsBasis && !captionConcealed ? (
+          <fieldset disabled={busy || captionBusy} data-caption-parent-private>
+            <SelectField
+              id="publication-rights-basis"
+              label={rightsCopy("Rights basis")}
+              data-tv-focusable="true"
+              data-tv-focus-id="publication-rights-basis"
+              value={rights.rightsBasis}
+              onChange={(event) =>
+                setRights({ ...rights, rightsBasis: event.target.value as RightsBasis })
+              }
+            >
+              <option value="OWNED">{rightsCopy("I own it")}</option>
+              <option value="LICENSED">{rightsCopy("Licensed")}</option>
+              <option value="AUTHORIZED">{rightsCopy("Authorized")}</option>
+              <option value="PUBLIC_DOMAIN">{rightsCopy("Public domain")}</option>
+              <option value="OTHER">{rightsCopy("Other")}</option>
+            </SelectField>
+            <TextField
+              id="publication-rights-note"
+              label={rightsCopy("Rights note")}
+              data-tv-focusable="true"
+              data-tv-focus-id="publication-rights-note"
+              maxLength={1000}
+              value={rights.rightsNote}
+              placeholder={rightsCopy("Optional license or rights note")}
+              onChange={(event) => setRights({ ...rights, rightsNote: event.target.value })}
+            />
+          </fieldset>
+        ) : null}
+      </ConfirmationDialog>
     </section>
   );
 }

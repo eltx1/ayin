@@ -675,11 +675,16 @@ test("Studio publishes a ready upload only after saved details and explicit righ
   page,
 }) => {
   const ids = await seed(page, false, true);
+  const rightsNote = "CC BY-SA 3.0; original creator attribution retained.";
   let publications = 0;
   page.on("request", (req) => {
     if (req.method() === "POST" && req.url() === `${API}/creator/videos/${ids[0]}/publish`) {
       publications++;
-      expect(req.postDataJSON()).toEqual({ rightsConfirmed: true });
+      expect(req.postDataJSON()).toEqual({
+        rightsConfirmed: true,
+        rightsBasis: "LICENSED",
+        rightsNote,
+      });
     }
   });
   await page.goto("/studio/content?lang=en");
@@ -692,13 +697,100 @@ test("Studio publishes a ready upload only after saved details and explicit righ
   await publish.click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("all rights and permissions");
+  await expect(dialog.getByLabel("Rights basis", { exact: true })).toHaveValue("AUTHORIZED");
+  await dialog.getByLabel("Rights basis", { exact: true }).selectOption("PUBLIC_DOMAIN");
+  await dialog.getByLabel("Rights note", { exact: true }).fill("Discard this unpublished note");
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   expect(publications).toBe(0);
+  await expect(dialog).toHaveCount(0);
+  await expect(publish).toBeFocused();
   await publish.click();
-  await dialog.getByRole("button", { name: "Publish video", exact: true }).click();
+  await expect(dialog.getByLabel("Rights basis", { exact: true })).toHaveValue("AUTHORIZED");
+  await expect(dialog.getByLabel("Rights note", { exact: true })).toHaveValue("");
+  await dialog.getByLabel("Rights basis", { exact: true }).selectOption("LICENSED");
+  await dialog.getByLabel("Rights note", { exact: true }).fill(`  ${rightsNote}  `);
+  await dialog
+    .getByRole("button", { name: "Publish video", exact: true })
+    .evaluate((button: HTMLButtonElement) => {
+      button.click();
+      button.click();
+    });
   await expect(page.getByRole("row", { name: /Editor video 0/ })).toContainText("Published");
   expect(publications).toBe(1);
+  const saved = await page.request.get(endpoint);
+  expect(saved.ok()).toBe(true);
+  expect(
+    (await saved.json()).videos.find((video: { id: string }) => video.id === ids[0]),
+  ).toMatchObject({
+    status: "PUBLISHED",
+    metadata: { rightsBasis: "LICENSED", rightsNote },
+  });
 });
+
+for (const rightsBasis of ["LICENSED", "PUBLIC_DOMAIN"] as const)
+  test(`Studio unpublish and republish preserves an existing ${rightsBasis} declaration`, async ({
+    page,
+  }) => {
+    const [videoId] = await seed(page, false, true);
+    const rightsNote = `Existing ${rightsBasis} declaration; retain this original note.`;
+    const prepared = await page.request.post(`${API}/creator/videos/${videoId}/publish`, {
+      headers: { origin: WEB },
+      data: { rightsConfirmed: true, rightsBasis, rightsNote },
+    });
+    expect(prepared.ok()).toBe(true);
+    const original = await page.request.get(endpoint);
+    expect(original.ok()).toBe(true);
+    expect(
+      (await original.json()).videos.find((video: { id: string }) => video.id === videoId),
+    ).toMatchObject({
+      status: "PUBLISHED",
+      metadata: { rightsBasis, rightsNote },
+    });
+
+    let publications = 0;
+    page.on("request", (req) => {
+      if (req.method() === "POST" && req.url() === `${API}/creator/videos/${videoId}/publish`) {
+        publications++;
+        expect(req.postDataJSON()).toEqual({ rightsConfirmed: true });
+      }
+    });
+    await page.goto("/studio/content?lang=en");
+    await openFirst(page);
+    await page.getByRole("button", { name: "Unpublish", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Unpublish", exact: true }).click();
+    await expect(page.getByRole("row", { name: /Editor video 0/ })).toContainText("Draft");
+    const unpublished = await page.request.get(endpoint);
+    expect(unpublished.ok()).toBe(true);
+    expect(
+      (await unpublished.json()).videos.find((video: { id: string }) => video.id === videoId),
+    ).toMatchObject({
+      status: "DRAFT",
+      metadata: { rightsBasis, rightsNote },
+    });
+
+    await openFirst(page);
+    const publish = page.getByRole("button", { name: "Publish video", exact: true });
+    await expect(publish).toBeEnabled();
+    await publish.click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByLabel("Rights basis", { exact: true })).toHaveCount(0);
+    await expect(dialog.getByLabel("Rights note", { exact: true })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    expect(publications).toBe(0);
+    await expect(publish).toBeFocused();
+    await publish.click();
+    await dialog.getByRole("button", { name: "Publish video", exact: true }).click();
+    await expect(page.getByRole("row", { name: /Editor video 0/ })).toContainText("Published");
+    expect(publications).toBe(1);
+    const saved = await page.request.get(endpoint);
+    expect(saved.ok()).toBe(true);
+    expect(
+      (await saved.json()).videos.find((video: { id: string }) => video.id === videoId),
+    ).toMatchObject({
+      status: "PUBLISHED",
+      metadata: { rightsBasis, rightsNote },
+    });
+  });
 
 test("Studio blocks unfinished uploads and does not replay an uncertain publication", async ({
   page,

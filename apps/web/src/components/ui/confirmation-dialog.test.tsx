@@ -17,6 +17,26 @@ const props: ConfirmationDialogProps = {
 };
 
 describe("native confirmation contract", () => {
+  it("renders caller-owned declaration fields only inside an open confirmation", () => {
+    const child = (
+      <label>
+        Rights note
+        <input defaultValue="Private declaration" />
+      </label>
+    );
+    expect(
+      renderToStaticMarkup(
+        <ConfirmationDialog {...props} open={false}>
+          {child}
+        </ConfirmationDialog>,
+      ),
+    ).toBe("");
+    const html = renderToStaticMarkup(<ConfirmationDialog {...props}>{child}</ConfirmationDialog>);
+    expect(html).toContain("Private declaration");
+    expect(html.indexOf("Private declaration")).toBeLessThan(html.indexOf("data-dialog-cancel"));
+    expect(props.onConfirm).not.toHaveBeenCalled();
+  });
+
   it("closed confirmations render nothing and never execute an action", () => {
     expect(renderToStaticMarkup(<ConfirmationDialog {...props} open={false} />)).toBe("");
     expect(props.onConfirm).not.toHaveBeenCalled();
