@@ -4,6 +4,11 @@ import { readBoundedAccountJson } from "./account-scope";
 import { uploadId, uploadRecord } from "./quick-upload-contract";
 import { UploadProtocolError } from "./upload-session";
 import { identifyUploadFile } from "./upload-file-identity";
+import {
+  uploadFailureContext,
+  type UploadDiagnosticStage,
+  type UploadFailureContext,
+} from "./upload-recovery-diagnostics";
 import { titleFromFilename } from "./title-from-filename";
 import { isSupportedVideoFile, videoMimeTypeForUpload } from "./video-inspection";
 import { UploadBlobError } from "./direct-video-upload";
@@ -41,6 +46,7 @@ export interface RecoveryView {
   uploadProgress: number;
   uploadedBytes: number;
   message: string;
+  failureDiagnostic?: UploadFailureContext;
 }
 type RecoveryDependencies = {
   storage: Storage;
@@ -265,20 +271,32 @@ export class UploadRecoveryClient {
     }
     return scope;
   }
-  private async run(action: (signal: AbortSignal) => Promise<void>) {
+  private async run(
+    action: (
+      signal: AbortSignal,
+      diagnostic: { stage: UploadDiagnosticStage | null },
+    ) => Promise<void>,
+  ) {
     if (this.operation) return;
     const controller = new AbortController();
     this.operation = controller;
     let settled!: () => void;
     this.operationSettled = new Promise<void>((resolve) => (settled = resolve));
+    const diagnostic = { stage: null as UploadDiagnosticStage | null };
+    delete this.view.failureDiagnostic;
     this.view.busy = true;
     this.view.message = "WORKING";
     this.publish();
     try {
-      await action(controller.signal);
+      await action(controller.signal, diagnostic);
       controller.signal.throwIfAborted();
     } catch (error) {
       if (this.operation !== controller) return;
+      const failureDiagnostic = uploadFailureContext(
+        diagnostic.stage,
+        error instanceof RecoveryError ? undefined : error,
+      );
+      this.view.failureDiagnostic = failureDiagnostic;
       this.view.inspection = null;
       this.view.fileMatched = false;
       if (
@@ -291,6 +309,7 @@ export class UploadRecoveryClient {
         this.view.message = "AUTHORITY_CHANGED";
       } else if (error instanceof RecoveryError && error.identityUnverified) {
         this.suspend();
+        this.view.failureDiagnostic = failureDiagnostic;
         this.view.message = "AUTHORITY_UNVERIFIED";
         this.publish();
       } else
@@ -373,7 +392,8 @@ export class UploadRecoveryClient {
     });
   }
   async choose(file: File) {
-    await this.run(async (signal) => {
+    await this.run(async (signal, diagnostic) => {
+      diagnostic.stage = "RECOVERY_CHECK";
       if (
         !this.view.scope ||
         (!this.view.supported && !this.view.saved) ||
@@ -394,6 +414,7 @@ export class UploadRecoveryClient {
         file.size > this.view.maxSourceBytes
       )
         throw new RecoveryError("VIDEO_TOO_LARGE");
+      diagnostic.stage = "SOURCE_HASH";
       this.view.message = "HASHING";
       this.view.progress = 0;
       this.publish();
@@ -407,6 +428,7 @@ export class UploadRecoveryClient {
           }
         },
       );
+      diagnostic.stage = "RECOVERY_CHECK";
       await this.scope(signal);
       signal.throwIfAborted();
       this.file = file;
@@ -418,7 +440,8 @@ export class UploadRecoveryClient {
   async create(
     options: { title?: string; durationMs?: number | null; videoForm?: "LONG_FORM" | "CLIP" } = {},
   ) {
-    await this.run(async (signal) => {
+    await this.run(async (signal, diagnostic) => {
+      diagnostic.stage = "RECOVERY_CHECK";
       if (
         !this.file ||
         !this.identity ||
@@ -428,6 +451,7 @@ export class UploadRecoveryClient {
       )
         throw new RecoveryError("NOT_READY");
       await this.scope(signal);
+      diagnostic.stage = "LOCAL_SETUP";
       const requestId = (this.dependencies.requestId ?? (() => crypto.randomUUID()))();
       const saved: SavedRecovery = {
         version: 1,
@@ -439,6 +463,7 @@ export class UploadRecoveryClient {
       this.retain(saved); // Persist the marker before any possible server dispatch.
       let raw: unknown;
       try {
+        diagnostic.stage = "SERVER_INIT";
         raw = await this.request("/creator/videos/recoverable-drafts", signal, {
           requestId,
           channelId: saved.scope.channelId,
@@ -464,8 +489,10 @@ export class UploadRecoveryClient {
         response.session.mimeType !== videoMimeTypeForUpload(this.file)
       )
         throw new UploadProtocolError();
+      diagnostic.stage = "RECOVERY_CHECK";
       await this.scope(signal);
       signal.throwIfAborted();
+      diagnostic.stage = "LOCAL_SETUP";
       this.accept(response, saved);
       this.view.fileMatched =
         response.operation.status === "SUCCEEDED" && response.session.state === "OPEN";

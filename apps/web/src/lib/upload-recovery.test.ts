@@ -12,6 +12,7 @@ import {
 import { RECOVERY_STORAGE_KEY, loadSavedRecovery, saveRecovery } from "./upload-recovery-storage";
 import { watchUploadRecoveryLifecycle } from "./upload-recovery-lifecycle";
 import { UploadBlobError } from "./direct-video-upload";
+import { uploadRecoveryDiagnostic } from "./upload-recovery-diagnostics";
 
 const scope: RecoveryScope = {
   accountId: randomUUID(),
@@ -344,6 +345,97 @@ describe("explicit recoverable upload controller", () => {
     await value.create();
     await value.inspect();
   }
+
+  it.each([
+    new TypeError("private hash detail"),
+    new RangeError("private hash detail"),
+    new DOMException("private source path", "NotReadableError"),
+    Object.assign(new Error("private hash detail"), { name: "PRIVATE_CLIENT_NAME" }),
+  ])(
+    "captures the local hash failure stage and only a safe available client name: %s",
+    async (error) => {
+      const identify = vi.fn(async () => {
+        throw error;
+      });
+      const value = client(identify);
+      await value.open();
+      await value.choose(file());
+      expect(view.message).toBe("UNCERTAIN");
+      expect(view.failureDiagnostic).toEqual({
+        stage: "SOURCE_HASH",
+        clientErrorName: error.name === "PRIVATE_CLIENT_NAME" ? null : error.name,
+      });
+      expect(JSON.stringify(view.failureDiagnostic)).not.toMatch(/private|PRIVATE_CLIENT_NAME/);
+      expect(writes()).toHaveLength(0);
+      expect(storage.length).toBe(0);
+      await value.check();
+      expect(view.failureDiagnostic).toBeUndefined();
+      expect(identify).toHaveBeenCalledTimes(1);
+      expect(writes()).toHaveLength(0);
+    },
+  );
+  it("does not mislabel account verification after hashing as a source-hash failure", async () => {
+    let hashed = false;
+    const normal = fetcher.getMockImplementation()!;
+    fetcher.mockImplementation((url, init) =>
+      hashed && String(url).endsWith("/auth/me")
+        ? Promise.resolve(response({ error: { code: "UNAVAILABLE", message: "private" } }, 503))
+        : normal(url, init),
+    );
+    const value = client(async () => {
+      hashed = true;
+      return fileIdentity;
+    });
+    await value.open();
+    await value.choose(file());
+    expect(view.message).toBe("AUTHORITY_UNVERIFIED");
+    expect(view.failureDiagnostic).toEqual({ stage: "RECOVERY_CHECK", clientErrorName: null });
+    expect(writes()).toHaveLength(0);
+    value.suspend();
+    expect(value.getSnapshot().failureDiagnostic).toBeUndefined();
+  });
+  it("labels a failed local CREATE marker write before dispatch, without sending or retrying CREATE", async () => {
+    const value = client();
+    await value.open();
+    await value.choose(file());
+    vi.spyOn(storage, "setItem").mockImplementation(() => {
+      throw new DOMException("private storage detail", "QuotaExceededError");
+    });
+    await value.create();
+    expect(view.failureDiagnostic).toEqual({
+      stage: "LOCAL_SETUP",
+      clientErrorName: "QuotaExceededError",
+    });
+    expect(writes()).toHaveLength(0);
+    expect(view.saved).toBeNull();
+    value.suspend();
+    expect(value.getSnapshot().failureDiagnostic).toBeUndefined();
+    expect(writes()).toHaveLength(0);
+  });
+  it("captures a client fetch exception during server CREATE without replaying or losing its marker", async () => {
+    const value = client();
+    await value.open();
+    await value.choose(file());
+    const normal = fetcher.getMockImplementation()!;
+    fetcher.mockImplementation((url, init) =>
+      String(url).endsWith("/recoverable-drafts")
+        ? Promise.reject(new TypeError("https://private.invalid?token=secret"))
+        : normal(url, init),
+    );
+    await value.create();
+    expect(view.message).toBe("UNCERTAIN");
+    expect(view.failureDiagnostic).toEqual({ stage: "SERVER_INIT", clientErrorName: "TypeError" });
+    expect(view.saved?.pending?.kind).toBe("CREATE");
+    expect(writes()).toHaveLength(1);
+    expect(storage.getItem(RECOVERY_STORAGE_KEY)).not.toMatch(
+      /failureDiagnostic|SERVER_INIT|TypeError|private|secret/,
+    );
+    await value.create();
+    expect(writes()).toHaveLength(1);
+    expect(view.failureDiagnostic).toEqual({ stage: "RECOVERY_CHECK", clientErrorName: null });
+    value.suspend();
+    expect(value.getSnapshot().failureDiagnostic).toBeUndefined();
+  });
   it("rejects a file above the server's rollout limit before hashing or creating a draft", async () => {
     const normal = fetcher.getMockImplementation()!;
     fetcher.mockImplementation((url, init) =>
@@ -1821,24 +1913,75 @@ describe("explicit recoverable upload controller", () => {
     expect(view.saved?.pending?.kind).toBe("AUTHORIZE");
     expect(view.message).toBe("UNCERTAIN");
   });
-  it.each(["CHANNEL_UPLOAD_QUOTA_REACHED", "UPLOAD_PART_LIMIT", "UPLOAD_RATE_LIMITED"])(
+  it.each([
+    ["CHANNEL_UPLOAD_QUOTA_REACHED", 413],
+    ["UPLOAD_PART_LIMIT", 413],
+    ["UPLOAD_RATE_LIMITED", 429],
+    ["UPLOAD_ADMISSION_LIMIT", 429],
+    ["UPLOAD_PHYSICAL_DEBT_LIMIT", 429],
+    ["UPLOAD_OUTPUT_ENVELOPE_UNAVAILABLE", 503],
+    ["UPLOAD_CAPACITY_BUSY", 429],
+    ["UPLOAD_CANARY_BUSY", 429],
+  ] as const)(
     "clears a known pre-admission CREATE rejection %s without trapping a missing request",
-    async (code) => {
+    async (code, status) => {
       const value = client();
       await value.open();
       await value.choose(file());
       const normal = fetcher.getMockImplementation()!;
       fetcher.mockImplementation((url, init) =>
         String(url).endsWith("/recoverable-drafts")
-          ? Promise.resolve(response({ error: { code } }, 429))
+          ? Promise.resolve(
+              response({ error: { code, message: "Private server detail: token=secret" } }, status),
+            )
           : normal(url, init),
       );
       await value.create();
       expect(view.saved).toBeNull();
       expect(storage.length).toBe(0);
       expect(writes()).toHaveLength(1);
+      expect(view.message).toBe(code);
+      expect(view.failureDiagnostic).toEqual({ stage: "SERVER_INIT", clientErrorName: null });
+      const beforeDisplay = fetcher.mock.calls.length;
+      const diagnostic = uploadRecoveryDiagnostic(view.message);
+      expect(diagnostic.detail).not.toContain("Private server detail");
+      expect(diagnostic.detail).not.toContain("token=secret");
+      expect(diagnostic.reference).toBe(code === "UPLOAD_PART_LIMIT" ? null : code);
+      expect(fetcher.mock.calls).toHaveLength(beforeDisplay);
+      await value.check();
+      expect(view.saved).toBeNull();
+      expect(writes()).toHaveLength(1);
     },
   );
+  it("keeps an unknown creation outcome pending and never renders or replays arbitrary server diagnostics", async () => {
+    const value = client();
+    await value.open();
+    await value.choose(file());
+    const normal = fetcher.getMockImplementation()!;
+    fetcher.mockImplementation((url, init) =>
+      String(url).endsWith("/recoverable-drafts")
+        ? Promise.resolve(
+            response(
+              {
+                error: { code: "SERVER_PRIVATE_DETAIL", message: "https://private.invalid/secret" },
+              },
+              500,
+            ),
+          )
+        : normal(url, init),
+    );
+    await value.create();
+    expect(view.saved?.pending?.kind).toBe("CREATE");
+    expect(view.failureDiagnostic).toEqual({ stage: "SERVER_INIT", clientErrorName: null });
+    const diagnostic = uploadRecoveryDiagnostic(view.message);
+    expect(diagnostic.reference).toBeNull();
+    expect(diagnostic.detail).not.toContain("SERVER_PRIVATE_DETAIL");
+    expect(diagnostic.detail).not.toContain("private.invalid");
+    expect(writes()).toHaveLength(1);
+    await value.create();
+    expect(writes()).toHaveLength(1);
+    expect(view.saved?.pending?.kind).toBe("CREATE");
+  });
   it("local cleanup of a verified finished descriptor never deletes server data", async () => {
     const value = client();
     await ready(value);
