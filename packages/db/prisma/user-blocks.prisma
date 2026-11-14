@@ -1,0 +1,15 @@
+// Account-wide user safety preference. The no-self-block invariant is also
+// enforced by the SQL migration; the API never exposes private Account data.
+model UserBlock {
+  blockerAccountId String   @db.Uuid
+  blockedAccountId String   @db.Uuid
+  publicLabel      String   @db.VarChar(120)
+  sourceChannelId  String?  @db.Uuid
+  createdAt        DateTime @default(now())
+
+  blocker Account @relation("UserBlocksMade", fields: [blockerAccountId], references: [id], onDelete: Cascade, map: "UserBlock_blocker_fkey")
+  blocked Account @relation("UserBlocksReceived", fields: [blockedAccountId], references: [id], onDelete: Cascade, map: "UserBlock_blocked_fkey")
+
+  @@id([blockerAccountId, blockedAccountId])
+  @@index([blockedAccountId, blockerAccountId])
+}

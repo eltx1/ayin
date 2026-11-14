@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { BlockUserButton } from "@/components/social/user-blocks";
 import { useI18n } from "@/components/i18n/i18n-provider";
 import {
   ActionButton,
@@ -22,7 +23,15 @@ import styles from "./comments.module.css";
 type WriteState = "idle" | "sending" | "uncertain" | "rejected" | "signin" | "posted";
 
 export function CommentsPanel(props: { videoId: string; enabled: boolean }) {
-  return <CommentThread key={`${props.videoId}:${props.enabled}`} {...props} />;
+  const [blockRevision, setBlockRevision] = useState(0);
+  useEffect(() => {
+    // Blocks are account-wide, while a visible author can be one of many profiles.
+    // Remount to abort stale reads and fetch the server-filtered page for all profiles.
+    const blocked = () => setBlockRevision((revision) => revision + 1);
+    window.addEventListener("ayin:user-blocked", blocked);
+    return () => window.removeEventListener("ayin:user-blocked", blocked);
+  }, []);
+  return <CommentThread key={`${props.videoId}:${props.enabled}:${blockRevision}`} {...props} />;
 }
 
 function CommentThread({ videoId, enabled }: { videoId: string; enabled: boolean }) {
@@ -39,6 +48,7 @@ function CommentThread({ videoId, enabled }: { videoId: string; enabled: boolean
   const sending = useRef(false);
   const abort = useRef<AbortController | null>(null);
   const endpoint = `${apiBaseUrl}/comments/videos/${encodeURIComponent(videoId)}`;
+
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -57,6 +67,7 @@ function CommentThread({ videoId, enabled }: { videoId: string; enabled: boolean
       try {
         const response = await fetch(next === null ? endpoint : `${endpoint}?cursor=${next}`, {
           cache: "no-store",
+          credentials: "include",
           signal: controller.signal,
         });
         if (!response.ok) throw new Error("COMMENTS_UNAVAILABLE");
@@ -243,6 +254,7 @@ function CommentView({ item }: { item: ViewerComment }) {
     <article className={styles.comment}>
       <header>
         <strong dir="auto">{item.authorProfile.name}</strong>
+        {item.authorProfile.id && <BlockUserButton profileId={item.authorProfile.id} />}
         {item.pinned ? <DataBadge>{t("pinned")}</DataBadge> : null}
         {item.creatorHearted ? <DataBadge tone="success">{t("hearted")}</DataBadge> : null}
       </header>

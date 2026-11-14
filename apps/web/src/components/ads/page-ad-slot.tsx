@@ -1,5 +1,7 @@
 "use client";
 
+import { webAdvertisingAllowed } from "@/lib/mobile-web-ads";
+import { subscribeMobile, getMobileState, getMobileServerState } from "@/lib/mobile-runtime";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 
@@ -26,6 +28,8 @@ export function PageAdSlot({ placementKey }: { placementKey: string }) {
   const pathname = usePathname();
   const consent = useAdvertisingConsent();
   const device = useSyncExternalStore(subscribePageAdDevice, detectPageAdDevice, () => null);
+  useSyncExternalStore(subscribeMobile, getMobileState, getMobileServerState);
+  if (!webAdvertisingAllowed("page")) return null;
   if (!device || !pathname) return <div className={styles.probe} aria-hidden="true" />;
   return (
     <PageAdSlotSession

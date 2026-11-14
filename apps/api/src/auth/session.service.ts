@@ -172,9 +172,14 @@ export class SessionService {
 
   async logout(payload: AuthTokenPayload | null): Promise<void> {
     if (!payload?.sid) return;
-    await this.database.client.accountSession.updateMany({
-      where: { id: payload.sid, accountId: payload.sub, revokedAt: null },
-      data: { revokedAt: new Date(), revokeReason: "LOGOUT" },
+    const sessionId = payload.sid;
+    await this.database.client.$transaction(async (tx) => {
+      await tx.accountSession.updateMany({
+        where: { id: sessionId, accountId: payload.sub, revokedAt: null },
+        data: { revokedAt: new Date(), revokeReason: "LOGOUT" },
+      });
+      // A failed client detach must never keep the previous account's push address active.
+      await tx.mobileDevice.deleteMany({ where: { sessionId, accountId: payload.sub } });
     });
   }
 }

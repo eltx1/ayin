@@ -87,7 +87,9 @@ jobs:
         if: steps.dependency-changes.outputs.changed == 'true'
         run: |
           corepack enable
-          corepack prepare pnpm@11.24.0 --activate
+          # Pin the canonical tarball digest verified against npm 11.24.0 ECDSA metadata.
+          # Avoid a metadata lookup during registry outages; integrity remains checked.
+          corepack prepare pnpm@11.24.0+sha512.bd27e345e976dcb0be0b7a1228217b049a817e21b1f355c90dbe7dc46671895a8bc1e6d06c24554505ea93ea0b45f489a27ec1bfbc8de6a9659fca0f16fa0000 --activate
 
       - name: Verify dependency change and audit production graph
         if: steps.dependency-changes.outputs.changed == 'true'
@@ -114,7 +116,9 @@ jobs:
       - name: Enable pinned pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@11.24.0 --activate
+          # Pin the canonical tarball digest verified against npm 11.24.0 ECDSA metadata.
+          # Avoid a metadata lookup during registry outages; integrity remains checked.
+          corepack prepare pnpm@11.24.0+sha512.bd27e345e976dcb0be0b7a1228217b049a817e21b1f355c90dbe7dc46671895a8bc1e6d06c24554505ea93ea0b45f489a27ec1bfbc8de6a9659fca0f16fa0000 --activate
 
       - name: Verify lockfile without lifecycle scripts
         run: pnpm install --frozen-lockfile --ignore-scripts

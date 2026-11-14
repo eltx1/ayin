@@ -2,4 +2,6 @@ AYIN_BUNDLE_ID = net.ayin.app.ios
 AYIN_API_BASE_URL = https:/$()/api.ayin.stream
 AYIN_MEDIA_BASE_URL = https:/$()/media.ayin.stream
 AYIN_WEB_BASE_URL = https:/$()/ayin.stream
+AYIN_ADMOB_APP_ID = ca-app-pub-3940256099942544~1458002511
+APNS_ENVIRONMENT = development
 #include? "Local.xcconfig"

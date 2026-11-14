@@ -26,6 +26,28 @@
   <string>$(AYIN_MEDIA_BASE_URL)</string>
   <key>AYINWebBaseURL</key>
   <string>$(AYIN_WEB_BASE_URL)</string>
+  <key>GADApplicationIdentifier</key>
+  <string>$(AYIN_ADMOB_APP_ID)</string>
+  <key>GADDelayAppMeasurementInit</key>
+  <true/>
+  <key>FirebaseAppDelegateProxyEnabled</key>
+  <false/>
+  <key>FirebaseMessagingAutoInitEnabled</key>
+  <false/>
+  <key>FIREBASE_ANALYTICS_COLLECTION_ENABLED</key>
+  <false/>
+  <key>FirebaseAutomaticScreenReportingEnabled</key>
+  <false/>
+  <key>GOOGLE_ANALYTICS_IDFV_COLLECTION_ENABLED</key>
+  <false/>
+  <key>GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_PERSONALIZATION_SIGNALS</key>
+  <false/>
+  <key>FirebaseCrashlyticsCollectionEnabled</key>
+  <false/>
+  <key>WKAppBoundDomains</key>
+  <array><string>ayin.stream</string></array>
+  <key>SKAdNetworkItems</key>
+  <array><dict><key>SKAdNetworkIdentifier</key><string>cstr6suwn9.skadnetwork</string></dict></array>
   <key>CFBundleURLTypes</key>
   <array>
     <dict>

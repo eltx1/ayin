@@ -2,3 +2,6 @@ AYIN_BUNDLE_ID = net.ayin.app.ios
 AYIN_API_BASE_URL = https:/$()/api.ayin.stream
 AYIN_MEDIA_BASE_URL = https:/$()/media.ayin.stream
 AYIN_WEB_BASE_URL = https:/$()/ayin.stream
+// Required real iOS AdMob app ID is injected by secure release CI; never use a Web unit.
+AYIN_ADMOB_APP_ID =
+APNS_ENVIRONMENT = production

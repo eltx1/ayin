@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { MobileSettings } from "@/components/mobile/mobile-settings";
 import { LegalNotice, LegalPage, LegalSection } from "@/components/legal/legal-page";
 
 export const metadata: Metadata = {
@@ -21,6 +22,33 @@ export default function PrivacyPolicyPage() {
         </p>
       }
     >
+      <MobileSettings />
+      <LegalSection title="Mobile app services">
+        <p>
+          Android and iOS apps may use Google Mobile Ads and Google UMP for app advertising and
+          advertising privacy choices. The app keeps advertising disabled until its configured
+          audience, age confirmation and applicable consent checks allow a request. Privacy options
+          can be reopened in the app controls above or on the Account page.
+        </p>
+        <p>
+          With your optional analytics and crash diagnostics consent, Firebase Analytics receives
+          limited screen and interaction categories, video progress checkpoints, search length,
+          upload status and an internal account identifier. AYIN does not send your email, display
+          name, search text, messages, video titles or session credentials in these events. Native
+          Crashlytics diagnostics may record native crash stacks and device/runtime information;
+          they do not automatically cover JavaScript errors. Turning off app analytics does not
+          prevent viewing. Existing first-party product, security and transaction records are
+          separate and are described elsewhere in this policy.
+        </p>
+        <p>
+          If you enable notifications, AYIN stores a device installation identifier, a Firebase
+          Cloud Messaging registration token, the platform, app version and your notification
+          preferences, linked to your authenticated session. Firebase and Apple Push Notification
+          service deliver the notifications you select. Sign-out and device opt-out disable that
+          delivery association. Push tokens are not used as login credentials and are not exposed in
+          the administration delivery log.
+        </p>
+      </LegalSection>
       <LegalSection title="1. Information we collect">
         <p>Depending on how you use AYIN, we may process:</p>
         <ul>

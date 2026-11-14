@@ -6,6 +6,7 @@ import { useI18n } from "@/components/i18n/i18n-provider";
 import { useWatchProgress } from "@/components/player/use-watch-progress";
 import { useViewerProduct } from "@/components/viewer/viewer-product-context";
 import { releaseHtmlMediaElement } from "@/lib/adaptive-playback";
+import { trackMobileEvent } from "@/lib/mobile-runtime";
 import { trackAnalyticsEvent } from "@/lib/analytics";
 import { noopPlayerAnalytics, type AyinCaptionTrack } from "@/lib/ayin-player";
 import type { ClipItem, ClipPlaybackPosition, RegisterClipPositionAuthority } from "@/lib/clips";
@@ -259,6 +260,7 @@ export function ClipVideo({
   onMediaReady?: ((video: HTMLVideoElement) => void) | undefined;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const mobileClipView = useRef({ id: clip.id, seconds: 0, last: 0, sent: false });
   const retired = useRef(false);
   const endedRestore = useRef(initialPlayback?.ended === true);
   const playerRef = useRef<HTMLDivElement>(null);
@@ -650,6 +652,31 @@ export function ClipVideo({
           updateMedia();
         }}
         onTimeUpdate={() => {
+          const video = videoRef.current;
+          if (mobileClipView.current.id !== clip.id)
+            mobileClipView.current = {
+              id: clip.id,
+              seconds: 0,
+              last: video?.currentTime ?? 0,
+              sent: false,
+            };
+          const view = mobileClipView.current;
+          if (
+            video &&
+            playback.current?.ownsPlayback() &&
+            isAudienceCurrent() &&
+            !video.paused &&
+            !video.seeking &&
+            document.visibilityState === "visible"
+          ) {
+            const delta = video.currentTime - view.last;
+            if (delta > 0 && delta < 1) view.seconds += delta;
+            view.last = video.currentTime;
+            if (!view.sent && view.seconds >= 2) {
+              view.sent = true;
+              trackMobileEvent("clip_view", { content_type: "clip" });
+            }
+          } else if (video) view.last = video.currentTime;
           if (playback.current?.ownsPlayback()) {
             participate();
             void persist(false);

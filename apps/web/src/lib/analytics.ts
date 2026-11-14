@@ -1,5 +1,6 @@
 "use client";
 
+import { trackMobileEvent } from "./mobile-runtime";
 import type { AyinPlayerAnalytics, AyinPlayerAnalyticsEvent } from "./ayin-player";
 import { apiBaseUrl } from "./api";
 
@@ -150,6 +151,37 @@ export function trackAnalyticsEvent(
   > = {},
 ) {
   if (typeof window === "undefined") return;
+  // Firebase is native-only. The existing first-party product pipeline remains independent.
+  // Never mirror SDK ad_impression/revenue, IDs, free text or error messages to Firebase.
+  switch (eventName) {
+    case "VIDEO_START":
+      trackMobileEvent("video_start", { content_type: "video" });
+      break;
+    case "VIDEO_COMPLETE":
+      trackMobileEvent("video_complete", { content_type: "video" });
+      break;
+    case "VIDEO_PROGRESS":
+      if (typeof input.positionMs === "number")
+        trackMobileEvent("video_progress", {
+          content_type: "video",
+          position_seconds: Math.min(86400, Math.max(0, Math.floor(input.positionMs / 1000))),
+        });
+      break;
+    case "SEARCH":
+      trackMobileEvent("search", {
+        query_length: Math.min(200, Math.max(0, Number(input.metadata?.queryLength) || 0)),
+      });
+      break;
+    case "SUBSCRIBE":
+      trackMobileEvent("follow");
+      break;
+    case "SHARE":
+    case "CLIP_SHARE":
+      trackMobileEvent("share", { content_type: eventName === "CLIP_SHARE" ? "clip" : "video" });
+      break;
+    default:
+      break;
+  }
   bindLifecycle();
   queue.push({
     clientEventId: crypto.randomUUID(),

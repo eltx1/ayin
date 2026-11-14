@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { webAdvertisingAllowed, beginWebAdBreak } from "@/lib/mobile-web-ads";
+import { subscribeMobile } from "@/lib/mobile-runtime";
 
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { GoogleImaVideoAdService } from "@/lib/google-ima-video-ad-service";
@@ -43,15 +45,23 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
 function AdEnabledPlayerSession(props: AyinPlayerProps) {
   const { locale } = useI18n();
   const consent = useAdvertisingConsent();
+  const webAdsAllowed = useSyncExternalStore(
+    subscribeMobile,
+    () => webAdvertisingAllowed("video"),
+    () => true,
+  );
   const [decisionState, setDecisionState] = useState<{
     consent: AdvertisingConsentSnapshot;
+    allowed: boolean;
     decision: VideoAdDecision | null;
   } | null>(null);
-  const decisionLoaded = decisionState?.consent === consent;
+  const decisionLoaded =
+    decisionState?.consent === consent && decisionState.allowed === webAdsAllowed;
   const decision = decisionLoaded ? decisionState.decision : null;
   const [targetsReady, setTargetsReady] = useState(false);
   const [playbackReadyFor, setPlaybackReadyFor] = useState<string | null>(null);
   const [activated, setActivated] = useState(false);
+  const playbackStarted = useRef(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [mediaFailed, setMediaFailed] = useState(false);
   const [imaGestureRequired, setImaGestureRequired] = useState(false);
@@ -116,8 +126,11 @@ function AdEnabledPlayerSession(props: AyinPlayerProps) {
     void fetchVideoAdDecision(props.videoId, scope.signal)
       .then((result) => {
         if (!scope.isCurrent()) return;
-        const enabledDecision = result.enabled ? result : null;
-        setDecisionState({ consent, decision: enabledDecision });
+        // A late config/consent change must not insert a preroll into playing content.
+        const enabledDecision = result.enabled
+          ? { ...result, preRollEnabled: result.preRollEnabled && !playbackStarted.current }
+          : null;
+        setDecisionState({ consent, allowed: webAdsAllowed, decision: enabledDecision });
         setImaGestureRequired(
           Boolean(enabledDecision?.preRollEnabled && mobileImaRequiresGesture()),
         );
@@ -131,10 +144,11 @@ function AdEnabledPlayerSession(props: AyinPlayerProps) {
         }
       })
       .catch(() => {
-        if (scope.isCurrent()) setDecisionState({ consent, decision: null });
+        if (scope.isCurrent())
+          setDecisionState({ consent, allowed: webAdsAllowed, decision: null });
       });
     return () => scope.release();
-  }, [consent, props.videoId]);
+  }, [consent, props.videoId, webAdsAllowed]);
 
   const handleAdContainerReady = useCallback((element: HTMLDivElement | null) => {
     adContainerRef.current = element;
@@ -223,6 +237,8 @@ function AdEnabledPlayerSession(props: AyinPlayerProps) {
         return false;
       }
       adScopeRef.current = scope;
+      const endWebAdBreak = beginWebAdBreak();
+      scope.signal.addEventListener("abort", endWebAdBreak, { once: true });
       lifecycle.busy = true;
       const service = serviceRef.current ?? new GoogleImaVideoAdService();
       serviceRef.current = service;
@@ -302,6 +318,8 @@ function AdEnabledPlayerSession(props: AyinPlayerProps) {
         setStatus(null);
         return false;
       } finally {
+        endWebAdBreak();
+        scope.signal.removeEventListener("abort", endWebAdBreak);
         clearContentIntent();
         scope.signal.removeEventListener("abort", cancelAd);
         scope.release();
@@ -322,6 +340,7 @@ function AdEnabledPlayerSession(props: AyinPlayerProps) {
       if (!lifecycle.active || !contentVideo || !adContainer || !playbackReady || lifecycle.busy)
         return;
       setActivated(true);
+      playbackStarted.current = true;
       setAutoplayBlocked(false);
 
       if (decision?.preRollEnabled && !props.completedAdBreaks?.has("PRE_ROLL")) {

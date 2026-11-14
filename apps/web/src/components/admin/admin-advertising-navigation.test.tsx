@@ -5,9 +5,9 @@ import { adminAdvertisingAr, adminAdvertisingEn } from "@/lib/i18n/resources/adm
 import { AdminAdvertisingNavigation } from "./admin-advertising-navigation";
 
 describe("Advertising route navigation", () => {
-  it("preserves both canonical destinations, the locale and exactly one current route", () => {
+  it("preserves all canonical destinations, the locale and exactly one current route", () => {
     for (const locale of ["en", "ar"] as const) {
-      for (const current of ["page", "video"] as const) {
+      for (const current of ["page", "video", "mobile"] as const) {
         const html = renderToStaticMarkup(
           <I18nProvider locale={locale}>
             <AdminAdvertisingNavigation current={current} />
@@ -16,6 +16,7 @@ describe("Advertising route navigation", () => {
         const prefix = locale === "ar" ? "/ar" : "";
         expect(html).toContain(`href="${prefix}/admin/advertising"`);
         expect(html).toContain(`href="${prefix}/admin/video-ads"`);
+        expect(html).toContain(`href="${prefix}/admin/mobile"`);
         expect(html.match(/aria-current="page"/g)).toHaveLength(1);
         expect(html).not.toContain('role="tab"');
         expect(html).not.toContain("<main");

@@ -5,6 +5,7 @@ import {
   Get,
   HttpException,
   Headers,
+  Header,
   Inject,
   Param,
   Patch,
@@ -16,6 +17,7 @@ import {
 } from "@nestjs/common";
 import { z } from "zod";
 
+import { OptionalAuthGuard } from "../auth/optional-auth.guard.js";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { TrustedRegionService, type HeaderBag } from "../video-policy/trusted-region.service.js";
 import { CommentRateLimiter } from "./comment-rate-limiter.js";
@@ -66,7 +68,14 @@ export class CommentsController {
   ) {}
 
   @Get("videos/:videoId")
-  list(@Param("videoId") rawId: string, @Query() rawQuery: unknown, @Headers() headers: HeaderBag) {
+  @Header("Cache-Control", "private, no-store")
+  @UseGuards(OptionalAuthGuard)
+  list(
+    @Req() request: Partial<AuthenticatedRequest>,
+    @Param("videoId") rawId: string,
+    @Query() rawQuery: unknown,
+    @Headers() headers: HeaderBag,
+  ) {
     const videoId = parseUuid(rawId);
     const query = parse(page, rawQuery);
     return run(() =>
@@ -75,6 +84,7 @@ export class CommentsController {
         query.cursor,
         query.limit,
         this.trustedRegion.countryFromHeaders(headers),
+        request.ayinAuth?.accountId,
       ),
     );
   }

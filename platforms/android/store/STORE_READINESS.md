@@ -10,7 +10,7 @@ Task 77 prepares configuration and listing requirements. No store submission is 
 | tv     | net.ayin.app.tv     | Google Play Android TV / Google TV                |
 | fireTv | net.ayin.app.firetv | Amazon Appstore Fire TV Android APK compatibility |
 
-All flavors currently use versionCode 1 and versionName 1.0.0. Release versioning must be confirmed before first submission.
+The mobile integration defaults to versionCode 2 and versionName 1.1.0, with CI overrides. Confirm the actual store version history before choosing a new release number. See `MOBILE_INTEGRATIONS.md` and `docs/MOBILE_RELEASE_OPERATIONS.md` for the current mobile release gates.
 
 ## Build and signing
 

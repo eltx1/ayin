@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpException,
   Inject,
   Param,
@@ -15,6 +16,7 @@ import {
 } from "@nestjs/common";
 import { z } from "zod";
 import { AdminGuard, RequireAdminRoles } from "../admin/admin.guard.js";
+import { OptionalAuthGuard } from "../auth/optional-auth.guard.js";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import {
   communityCommentSchema,
@@ -138,10 +140,19 @@ export class CreatorCommunityController {
 }
 
 @Controller("public/community")
+@UseGuards(OptionalAuthGuard)
 export class PublicCommunityController {
   constructor(@Inject(CommunityService) private readonly service: CommunityService) {}
-  @Get("channels/:handle") channel(@Param("handle") handle: string, @Query("take") take?: string) {
-    return run(() => this.service.channelPosts(handle, take ? Number(take) : 30));
+  @Get("channels/:handle")
+  @Header("Cache-Control", "private, no-store")
+  channel(
+    @Req() request: Partial<AuthenticatedRequest>,
+    @Param("handle") handle: string,
+    @Query("take") take?: string,
+  ) {
+    return run(() =>
+      this.service.channelPosts(handle, take ? Number(take) : 30, request.ayinAuth?.accountId),
+    );
   }
 }
 
