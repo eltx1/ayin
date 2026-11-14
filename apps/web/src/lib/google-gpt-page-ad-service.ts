@@ -197,7 +197,7 @@ export async function mountGooglePublisherTagSlot(input: {
   const noop = () => {};
   if (input.signal?.aborted) return noop;
   await loadGooglePublisherTag(input.consent);
-  if (input.signal?.aborted) return noop;
+  if (input.signal?.aborted || !webAdvertisingAllowed("page")) return noop;
   const googleTag = api();
   const privacySettings = gptPrivacySettingsForConsent(
     input.consent,
@@ -221,7 +221,7 @@ export async function mountGooglePublisherTagSlot(input: {
   await new Promise<void>((resolve, reject) => {
     cancelPending = resolve;
     googleTag.cmd.push(() => {
-      if (disposed || input.signal?.aborted) {
+      if (disposed || input.signal?.aborted || !webAdvertisingAllowed("page")) {
         resolve();
         return;
       }

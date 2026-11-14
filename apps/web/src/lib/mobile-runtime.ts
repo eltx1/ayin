@@ -43,6 +43,7 @@ let generation = 0;
 let accountId: string | null = null;
 let identityEstablished = false;
 let identityRefreshing = false;
+export const mobileIdentityRefreshing = () => identityRefreshing;
 export const getMobileAccountId = () => accountId;
 let childProfile = true;
 let privacyCheckedAccount: string | null | undefined = undefined;
@@ -147,6 +148,7 @@ export async function refreshMobileAccount(signal?: AbortSignal): Promise<void> 
   const revision = ++generation;
   identityRefreshing = true;
   childProfile = true;
+  publish({}); // Revoke hosted ad eligibility before waiting for the new identity.
   await requestMobile("analytics.consent", { enabled: false }).catch(() => undefined);
   try {
     const response = await fetch(apiBaseUrl + "/auth/me", {
@@ -266,7 +268,10 @@ export async function refreshMobileAccount(signal?: AbortSignal): Promise<void> 
       await requestMobile("session.reset").catch(() => undefined);
     }
   } finally {
-    if (revision === generation) identityRefreshing = false;
+    if (revision === generation) {
+      identityRefreshing = false;
+      publish({});
+    }
   }
 }
 export async function detachMobileSession(): Promise<void> {

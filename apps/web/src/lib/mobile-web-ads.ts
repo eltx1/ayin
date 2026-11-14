@@ -1,5 +1,5 @@
-import { isMobileHost, supportsMobile } from "./mobile-bridge";
-import { getMobileState, mobileRestricted } from "./mobile-runtime";
+import { isMobileHost, supportsMobile, requestMobile } from "./mobile-bridge";
+import { getMobileState, mobileRestricted, mobileIdentityRefreshing } from "./mobile-runtime";
 
 /** Explicit WebView opt-in, independent of native inventory and UMP consent.
  * GPT/IMA still apply their own browser consent scope; UMP is never copied into it.
@@ -10,6 +10,7 @@ export function webAdvertisingAllowed(format: "page" | "video"): boolean {
   const state = getMobileState();
   if (
     !state.ready ||
+    mobileIdentityRefreshing() ||
     state.error ||
     !state.info ||
     mobileRestricted() ||
@@ -29,6 +30,8 @@ export function beginWebAdBreak(): () => void {
   const lease = Symbol();
   activeBreaks.add(lease);
   document.documentElement.dataset.ayinWebAdActive = "true";
+  // An already-mounted SDK banner must leave before the web player opens its break.
+  void requestMobile("ads.hideBanner").catch(() => undefined);
   return () => {
     activeBreaks.delete(lease);
     if (!activeBreaks.size) delete document.documentElement.dataset.ayinWebAdActive;

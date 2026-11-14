@@ -27,7 +27,7 @@ permissions:
 jobs:
   upload:
     timeout-minutes: 20
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:17

@@ -179,6 +179,15 @@ function AdEnabledPlayerSession(props: AyinPlayerProps) {
     onPlaybackReady?.();
   }, [onPlaybackReady, playbackIdentity]);
 
+  useEffect(() => {
+    if (webAdsAllowed) return;
+    // Runtime/account eligibility is independent from CMP. Cancel a web break even
+    // when the browser consent snapshot itself has not changed.
+    adScopeRef.current?.release();
+    serviceRef.current?.destroy();
+    serviceRef.current = null;
+  }, [webAdsAllowed]);
+
   const emit = useCallback(
     (slot: VideoAdSlot, type: VideoAdEventType, errorCode?: string) => {
       if (!decision) return;

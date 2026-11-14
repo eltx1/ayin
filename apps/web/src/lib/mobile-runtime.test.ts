@@ -67,6 +67,38 @@ const boot = async () => {
   return runtime;
 };
 describe("mobile identity, consent and notification orchestration (bridge mocks, not device evidence)", () => {
+  it("holds the web-ad lease until every active break ends and hides an existing native banner", async () => {
+    vi.stubGlobal("document", { documentElement: { dataset: {} } });
+    const { beginWebAdBreak } = await import("./mobile-web-ads");
+    const endA = beginWebAdBreak(),
+      endB = beginWebAdBreak();
+    expect(document.documentElement.dataset.ayinWebAdActive).toBe("true");
+    expect(native.request).toHaveBeenCalledWith("ads.hideBanner");
+    endA();
+    endA();
+    expect(document.documentElement.dataset.ayinWebAdActive).toBe("true");
+    endB();
+    expect(document.documentElement.dataset.ayinWebAdActive).toBeUndefined();
+  });
+  it("revokes WebView eligibility synchronously throughout an in-flight identity refresh", async () => {
+    optIn(a);
+    config.webViewAds = {
+      android: { pageAdsEnabled: true, videoAdsEnabled: true },
+      ios: { pageAdsEnabled: true, videoAdsEnabled: true },
+    };
+    const runtime = await boot();
+    const { webAdvertisingAllowed } = await import("./mobile-web-ads");
+    const eligibility: boolean[] = [];
+    const stop = runtime.subscribeMobile(() => eligibility.push(webAdvertisingAllowed("page")));
+    expect(webAdvertisingAllowed("page")).toBe(true);
+    const refreshing = runtime.refreshMobileAccount();
+    expect(webAdvertisingAllowed("page")).toBe(false);
+    expect(eligibility[0]).toBe(false);
+    await refreshing;
+    expect(webAdvertisingAllowed("page")).toBe(true);
+    expect(eligibility.at(-1)).toBe(true);
+    stop();
+  });
   it.each(["android", "ios"] as const)(
     "enables explicit %s WebView inventory independently of native SDK delivery",
     async (platform) => {
