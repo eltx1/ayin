@@ -180,6 +180,7 @@ export class SessionService {
       });
       // A failed client detach must never keep the previous account's push address active.
       await tx.mobileDevice.deleteMany({ where: { sessionId, accountId: payload.sub } });
+      await tx.mobileDiagnostic.deleteMany({ where: { sessionId, accountId: payload.sub } });
     });
   }
 }

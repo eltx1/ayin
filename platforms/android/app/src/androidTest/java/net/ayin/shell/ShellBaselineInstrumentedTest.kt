@@ -23,6 +23,54 @@ import org.json.JSONObject
 @RunWith(AndroidJUnit4::class)
 class ShellBaselineInstrumentedTest {
     @Test
+    fun explicitSourceCleanupRejectsArgumentsAndPreservesSourceOnSessionReset() {
+        if (BuildConfig.SHELL_PLATFORM != "android") return
+        launch().use { scenario ->
+            loadHarness(scenario)
+            assertTrue(awaitJsBoolean(scenario, "window.AyinMobile.capabilities.includes('upload.sources')"))
+            scenario.onActivity { activity ->
+                activity.getSharedPreferences("ayin_selected_video_v1", android.content.Context.MODE_PRIVATE)
+                    .edit().putString("uri", "content://synthetic.example/selected-video")
+                    .putLong("selectedAt", System.currentTimeMillis()).commit()
+            }
+            evaluateJavascript(scenario, """
+                window.__sourceResponses = {};
+                window.addEventListener('ayin:mobile-response', e => { window.__sourceResponses[e.detail.id] = e.detail; });
+                window.AyinMobile.request({id:'source_bad',method:'upload.clear',params:{unexpected:true}});
+                window.AyinMobile.request({id:'source_reset',method:'session.reset',params:{}});
+                true
+            """.trimIndent())
+            assertTrue(awaitJsBoolean(scenario, "window.__sourceResponses.source_bad?.error === 'INVALID_PARAMETERS' && window.__sourceResponses.source_reset?.ok === true"))
+            scenario.onActivity { activity ->
+                assertTrue(activity.getSharedPreferences("ayin_selected_video_v1", android.content.Context.MODE_PRIVATE).contains("uri"))
+            }
+            evaluateJavascript(scenario, "window.AyinMobile.request({id:'source_clear',method:'upload.clear',params:{}}); true")
+            assertTrue(awaitJsBoolean(scenario, "window.__sourceResponses.source_clear?.ok === true && window.__sourceResponses.source_clear?.result.cleared === true"))
+            scenario.onActivity { activity ->
+                assertFalse(activity.getSharedPreferences("ayin_selected_video_v1", android.content.Context.MODE_PRIVATE).contains("uri"))
+            }
+        }
+    }
+
+    @Test
+    fun nativeSharingRejectsPrivateDestinationsAndPipRejectsExtraArguments() {
+        if (BuildConfig.SHELL_PLATFORM != "android") return
+        launch().use { scenario ->
+            loadHarness(scenario)
+            assertTrue(awaitJsBoolean(scenario, "window.AyinMobile.capabilities.includes('share')"))
+            evaluateJavascript(scenario, """
+                window.__invalidNative = {};
+                window.addEventListener('ayin:mobile-response', e => { window.__invalidNative[e.detail.id] = e.detail; });
+                window.AyinMobile.request({id:'share_private',method:'share.open',params:{url:'https://ayin.stream/account?token=secret'}});
+                window.AyinMobile.request({id:'pip_extra',method:'media.pip',params:{unexpected:true}});
+                true
+            """.trimIndent())
+            assertTrue(awaitJsBoolean(scenario, "window.__invalidNative.share_private?.ok === false && window.__invalidNative.share_private?.error === 'INVALID_PARAMETERS'"))
+            assertTrue(awaitJsBoolean(scenario, "window.__invalidNative.pip_extra?.ok === false && window.__invalidNative.pip_extra?.error === 'INVALID_PARAMETERS'"))
+        }
+    }
+
+    @Test
     fun activeWebAdBlocksNativeFullscreenBeforeSdkDispatch() {
         if (BuildConfig.SHELL_PLATFORM != "android") return
         launch().use { scenario ->
@@ -37,9 +85,12 @@ class ShellBaselineInstrumentedTest {
                 };
                 window.addEventListener('ayin:mobile-response', receiveBusyResponse);
                 window.AyinMobile.request({id:'$requestId',method:'ads.interstitial',params:{placement:'browse_transition',naturalTransition:true}});
+                window.addEventListener('ayin:mobile-response', e => { if (e.detail.id === 'config_while_web_ad') window.__busyConfig = e.detail; });
+                window.AyinMobile.request({id:'config_while_web_ad',method:'runtime.configure',params:{config:{}}});
                 true
             """.trimIndent())
             assertTrue(awaitJsBoolean(scenario, "window.__webAdBusy?.ok === false && window.__webAdBusy?.error === 'SENSITIVE_OPERATION'"))
+            assertTrue(awaitJsBoolean(scenario, "window.__busyConfig?.ok === false && window.__busyConfig?.error === 'SENSITIVE_OPERATION'"))
             evaluateJavascript(scenario, "delete document.documentElement.dataset.ayinWebAdActive; true")
         }
     }

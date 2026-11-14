@@ -60,6 +60,9 @@ internal class GoogleMobileRuntime(
 
     override val capabilities: List<String> get() = buildList {
         add("session.reset")
+        add("share")
+        add("upload.sources")
+        if (activity.packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) add("media.pip")
         if (adsReady) { add("privacy"); add("ads.banner"); add("ads.interstitial"); add("ads.gam") }
         if (webViewRegistered) add("ads.webview")
         if (firebaseReady) { add("analytics"); add("notifications") }
@@ -84,15 +87,16 @@ internal class GoogleMobileRuntime(
         when (method) {
             "runtime.configure" -> {
                 require(params.keys().asSequence().toSet() == setOf("config"))
-                if (sensitiveOperation || ads.isPresenting) { done(null, "SENSITIVE_OPERATION"); return }
+                if (sensitiveOperation || ads.isConfigurationBusy) { done(null, "SENSITIVE_OPERATION"); return }
                 val received = MobileConfig.parse(params.getJSONObject("config"))
                 val upgradeRequired = !MobileConfig.versionAtLeast(BuildConfig.VERSION_NAME, received.minimumAppVersion)
                 val eligible = !upgradeRequired &&
                     MobileConfig.rolloutBucket(MobilePushState.installationId(activity)) < received.rolloutPercent
                 val parsed = if (eligible) received else received.copy(adsEnabled = false, analyticsEnabled = false, notificationsEnabled = false)
-                // Ads controller defers configuration while fullscreen inventory is visible.
+                // Never acknowledge a candidate as applied while the ad controller is busy.
+                // The web retains/retries its candidate after the sensitive operation ends.
+                if (!ads.configure(parsed)) { done(null, "SENSITIVE_OPERATION"); return }
                 config = parsed
-                ads.configure(parsed)
                 val typeEditor = prefs.edit()
                 for (type in listOf("system", "channel", "video", "comment", "subscription", "moderation", "monetization")) typeEditor.putBoolean("push_type_$type", type in parsed.notificationTypes)
                 typeEditor.commit()

@@ -4,11 +4,18 @@ export type MobileCapability =
   | "analytics"
   | "ads.gam"
   | "ads.webview"
+  | "share"
+  | "media.pip"
+  | "upload.recovery"
+  | "upload.sources"
   | "ads.banner"
   | "ads.interstitial"
   | "notifications"
   | "session.reset";
 export type MobileMethod =
+  | "upload.clear"
+  | "share.open"
+  | "media.pip"
   | "runtime.configure"
   | "privacy.request"
   | "privacy.options"
@@ -86,6 +93,8 @@ export function supportsMobile(capability: MobileCapability): boolean {
 }
 function requiredCapability(method: MobileMethod): MobileCapability | null {
   if (method === "runtime.configure") return null;
+  if (method === "share.open") return "share";
+  if (method === "upload.clear") return "upload.sources";
   if (method.startsWith("analytics.")) return "analytics";
   if (method.startsWith("privacy.")) return "privacy";
   if (method.startsWith("notifications.")) return "notifications";
@@ -133,6 +142,10 @@ export function validMobileAnalytics(name: unknown, params: unknown): boolean {
 export function validMobileRequest(method: MobileMethod, params: Record<string, unknown>): boolean {
   if (!object(params)) return false;
   switch (method) {
+    case "share.open":
+      return only(params, ["url"]) && validMobileShareUrl(params.url);
+    case "media.pip":
+      return Object.keys(params).length === 0;
     case "runtime.configure":
       return (
         only(params, ["config"]) &&
@@ -178,8 +191,31 @@ export function validMobileRequest(method: MobileMethod, params: Record<string, 
           "notifications.request",
           "notifications.token",
           "session.reset",
+          "upload.clear",
         ].includes(method) && Object.keys(params).length === 0
       );
+  }
+}
+export function validMobileShareUrl(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 2048) return false;
+  try {
+    const url = new URL(value);
+    return (
+      url.origin === "https://ayin.stream" &&
+      !url.username &&
+      !url.password &&
+      !url.hash &&
+      /^\/(?:en\/|ar\/)?(?:watch\/[^/]+|c\/[^/]+|clips|live\/[^/]+|playlists\/[^/]+)\/?$/.test(
+        url.pathname,
+      ) &&
+      [...url.searchParams].every(
+        ([key, entry]) =>
+          url.searchParams.getAll(key).length === 1 &&
+          ((key === "kids" && entry === "1") || (key === "lang" && ["en", "ar"].includes(entry))),
+      )
+    );
+  } catch {
+    return false;
   }
 }
 /** Resolves null when unsupported; rejects finite timeouts/errors. No queue survives navigation. */

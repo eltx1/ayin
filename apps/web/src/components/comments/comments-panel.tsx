@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { BlockUserButton } from "@/components/social/user-blocks";
+import { ReportContentButton } from "@/components/social/report-content";
 import { useI18n } from "@/components/i18n/i18n-provider";
 import {
   ActionButton,
@@ -255,6 +256,7 @@ function CommentView({ item }: { item: ViewerComment }) {
       <header>
         <strong dir="auto">{item.authorProfile.name}</strong>
         {item.authorProfile.id && <BlockUserButton profileId={item.authorProfile.id} />}
+        <ReportContentButton target={{ commentId: item.id }} />
         {item.pinned ? <DataBadge>{t("pinned")}</DataBadge> : null}
         {item.creatorHearted ? <DataBadge tone="success">{t("hearted")}</DataBadge> : null}
       </header>

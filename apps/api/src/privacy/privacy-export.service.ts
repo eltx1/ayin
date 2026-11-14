@@ -482,7 +482,7 @@ export class PrivacyExportService {
       }),
     ]);
 
-    const [mobileDevices, userBlocks] = await Promise.all([
+    const [mobileDevices, userBlocks, mobileDiagnostics] = await Promise.all([
       this.database.client.mobileDevice.findMany({
         where: { accountId },
         select: {
@@ -498,6 +498,19 @@ export class PrivacyExportService {
       this.database.client.userBlock.findMany({
         where: { blockerAccountId: accountId },
         select: { blockedAccountId: true, createdAt: true },
+      }),
+      this.database.client.mobileDiagnostic.findMany({
+        where: { accountId, expiresAt: { gt: new Date() } },
+        select: {
+          installationId: true,
+          platform: true,
+          appVersion: true,
+          snapshot: true,
+          receivedAt: true,
+          expiresAt: true,
+          consentVersion: true,
+          consentRevokedAt: true,
+        },
       }),
     ]);
 
@@ -519,6 +532,7 @@ export class PrivacyExportService {
       },
       notifications,
       mobileDevices,
+      mobileDiagnostics,
       userBlocks,
       moderation: { reports, communityReports },
       finance: { contracts, earnings, payouts, payoutProfiles, revenueDisputes },

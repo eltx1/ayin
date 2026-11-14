@@ -1,7 +1,14 @@
 package net.ayin.shell
 
 import android.annotation.SuppressLint
+import android.app.PictureInPictureParams
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.util.Rational
 import android.content.ComponentCallbacks2
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
@@ -34,7 +41,9 @@ import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AlertDialog
 import androidx.core.view.ViewCompat
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -74,34 +83,35 @@ class MainActivity : AppCompatActivity() {
     )
     private val fileSelection = FileSelectionLease<VideoSelection>()
     private var fileValidationJob: Job? = null
+    private val retainedVideo by lazy { RetainedVideoSource(this) }
+    private var incomingVideo: Uri? = null
+    private var sourceDialog: AlertDialog? = null
+    private var mediaPlaying = false
+    private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    private var audioFocus: AudioFocusRequest? = null
+    private var sharePresenting = false
+    private var noisyReceiverRegistered = false
+    private val noisyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
+                pauseMedia()
+                abandonAudioFocus()
+            }
+        }
+    }
     private val videoPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        val selection = fileSelection.receiveResult() ?: return@registerForActivityResult
         mobileRuntime.sensitive(false)
         val clip = result.data?.clipData
         val uri = result.data?.data ?: clip?.takeIf { it.itemCount == 1 }?.getItemAt(0)?.uri
         val singleSelection = clip == null || (clip.itemCount == 1 && clip.getItemAt(0).uri == uri)
-        val eligible = result.resultCode == RESULT_OK && uri != null &&
-            singleSelection && uri.scheme == "content" &&
-            ownsFileSelection(selection)
+        val selection = fileSelection.receiveResult()
+        val eligible = result.resultCode == RESULT_OK && uri != null && singleSelection &&
+            VideoSourcePolicy.contentUri(uri.toString())
         if (!eligible || uri == null) {
-            fileSelection.completeValidation(selection)?.callback?.onReceiveValue(null)
+            selection?.let { fileSelection.completeValidation(it)?.callback?.onReceiveValue(null) }
             return@registerForActivityResult
         }
-        fileValidationJob = lifecycleScope.launch {
-            val selected = withContext(Dispatchers.IO) {
-                runCatching {
-                    if (!VideoFileSelection.accepts(contentResolver.getType(uri), selection.types)) {
-                        null
-                    } else {
-                        // A temporary user-selected document grant suffices. Never persist it.
-                        contentResolver.openFileDescriptor(uri, "r")?.use { arrayOf(uri) }
-                    }
-                }.getOrNull()
-            }
-            // Provider I/O may finish after navigation, renderer replacement, or a new request.
-            val current = fileSelection.completeValidation(selection) ?: return@launch
-            current.callback.onReceiveValue(selected.takeIf { ownsFileSelection(current) })
-        }
+        validateVideoChoice(selection, uri, result.data?.flags ?: 0)
     }
 
     private val connectivityManager by lazy {
@@ -124,6 +134,10 @@ class MainActivity : AppCompatActivity() {
         CookieManager.getInstance().setAcceptCookie(true)
         attachWebView(createConfiguredWebView())
         registerNetworkCallback()
+        if (BuildConfig.SHELL_PLATFORM == "android") {
+            ContextCompat.registerReceiver(this, noisyReceiver, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY), ContextCompat.RECEIVER_NOT_EXPORTED)
+            noisyReceiverRegistered = true
+        }
 
         onBackPressedDispatcher.addCallback(
             this,
@@ -142,7 +156,7 @@ class MainActivity : AppCompatActivity() {
         directBackArmed = savedInstanceState?.getBoolean(STATE_DIRECT_BACK_ARMED) ?: false
 
         if (!fixtureMode) {
-            if (!restored) loadIntent(intent) else mobileRuntime.opened(intent)
+            if (!restored || intent.action == Intent.ACTION_SEND) loadIntent(intent) else mobileRuntime.opened(intent)
         }
         webView.requestFocus()
         debugLog("created platform=${BuildConfig.SHELL_PLATFORM} restored=$restored")
@@ -164,6 +178,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        sharePresenting = false
         webView.onResume()
         mobileRuntime.resume()
         emitLifecycle("resume")
@@ -172,14 +187,19 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         mobileRuntime.pause()
-        emitLifecycle("pause")
+        if (!isInPictureInPictureMode) {
+            emitLifecycle("pause")
+            if (BuildConfig.SHELL_PLATFORM == "android") { pauseMedia(); abandonAudioFocus() }
+            webView.onPause()
+        }
         CookieManager.getInstance().flush()
-        webView.onPause()
         debugLog("lifecycle=pause")
         super.onPause()
     }
 
     override fun onStop() {
+        if (BuildConfig.SHELL_PLATFORM == "android") pauseMedia()
+        abandonAudioFocus()
         emitLifecycle("stop")
         CookieManager.getInstance().flush()
         debugLog("lifecycle=stop")
@@ -202,6 +222,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         cancelFileSelection()
+        abandonAudioFocus()
+        if (noisyReceiverRegistered) {
+            unregisterReceiver(noisyReceiver)
+            noisyReceiverRegistered = false
+        }
         if (::mobileRuntime.isInitialized) mobileRuntime.destroy()
         unregisterNetworkCallback()
         customViewCallback = null
@@ -416,16 +441,47 @@ class MainActivity : AppCompatActivity() {
         webView.postDelayed({ send(null, "TIMEOUT") }, 180_000)
         fun invokeNative() {
             if (generation != documentGeneration || isDestroyed) return
+            // Session reset also runs during initial binding and transient identity failures.
+            // Only explicit logout/known-account change calls upload.clear from the web.
+            if (method == "session.reset" && params.length() == 0) cancelFileSelection()
+            if (method == "upload.clear" && BuildConfig.SHELL_PLATFORM == "android") {
+                if (params.length() != 0) { send(null, "INVALID_PARAMETERS"); return }
+                cancelFileSelection()
+                retainedVideo.clear()
+                incomingVideo = null
+                send(JSONObject().put("cleared", true), null)
+                return
+            }
+            if (method == "share.open" && BuildConfig.SHELL_PLATFORM == "android") {
+                val url = params.opt("url")
+                if (params.keys().asSequence().toSet() != setOf("url") || url !is String || !VideoSourcePolicy.publicShareUrl(url)) {
+                    send(null, "INVALID_PARAMETERS"); return
+                }
+                if (sharePresenting || !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) || !hasWindowFocus()) {
+                    send(null, "BUSY"); return
+                }
+                try {
+                    sharePresenting = true
+                    startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"; putExtra(Intent.EXTRA_TEXT, url)
+                    }, getString(R.string.ayin_share)))
+                    send(JSONObject().put("shared", true), null)
+                } catch (_: RuntimeException) { sharePresenting = false; send(null, "SHARE_UNAVAILABLE") }
+                return
+            }
+            if (method == "media.pip" && BuildConfig.SHELL_PLATFORM == "android") {
+                if (params.length() != 0) { send(null, "INVALID_PARAMETERS"); return }
+                enterVideoPip(::send); return
+            }
             try { mobileRuntime.request(method, params, ::send) } catch (_: Exception) { send(null, "INVALID_PARAMETERS") }
         }
         if (method in setOf("ads.banner", "ads.interstitial", "runtime.configure")) {
             // A web IMA ad may pause content, so playing-video checks alone are insufficient.
             // Recheck the actual trusted document immediately before native ad/config dispatch.
-            val includeMedia = method != "runtime.configure"
             val script = """
                 (() => document.documentElement.dataset.ayinUploadActive === 'true' ||
                   document.documentElement.dataset.ayinWebAdActive === 'true' ||
-                  ($includeMedia && Array.from(document.querySelectorAll('video,audio')).some(m => !m.paused && !m.ended)))()
+                  Array.from(document.querySelectorAll('video,audio')).some(m => !m.paused && !m.ended))()
             """.trimIndent()
             try {
                 webView.evaluateJavascript(script) { busy ->
@@ -456,6 +512,8 @@ class MainActivity : AppCompatActivity() {
                 val state = payload.optString("state").take(MAX_PLAYBACK_STATE_LENGTH)
                 runOnUiThread {
                     webView.keepScreenOn = state == "playing"
+                    mediaPlaying = state == "playing"
+                    if (mediaPlaying) requestAudioFocus() else abandonAudioFocus()
                     mobileRuntime.playback(state == "playing")
                     debugLog("playback=$state")
                 }
@@ -494,6 +552,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadIntent(intent: Intent) {
         cancelFileSelection()
+        if (BuildConfig.SHELL_PLATFORM == "android" && intent.action == Intent.ACTION_SEND) {
+            val stream = runCatching {
+                if (android.os.Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                else @Suppress("DEPRECATION") intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            }.getOrNull()
+            val singleStream = runCatching { intent.clipData == null ||
+                (intent.clipData!!.itemCount == 1 && intent.clipData!!.getItemAt(0).uri == stream) }.getOrDefault(false)
+            if (stream != null && singleStream && intent.type?.startsWith("video/") == true &&
+                intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0 && VideoSourcePolicy.contentUri(stream.toString())) {
+                incomingVideo = stream
+                loadTrustedUrl(BuildConfig.AYIN_ORIGIN + "/upload")
+                return
+            }
+        }
         val raw = intent.dataString
         val target = ShellNavigation.normalizeDeepLink(raw) ?: BuildConfig.AYIN_ORIGIN
         directBackArmed =
@@ -757,20 +829,7 @@ class MainActivity : AppCompatActivity() {
                 callback.onReceiveValue(null)
                 return true
             }
-            val picker = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = types.singleOrNull() ?: "video/*"
-                putExtra(Intent.EXTRA_MIME_TYPES, types.toTypedArray())
-                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            try {
-                mobileRuntime.sensitive(true)
-                videoPicker.launch(picker)
-            } catch (_: RuntimeException) {
-                mobileRuntime.sensitive(false)
-                fileSelection.launchFailed()?.callback?.onReceiveValue(null)
-            }
+            chooseVideoSource(selection)
             return true
         }
 
@@ -796,9 +855,148 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun cancelFileSelection() {
+        sourceDialog?.dismiss()
+        sourceDialog = null
         fileValidationJob?.cancel()
         fileValidationJob = null
         fileSelection.cancel()?.callback?.onReceiveValue(null)
+    }
+
+    private fun chooseVideoSource(selection: VideoSelection) {
+        val previous = if (BuildConfig.SHELL_PLATFORM == "android") incomingVideo ?: retainedVideo.restored() else null
+        if (previous == null) { launchVideoPicker(selection); return }
+        var chosen = false
+        val isShared = incomingVideo != null
+        sourceDialog = AlertDialog.Builder(this)
+            .setTitle(R.string.ayin_choose_upload_video)
+            .setItems(arrayOf(getString(if (isShared) R.string.ayin_use_shared_video else R.string.ayin_use_previous_video), getString(R.string.ayin_choose_another_video), getString(R.string.ayin_forget_previous_video))) { _, which ->
+                chosen = true
+                when (which) {
+                    0 -> {
+                        incomingVideo = null
+                        val current = fileSelection.receiveResult()
+                        mobileRuntime.sensitive(false)
+                        if (current != null) validateVideoChoice(current, previous, 0)
+                    }
+                    1 -> launchVideoPicker(selection)
+                    else -> { incomingVideo = null; retainedVideo.clear(); launchVideoPicker(selection) }
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .create().also { dialog ->
+                dialog.setOnDismissListener {
+                    sourceDialog = null
+                    if (!chosen) {
+                        mobileRuntime.sensitive(false)
+                        fileSelection.launchFailed()?.callback?.onReceiveValue(null)
+                    }
+                }
+                mobileRuntime.sensitive(true)
+                dialog.show()
+            }
+    }
+
+    private fun launchVideoPicker(selection: VideoSelection) {
+        if (!ownsFileSelection(selection)) {
+            fileSelection.launchFailed()?.callback?.onReceiveValue(null); return
+        }
+        val picker = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = selection.types.singleOrNull() ?: "video/*"
+            putExtra(Intent.EXTRA_MIME_TYPES, selection.types.toTypedArray())
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        try {
+            mobileRuntime.sensitive(true)
+            videoPicker.launch(picker)
+        } catch (_: RuntimeException) {
+            mobileRuntime.sensitive(false)
+            fileSelection.launchFailed()?.callback?.onReceiveValue(null)
+        }
+    }
+
+    private fun validateVideoChoice(selection: VideoSelection?, uri: Uri, offeredFlags: Int) {
+        if (selection != null && !ownsFileSelection(selection)) {
+            fileSelection.completeValidation(selection)?.callback?.onReceiveValue(null); return
+        }
+        fileValidationJob = lifecycleScope.launch {
+            val readable = withContext(Dispatchers.IO) {
+                runCatching {
+                    VideoFileSelection.accepts(contentResolver.getType(uri), selection?.types ?: listOf("video/*")) &&
+                        contentResolver.openFileDescriptor(uri, "r")?.use { true } == true
+                }.getOrDefault(false)
+            }
+            // Source recovery does not bypass account/session or web file-fingerprint checks.
+            if (selection == null) {
+                return@launch
+            }
+            val current = fileSelection.completeValidation(selection) ?: return@launch
+            val permitted = readable && ownsFileSelection(current)
+            if (permitted && BuildConfig.SHELL_PLATFORM == "android") retainedVideo.remember(uri, offeredFlags)
+            else if (!readable && retainedVideo.restored() == uri) retainedVideo.clear()
+            current.callback.onReceiveValue(if (permitted) arrayOf(uri) else null)
+        }
+    }
+
+    private fun pauseMedia() {
+        if (::webView.isInitialized && isTrustedWebUrl(webView.url ?: ""))
+            webView.evaluateJavascript("document.querySelectorAll('video,audio').forEach(m => m.pause());", null)
+        mediaPlaying = false
+        if (::mobileRuntime.isInitialized) mobileRuntime.playback(false)
+        if (::webView.isInitialized) webView.keepScreenOn = false
+    }
+
+    private fun requestAudioFocus() {
+        if (BuildConfig.SHELL_PLATFORM != "android" || audioFocus != null) return
+        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MOVIE).build())
+            .setOnAudioFocusChangeListener { change ->
+                if (change < 0) runOnUiThread { pauseMedia(); abandonAudioFocus() }
+            }.build()
+        if (audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) audioFocus = request
+        else pauseMedia()
+    }
+
+    private fun abandonAudioFocus() {
+        audioFocus?.let { audioManager.abandonAudioFocusRequest(it) }
+        audioFocus = null
+    }
+
+    private fun enterVideoPip(done: (JSONObject?, String?) -> Unit) {
+        if (customView == null || !mediaPlaying || !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) || !packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)) {
+            done(null, "PIP_UNAVAILABLE"); return
+        }
+        val generation = documentGeneration
+        webView.evaluateJavascript("""
+            (() => {
+              const video = Array.from(document.querySelectorAll('video')).find(v => !v.paused && !v.ended);
+              return {busy: document.documentElement.dataset.ayinWebAdActive === 'true' ||
+                document.documentElement.dataset.ayinUploadActive === 'true' || !video,
+                width: video?.videoWidth || 16, height: video?.videoHeight || 9};
+            })()
+        """.trimIndent()) { raw ->
+            if (generation != documentGeneration || isDestroyed) return@evaluateJavascript
+            val media = runCatching { JSONObject(raw) }.getOrNull()
+            if (media == null || media.optBoolean("busy", true)) { done(null, "SENSITIVE_OPERATION"); return@evaluateJavascript }
+            try {
+                mobileRuntime.pause() // PiP is content-only; native ads cannot remain visible.
+                val width = media.optInt("width", 16).coerceIn(1, 8192)
+                val height = media.optInt("height", 9).coerceIn(1, 8192)
+                val ratio = if (width.toDouble() / height in (1.0 / 2.39)..2.39) Rational(width, height) else Rational(16, 9)
+                val entered = enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(ratio).build())
+                if (!entered) mobileRuntime.resume()
+                done(JSONObject().put("entered", entered), null)
+            } catch (_: RuntimeException) { mobileRuntime.resume(); done(null, "PIP_UNAVAILABLE") }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(inPip: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(inPip, newConfig)
+        if (!inPip && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            webView.onResume()
+            mobileRuntime.resume()
+        }
     }
 
     private fun ownsFileSelection(selection: VideoSelection): Boolean =

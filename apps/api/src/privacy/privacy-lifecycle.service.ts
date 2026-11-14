@@ -456,6 +456,7 @@ export class PrivacyLifecycleService {
         data: { revokedAt: now, revokeReason: "ACCOUNT_DELETION" },
       });
       await tx.mobileDevice.deleteMany({ where: { accountId: request.accountId } });
+      await tx.mobileDiagnostic.deleteMany({ where: { accountId: request.accountId } });
       await tx.adminAuditLog.create({
         data: {
           action: "privacy.account_deactivated",
@@ -1004,6 +1005,7 @@ export class PrivacyLifecycleService {
       where: { profileId: { in: profileIds } },
     });
     await tx.mobileDevice.deleteMany({ where: { accountId } });
+    await tx.mobileDiagnostic.deleteMany({ where: { accountId } });
     await tx.userBlock.deleteMany({
       where: { OR: [{ blockerAccountId: accountId }, { blockedAccountId: accountId }] },
     });

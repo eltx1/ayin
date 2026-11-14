@@ -10,6 +10,7 @@ import { MobilePushService } from "../src/mobile/mobile-push.service.js";
 import { MobileConfigService } from "../src/mobile/mobile-config.service.js";
 import { MobileDevicesService } from "../src/mobile/mobile-devices.service.js";
 import { FcmHttpV1Service } from "../src/mobile/fcm-http-v1.service.js";
+import { PrivacyExportService } from "../src/privacy/privacy-export.service.js";
 import {
   defaultMobileRuntimeConfig,
   mobilePreferencesSchema,
@@ -280,5 +281,328 @@ databaseDescribe("mobile runtime database and authorization integration", () => 
         })
       ).statusCode,
     ).toBe(404);
+  });
+  async function diagnosticSetup() {
+    const owner = await user();
+    const profile = await prisma.viewerProfile.findFirstOrThrow({
+      where: { accountId: owner.accountId, isDefault: true },
+    });
+    const headers = {
+      cookie: owner.cookie,
+      "x-ayin-expected-account": owner.accountId,
+      "x-ayin-viewer-profile": profile.id,
+      "x-ayin-diagnostics-consent-version": "1",
+    };
+    const payload = {
+      installationId: randomUUID(),
+      platform: "android",
+      appVersion: "1.1.0",
+      bridgeVersion: 1,
+      capabilities: ["ads.gam", "ads.webview", "share"],
+      configRevision: "a".repeat(64),
+      configAppliedAt: null,
+      lastConfigCheckAt: null,
+      ads: { status: "NO_FILL", lastEvent: "ad_failed", errorCode: 3 },
+      firebaseConfigured: true,
+      runtimeAllowed: true,
+      diagnosticsConsent: true,
+    };
+    return { owner, profile, headers, payload };
+  }
+  async function allowDiagnostics() {
+    await prisma.platformSetting.create({
+      data: {
+        namespace: "PLATFORM",
+        key: "mobileRuntimeConfigV1",
+        valueType: "JSON",
+        schemaVersion: 1,
+        value: {
+          ...defaultMobileRuntimeConfig,
+          analytics: { enabled: true },
+          ads: { ...defaultMobileRuntimeConfig.ads, audience: "general" },
+        },
+      },
+    });
+  }
+  async function grantDiagnostics(headers: Record<string, string>, installationId: string) {
+    const state = await app.inject({
+      method: "GET",
+      url: `/mobile/diagnostics/consent/${installationId}`,
+      headers,
+    });
+    expect(state.statusCode).toBe(200);
+    const grant = await app.inject({
+      method: "PUT",
+      url: "/mobile/diagnostics/consent",
+      headers,
+      payload: {
+        installationId,
+        enabled: true,
+        expectedConsentVersion: state.json().consentVersion,
+      },
+    });
+    expect(grant.statusCode).toBe(200);
+    headers["x-ayin-diagnostics-consent-version"] = String(grant.json().consentVersion);
+  }
+  it("requires diagnostics authentication, expected account, actual owned profile and declared consent", async () => {
+    const { owner, headers, payload } = await diagnosticSetup();
+    expect(
+      (await app.inject({ method: "POST", url: "/mobile/diagnostics", payload })).statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/mobile/diagnostics",
+          headers: { cookie: owner.cookie },
+          payload,
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/mobile/diagnostics",
+          headers: { cookie: owner.cookie, "x-ayin-expected-account": owner.accountId },
+          payload,
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (await app.inject({ method: "POST", url: "/mobile/diagnostics", headers, payload }))
+        .statusCode,
+    ).toBe(403);
+    await allowDiagnostics();
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/mobile/diagnostics",
+          headers: { ...headers, "x-ayin-expected-account": randomUUID() },
+          payload,
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/mobile/diagnostics",
+          headers: { ...headers, "x-ayin-diagnostics-consent-version": "1.5" },
+          payload,
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: "PUT",
+          url: "/mobile/diagnostics/consent",
+          headers,
+          payload: { installationId: payload.installationId, enabled: true },
+        })
+      ).statusCode,
+    ).toBe(400);
+    const other = await user();
+    const foreign = await prisma.viewerProfile.findFirstOrThrow({
+      where: { accountId: other.accountId },
+    });
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/mobile/diagnostics",
+          headers: { ...headers, "x-ayin-viewer-profile": foreign.id },
+          payload,
+        })
+      ).statusCode,
+    ).toBe(403);
+    const kid = await prisma.viewerProfile.create({
+      data: {
+        accountId: owner.accountId,
+        name: "Child",
+        slug: `child-${randomUUID()}`,
+        isKids: true,
+      },
+    });
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/mobile/diagnostics",
+          headers: { ...headers, "x-ayin-viewer-profile": kid.id },
+          payload,
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/mobile/diagnostics",
+          headers,
+          payload: { ...payload, diagnosticsConsent: false },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/mobile/diagnostics",
+          headers,
+          payload: { ...payload, token: "do-not-store" },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(await prisma.mobileDiagnostic.count()).toBe(0);
+  });
+  it("stores only a bounded latest diagnostic, enforces rate limits, and scopes SUPERADMIN reads", async () => {
+    const { owner, headers, payload } = await diagnosticSetup();
+    await allowDiagnostics();
+    await grantDiagnostics(headers, payload.installationId);
+    expect(
+      (await app.inject({ method: "POST", url: "/mobile/diagnostics", headers, payload }))
+        .statusCode,
+    ).toBe(201);
+    expect(
+      (await app.inject({ method: "POST", url: "/mobile/diagnostics", headers, payload }))
+        .statusCode,
+    ).toBe(429);
+    await prisma.mobileDiagnostic.update({
+      where: { installationId: payload.installationId },
+      data: { receivedAt: new Date(Date.now() - 61_000) },
+    });
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/mobile/diagnostics",
+          headers,
+          payload: { ...payload, ads: { ...payload.ads, status: "READY", errorCode: null } },
+        })
+      ).statusCode,
+    ).toBe(201);
+    expect(await prisma.mobileDiagnostic.count({ where: { accountId: owner.accountId } })).toBe(1);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/admin/mobile/diagnostics?accountId=${owner.accountId}`,
+          headers: { cookie: owner.cookie },
+        })
+      ).statusCode,
+    ).toBe(403);
+    const admin = await user(true);
+    const read = await app.inject({
+      method: "GET",
+      url: `/admin/mobile/diagnostics?accountId=${owner.accountId}`,
+      headers: { cookie: admin.cookie },
+    });
+    expect(read.statusCode).toBe(200);
+    expect(read.json()).toHaveLength(1);
+    expect(read.json()[0].snapshot.ads).toEqual({
+      status: "READY",
+      lastEvent: "ad_failed",
+      errorCode: null,
+    });
+    expect(read.body).not.toContain("@example.com");
+    expect(read.body).not.toContain("token");
+    const other = await user();
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/admin/mobile/diagnostics?accountId=${other.accountId}`,
+          headers: { cookie: admin.cookie },
+        })
+      ).json(),
+    ).toEqual([]);
+    await prisma.mobileDiagnostic.update({
+      where: { installationId: payload.installationId },
+      data: { expiresAt: new Date(Date.now() - 1) },
+    });
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/admin/mobile/diagnostics?accountId=${owner.accountId}`,
+          headers: { cookie: admin.cookie },
+        })
+      ).json(),
+    ).toEqual([]);
+  });
+  it("includes diagnostics in privacy export and removes owned records on opt-out/logout without cross-account deletion", async () => {
+    const { owner, headers, payload } = await diagnosticSetup();
+    await allowDiagnostics();
+    await grantDiagnostics(headers, payload.installationId);
+    expect(
+      (await app.inject({ method: "POST", url: "/mobile/diagnostics", headers, payload }))
+        .statusCode,
+    ).toBe(201);
+    const exported = (await app.get(PrivacyExportService).build(owner.accountId)) as {
+      mobileDiagnostics: unknown[];
+    };
+    expect(exported.mobileDiagnostics).toHaveLength(1);
+    const other = await user();
+    const foreignHeaders = { cookie: other.cookie, "x-ayin-expected-account": other.accountId };
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/mobile/diagnostics/${payload.installationId}`,
+          headers: foreignHeaders,
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(await prisma.mobileDiagnostic.count()).toBe(1);
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/mobile/diagnostics/${payload.installationId}`,
+          headers,
+        })
+      ).statusCode,
+    ).toBe(200);
+    const revoked = await prisma.mobileDiagnostic.findUniqueOrThrow({
+      where: { installationId: payload.installationId },
+    });
+    expect(revoked.consentRevokedAt).toBeInstanceOf(Date);
+    expect(revoked.snapshot).toBeNull();
+    expect(revoked.consentVersion).toBe(2);
+    expect(
+      (await app.inject({ method: "POST", url: "/mobile/diagnostics", headers, payload }))
+        .statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: "PUT",
+          url: "/mobile/diagnostics/consent",
+          headers,
+          payload: {
+            installationId: payload.installationId,
+            enabled: true,
+            expectedConsentVersion: 1,
+          },
+        })
+      ).statusCode,
+    ).toBe(409);
+    await grantDiagnostics(headers, payload.installationId);
+    await prisma.mobileDiagnostic.update({
+      where: { installationId: payload.installationId },
+      data: { receivedAt: new Date(Date.now() - 61_000) },
+    });
+    expect(
+      (await app.inject({ method: "POST", url: "/mobile/diagnostics", headers, payload }))
+        .statusCode,
+    ).toBe(201);
+    expect(
+      (await app.inject({ method: "POST", url: "/auth/logout", headers: { cookie: owner.cookie } }))
+        .statusCode,
+    ).toBe(204);
+    expect(await prisma.mobileDiagnostic.count()).toBe(0);
   });
 });

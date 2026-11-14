@@ -7,6 +7,7 @@ import { AccountScopeError, requestAccountScope } from "@/lib/account-scope";
 import { readChannelBlockStatus } from "@/lib/channel-block-status";
 import { ActionButton } from "@/components/ui/design-system";
 import styles from "@/app/(viewer)/account/account.module.css";
+import { ReportContentButton } from "./report-content";
 const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 interface BlockedUser {
   blockedAccountId: string;
@@ -94,7 +95,7 @@ export function BlockUserButton({
     }
   }
   return (
-    <span>
+    <div>
       <ActionButton
         type="button"
         tone="quiet"
@@ -104,7 +105,8 @@ export function BlockUserButton({
         {ar ? "حظر المستخدم" : "Block user"}
       </ActionButton>
       {message && <span role="status">{message}</span>}
-    </span>
+      {channelId && <ReportContentButton target={{ channelId }} />}
+    </div>
   );
 }
 export function AccountBlockedUsers() {

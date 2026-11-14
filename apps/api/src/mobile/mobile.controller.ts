@@ -24,6 +24,8 @@ import {
 import { MobileConfigService } from "./mobile-config.service.js";
 import { MobileDevicesService } from "./mobile-devices.service.js";
 import { MobilePushService } from "./mobile-push.service.js";
+import { MobileDiagnosticsService } from "./mobile-diagnostics.service.js";
+import { mobileDiagnosticSchema } from "./mobile-diagnostics.schema.js";
 import {
   mobileDeviceSchema,
   mobilePushInputSchema,
@@ -47,11 +49,85 @@ export class MobileController {
     @Inject(MobileConfigService) private readonly config: MobileConfigService,
     @Inject(MobileDevicesService) private readonly devices: MobileDevicesService,
     @Inject(MobilePushService) private readonly push: MobilePushService,
+    @Inject(MobileDiagnosticsService) private readonly diagnostics: MobileDiagnosticsService,
   ) {}
   @Get("config")
   @Header("Cache-Control", "no-store")
   configRead() {
     return this.config.get();
+  }
+  @Post("diagnostics")
+  @UseGuards(AuthGuard)
+  @Header("Cache-Control", "private, no-store")
+  diagnosticWrite(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    if (request.headers["x-ayin-expected-account"] !== request.ayinAuth.accountId)
+      throw new BadRequestException(
+        "An explicit expected account is required for app diagnostics.",
+      );
+    return this.diagnostics.record(
+      request.ayinAuth,
+      parse(mobileDiagnosticSchema, body),
+      parse(z.string().uuid(), request.headers["x-ayin-viewer-profile"]),
+      parse(
+        z.coerce.number().int().min(1).max(1_000_000_000),
+        request.headers["x-ayin-diagnostics-consent-version"],
+      ),
+    );
+  }
+  @Get("diagnostics/consent/:installationId")
+  @UseGuards(AuthGuard)
+  @Header("Cache-Control", "private, no-store")
+  diagnosticConsent(
+    @Req() request: AuthenticatedRequest,
+    @Param("installationId") installationId: string,
+  ) {
+    if (request.headers["x-ayin-expected-account"] !== request.ayinAuth.accountId)
+      throw new BadRequestException(
+        "An explicit expected account is required for app diagnostics.",
+      );
+    return this.diagnostics.consent(
+      request.ayinAuth,
+      parse(z.string().uuid(), installationId),
+      parse(z.string().uuid(), request.headers["x-ayin-viewer-profile"]),
+    );
+  }
+  @Put("diagnostics/consent")
+  @UseGuards(AuthGuard)
+  @Header("Cache-Control", "private, no-store")
+  diagnosticGrant(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    if (request.headers["x-ayin-expected-account"] !== request.ayinAuth.accountId)
+      throw new BadRequestException(
+        "An explicit expected account is required for app diagnostics.",
+      );
+    const input = parse(
+      z
+        .object({
+          installationId: z.string().uuid(),
+          enabled: z.literal(true),
+          expectedConsentVersion: z.number().int().min(0).max(1_000_000_000),
+        })
+        .strict(),
+      body,
+    );
+    return this.diagnostics.grant(
+      request.ayinAuth,
+      input.installationId,
+      parse(z.string().uuid(), request.headers["x-ayin-viewer-profile"]),
+      input.expectedConsentVersion,
+    );
+  }
+  @Delete("diagnostics/:installationId")
+  @UseGuards(AuthGuard)
+  @Header("Cache-Control", "private, no-store")
+  diagnosticRemove(
+    @Req() request: AuthenticatedRequest,
+    @Param("installationId") installationId: string,
+  ) {
+    if (request.headers["x-ayin-expected-account"] !== request.ayinAuth.accountId)
+      throw new BadRequestException(
+        "An explicit expected account is required for app diagnostics.",
+      );
+    return this.diagnostics.remove(request.ayinAuth, parse(z.string().uuid(), installationId));
   }
   @Post("devices")
   @UseGuards(AuthGuard)
@@ -95,6 +171,7 @@ export class AdminMobileController {
   constructor(
     @Inject(MobileConfigService) private readonly config: MobileConfigService,
     @Inject(MobilePushService) private readonly push: MobilePushService,
+    @Inject(MobileDiagnosticsService) private readonly diagnostics: MobileDiagnosticsService,
   ) {}
   @Get("config")
   @Header("Cache-Control", "private, no-store")
@@ -117,6 +194,13 @@ export class AdminMobileController {
   @Header("Cache-Control", "private, no-store")
   status() {
     return this.push.status();
+  }
+  @Get("diagnostics")
+  @Header("Cache-Control", "private, no-store")
+  diagnosticRead(@Query() query: unknown) {
+    return this.diagnostics.list(
+      parse(z.object({ accountId: z.string().uuid() }).strict(), query).accountId,
+    );
   }
   @Get("deliveries")
   @Header("Cache-Control", "private, no-store")

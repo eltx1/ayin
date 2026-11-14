@@ -333,6 +333,7 @@ model Account {
   rightsDeclarations      ContentRightsDeclaration[]
   notifications           Notification[]
   mobileDevices           MobileDevice[]
+  mobileDiagnostics       MobileDiagnostic[]
   mobilePushDeliveries     MobilePushDelivery[]
   auditLogs               AdminAuditLog[]            @relation("AdminAuditActor")
   assignedModerationCases ModerationCase[]           @relation("ModerationAssignee")
@@ -360,6 +361,7 @@ model AccountSession {
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
   mobileDevices MobileDevice[]
+  mobileDiagnostics MobileDiagnostic[]
 
   @@index([accountId, revokedAt, expiresAt])
   @@index([expiresAt])

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ayin_choose_upload_video">اختيار فيديو للرفع</string>
+    <string name="ayin_use_shared_video">استخدام الفيديو المشارك</string>
+    <string name="ayin_use_previous_video">استخدام الفيديو السابق</string>
+    <string name="ayin_choose_another_video">اختيار فيديو آخر</string>
+    <string name="ayin_forget_previous_video">نسيان الفيديو المحفوظ واختيار آخر</string>
+    <string name="ayin_share">مشاركة AYIN</string>
+</resources>

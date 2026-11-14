@@ -143,6 +143,7 @@ jobs:
           AYIN_IOS_CERTIFICATE_BASE64: ${{ secrets.AYIN_IOS_CERTIFICATE_BASE64 }}
           AYIN_IOS_CERTIFICATE_PASSWORD: ${{ secrets.AYIN_IOS_CERTIFICATE_PASSWORD }}
           AYIN_IOS_PROFILE_BASE64: ${{ secrets.AYIN_IOS_PROFILE_BASE64 }}
+          AYIN_IOS_SHARE_PROFILE_BASE64: ${{ secrets.AYIN_IOS_SHARE_PROFILE_BASE64 }}
         run: |
           set -euo pipefail
           flags=(ios --firebase-plist platforms/ios/AYIN/GoogleService-Info.plist)
@@ -188,6 +189,7 @@ jobs:
           AYIN_IOS_CERTIFICATE_BASE64: ${{ secrets.AYIN_IOS_CERTIFICATE_BASE64 }}
           AYIN_IOS_CERTIFICATE_PASSWORD: ${{ secrets.AYIN_IOS_CERTIFICATE_PASSWORD }}
           AYIN_IOS_PROFILE_BASE64: ${{ secrets.AYIN_IOS_PROFILE_BASE64 }}
+          AYIN_IOS_SHARE_PROFILE_BASE64: ${{ secrets.AYIN_IOS_SHARE_PROFILE_BASE64 }}
         run: python3 scripts/mobile-ios-signing.py install
       - name: Archive and optionally export device IPA
         env:
@@ -197,7 +199,9 @@ jobs:
           set -euo pipefail
           flags=(CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO)
           if [ "$SIGNED" = true ]; then
-            flags=(CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Manual "DEVELOPMENT_TEAM=$AYIN_IOS_TEAM_ID" "PROVISIONING_PROFILE_SPECIFIER=$AYIN_IOS_PROFILE_UUID" "CODE_SIGN_IDENTITY=Apple Distribution")
+            # Profiles belong to individual targets. A global profile override would
+            # incorrectly sign AYINShare using the main application's profile.
+            flags=(CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Manual "DEVELOPMENT_TEAM=$AYIN_IOS_TEAM_ID" "AYIN_IOS_PROFILE_UUID=$AYIN_IOS_PROFILE_UUID" "AYIN_IOS_SHARE_PROFILE_UUID=$AYIN_IOS_SHARE_PROFILE_UUID" "CODE_SIGN_IDENTITY=Apple Distribution")
           fi
           xcodebuild -project AYIN.xcodeproj -scheme AYIN -configuration Release \
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/AYIN.xcarchive" \

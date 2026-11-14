@@ -142,8 +142,10 @@ export async function requestAccountScope<T>(
     (method === "DELETE" &&
       /^\/user-blocks\/[0-9a-f-]{36}$/i.test(path) &&
       uuid.test(path.split("/")[2]!));
+  const trustReportPath = method === "POST" && path === "/trust/reports";
   if (
     (!userBlocksPath &&
+      !trustReportPath &&
       !socialPath &&
       (method === "PUT" || !/^\/(auth|privacy|creator)\/[a-zA-Z0-9/_?=&%.-]+$/.test(path))) ||
     (method === "GET" && body !== undefined) ||

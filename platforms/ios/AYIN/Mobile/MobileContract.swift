@@ -123,8 +123,20 @@ struct MobileRuntimeConfig: Decodable {
 }
 
 enum MobileContract {
-    static let capabilities = ["privacy", "analytics", "ads.banner", "ads.interstitial", "ads.gam", "ads.webview", "notifications", "session.reset"]
-    static let methods: Set<String> = ["runtime.configure", "privacy.request", "privacy.options", "analytics.consent", "analytics.event", "analytics.user", "ads.banner", "ads.hideBanner", "ads.interstitial", "notifications.request", "notifications.token", "session.reset"]
+    static let capabilities = ["privacy", "analytics", "ads.banner", "ads.interstitial", "ads.gam", "ads.webview", "notifications", "session.reset", "share", "upload.recovery", "upload.sources"]
+    static let methods: Set<String> = ["runtime.configure", "privacy.request", "privacy.options", "analytics.consent", "analytics.event", "analytics.user", "ads.banner", "ads.hideBanner", "ads.interstitial", "notifications.request", "notifications.token", "session.reset", "share.open", "upload.clear"]
+
+    static func shareURL(_ raw: Any?) -> URL? {
+        guard let raw = raw as? String, raw.count <= 2048,
+              let parts = URLComponents(string: raw), parts.scheme == "https", parts.host == "ayin.stream",
+              parts.user == nil, parts.password == nil, parts.port == nil || parts.port == 443,
+              parts.fragment == nil, let url = parts.url else { return nil }
+        let query = parts.queryItems ?? []
+        guard Set(query.map(\.name)).count == query.count,
+              query.allSatisfy({ ($0.name == "kids" && $0.value == "1") || ($0.name == "lang" && ["en", "ar"].contains($0.value ?? "")) }),
+              parts.percentEncodedPath.range(of: #"\A/(?:en/|ar/)?(?:watch|c|clips|live|playlists)(?:/[A-Za-z0-9_-]+)?/?\z"#, options: .regularExpression) != nil else { return nil }
+        return url
+    }
 
     static func validAdAppID(_ value: Any?) -> Bool {
         guard let value = value as? String else { return false }

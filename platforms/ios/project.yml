@@ -34,7 +34,10 @@ targets:
         excludes:
           - Info.plist
           - AYIN.entitlements
+      - path: Shared
     dependencies:
+      - target: AYINShare
+        embed: true
       - package: GoogleMobileAds
         product: GoogleMobileAds
       - package: UserMessagingPlatform
@@ -59,10 +62,37 @@ targets:
         OTHER_LDFLAGS: "$(inherited) -ObjC"
         DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
         ENABLE_USER_SCRIPT_SANDBOXING: YES
+      configs:
+        Release:
+          PROVISIONING_PROFILE_SPECIFIER: "$(AYIN_IOS_PROFILE_UUID)"
     scheme:
       gatherCoverageData: true
       testTargets:
         - AYINTests
+  AYINShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ShareExtension
+        excludes:
+          - Info.plist
+          - ShareExtension.entitlements
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: net.ayin.app.ios.share
+        PRODUCT_NAME: AYINShare
+        MARKETING_VERSION: "1.1.0"
+        CURRENT_PROJECT_VERSION: "2"
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+        CODE_SIGN_ENTITLEMENTS: ShareExtension/ShareExtension.entitlements
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: ShareExtension/Info.plist
+      configs:
+        Release:
+          PROVISIONING_PROFILE_SPECIFIER: "$(AYIN_IOS_SHARE_PROFILE_UUID)"
   AYINTests:
     type: bundle.unit-test
     platform: iOS

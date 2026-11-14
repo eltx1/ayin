@@ -25,6 +25,90 @@ function fixture<T = { ok: boolean }>(command: string, input: object = {}): T {
 const active = (page: Page) => page.locator("[data-clip-item][data-clip-active='true']");
 const feed = (page: Page) => page.locator("[data-clips-feed]");
 const clip = (page: Page, id: string) => page.locator(`[data-clip-item][data-video-id="${id}"]`);
+async function openClipReport(page: Page, catalog: Catalog) {
+  await page.goto("/clips?lang=en");
+  await expect(active(page)).toHaveAttribute("data-video-id", catalog.videos[0]!.id);
+  await expect(
+    active(page).locator(`[data-tv-focus-id="clip-${catalog.videos[0]!.id}-like"]`),
+  ).toBeEnabled();
+  await active(page).getByRole("button", { name: "Details", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Report", exact: true }).click();
+  const panel = dialog.getByRole("group", { name: "Report content", exact: true });
+  await expect(panel.getByRole("button", { name: "Send report", exact: true })).toBeEnabled();
+  return panel;
+}
+
+test("Clips details submits one real authenticated report for the selected video", async ({
+  page,
+}) => {
+  const catalog = fixture<Catalog>("seed");
+  try {
+    await login(page, catalog);
+    await installMedia(page);
+    const panel = await openClipReport(page, catalog);
+    await panel.getByLabel("Reason", { exact: true }).selectOption("HARASSMENT");
+    await panel
+      .getByLabel("Details (optional)", { exact: true })
+      .fill("Isolated safety UI fixture");
+    const writes: string[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "POST" && request.url() === API + "/trust/reports")
+        writes.push(request.postData() ?? "");
+    });
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" && response.url() === API + "/trust/reports",
+    );
+    await panel.getByRole("button", { name: "Send report", exact: true }).click();
+    const response = await responsePromise;
+    expect(response.status()).toBe(201);
+    expect(response.request().headers()["x-ayin-expected-account"]).toBe(catalog.accountId);
+    expect(await response.json()).toMatchObject({
+      videoId: catalog.videos[0]!.id,
+      reason: "HARASSMENT",
+    });
+    await expect(panel.getByRole("status")).toContainText("Report received for review");
+    await expect(panel.getByRole("button", { name: "Send report", exact: true })).toBeDisabled();
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(writes[0]!)).toEqual({
+      videoId: catalog.videos[0]!.id,
+      reason: "HARASSMENT",
+      details: "Isolated safety UI fixture",
+    });
+  } finally {
+    fixture("cleanup", { fixtureId: catalog.fixtureId });
+  }
+});
+
+test("Clips report draft clears on a real cookie account switch without a report write", async ({
+  page,
+}) => {
+  const first = fixture<Catalog>("seed");
+  let second: Catalog | undefined;
+  try {
+    await login(page, first);
+    await installMedia(page);
+    const panel = await openClipReport(page, first);
+    const text = panel.getByLabel("Details (optional)", { exact: true });
+    await text.fill("Private report draft for the original account");
+    const oldText = await text.elementHandle();
+    second = fixture<Catalog>("seed");
+    await login(page, second);
+    let writes = 0;
+    page.on("request", (request) => {
+      if (request.method() === "POST" && request.url() === API + "/trust/reports") writes++;
+    });
+    await panel.getByRole("button", { name: "Send report", exact: true }).click();
+    await expect(panel).toHaveCount(0);
+    expect(await oldText!.evaluate((element: HTMLTextAreaElement) => element.value)).toBe("");
+    expect(writes).toBe(0);
+    await oldText!.dispose();
+  } finally {
+    if (second) fixture("cleanup", { fixtureId: second.fixtureId });
+    fixture("cleanup", { fixtureId: first.fixtureId });
+  }
+});
 async function seekTo(range: Locator, seconds: number) {
   // Use the native input setter and bubbling input event so React receives a
   // real authored-range change. Keyboard increment/ownership is checked below.

@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 
 import { useI18n } from "@/components/i18n/i18n-provider";
+import { ReportContentButton } from "@/components/social/report-content";
 import { ActionButton } from "@/components/ui/design-system";
 import { useViewerProduct } from "@/components/viewer/viewer-product-context";
 import type { ClipItem } from "@/lib/clips";
@@ -76,6 +77,7 @@ export function ClipDetails({
             </p>
             <h3 dir="auto">{clip.title}</h3>
             <p dir="auto">{clip.description || t("clips.noDescription")}</p>
+            <ReportContentButton target={{ videoId: clip.id }} />
             <p className={styles.sheetHint}>{t("clips.watchCapabilities")}</p>
             {capabilityStatus === "unavailable" && (
               <div role="status">

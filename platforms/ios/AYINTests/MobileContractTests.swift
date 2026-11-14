@@ -2,6 +2,19 @@ import XCTest
 @testable import AYIN
 
 final class MobileContractTests: XCTestCase {
+    func testSystemShareAcceptsOnlyPublicAYINRoutesAndBoundedPolicyQueries() {
+        for value in ["https://ayin.stream/watch/video-one", "https://ayin.stream/ar/c/channel?kids=1&lang=ar", "https://ayin.stream/clips", "https://ayin.stream/live/live-one", "https://ayin.stream/playlists/list-1"] {
+            XCTAssertNotNil(MobileContract.shareURL(value), value)
+        }
+        for value in ["https://evil.example/watch/a", "https://ayin.stream/account", "https://ayin.stream/watch/a?token=secret", "https://ayin.stream/watch/a?kids=1&kids=1", "https://ayin.stream/watch/a#token", "https://user@ayin.stream/watch/a", "http://ayin.stream/watch/a", "https://ayin.stream/watch/a%2Fb", "https://ayin.stream/watch/a?lang=xx"] {
+            XCTAssertNil(MobileContract.shareURL(value), value)
+        }
+        XCTAssertNil(MobileContract.shareURL(42))
+        XCTAssertTrue(MobileContract.capabilities.contains("share"))
+        XCTAssertTrue(MobileContract.methods.contains("share.open"))
+        XCTAssertTrue(MobileContract.capabilities.contains("upload.sources"))
+        XCTAssertTrue(MobileContract.methods.contains("upload.clear"))
+    }
     private func fixture() throws -> [String: Any] {
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "mobile-runtime-v1", withExtension: "json"))
         return try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])

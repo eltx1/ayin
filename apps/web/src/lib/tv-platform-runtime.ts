@@ -175,6 +175,10 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
   const platform = nativeShell?.platform ?? detectTvWebPlatform(target);
   const packagedTizenSession = platform === "tizen" && rememberHostedTizenSession(target);
   const pausedForLifecycle = new Set<HTMLMediaElement>();
+  const mobileHost =
+    nativeShell?.platform === "android" ||
+    nativeShell?.platform === "ios" ||
+    target.AyinMobile?.version === 1;
   const tizenMediaKeyRegistration = registerTizenMediaKeys(target);
 
   if (platform) target.document.documentElement.dataset.tvPlatform = platform;
@@ -329,7 +333,17 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
     if (state === "pause" || state === "stop") {
       for (const media of target.document.querySelectorAll<HTMLMediaElement>("video,audio")) {
         if (media.paused || media.ended) continue;
-        pausedForLifecycle.add(media);
+        // Hosted iOS uses AyinMobile rather than the legacy AyinNative object.
+        // Preserve actual PiP on a visibility pause, never on navigation/stop.
+        const webkitMode = (media as HTMLMediaElement & { webkitPresentationMode?: string })
+          .webkitPresentationMode;
+        if (
+          mobileHost &&
+          state === "pause" &&
+          (target.document.pictureInPictureElement === media || webkitMode === "picture-in-picture")
+        )
+          continue;
+        if (!mobileHost) pausedForLifecycle.add(media);
         media.pause();
       }
       return;

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { MobileSettings } from "@/components/mobile/mobile-settings";
 import { LegalNotice, LegalPage, LegalSection } from "@/components/legal/legal-page";
@@ -39,6 +40,20 @@ export default function PrivacyPolicyPage() {
           they do not automatically cover JavaScript errors. Turning off app analytics does not
           prevent viewing. Existing first-party product, security and transaction records are
           separate and are described elsewhere in this policy.
+        </p>
+        <p>
+          A separate optional operational diagnostics control lets AYIN collect an account- and
+          session-linked installation identifier, platform and app/bridge versions, supported
+          capability names, configuration revision and check times, advertising readiness and
+          numeric SDK error categories, and whether Firebase is configured. These records help
+          support diagnose configuration and advertising failures; they do not include ad unit
+          identifiers, push tokens, URLs, messages, search text or crash stacks. They expire after
+          seven days and are removed by periodic cleanup. Sign-out and account deletion remove the
+          applicable records. Withdrawing this optional consent clears the diagnostic snapshot; a
+          minimal installation/account/session-linked consent-revocation record remains for up to
+          seven days to reject delayed submissions. This control is separate from Firebase Analytics
+          and Crashlytics consent and can work when Firebase is not configured. Viewing content does
+          not require it.
         </p>
         <p>
           If you enable notifications, AYIN stores a device installation identifier, a Firebase
@@ -174,6 +189,12 @@ export default function PrivacyPolicyPage() {
 
       <LegalSection title="7. Retention and deletion">
         <p>
+          You can request deletion of your AYIN account and associated data from the account
+          controls without reinstalling the app. Read the public{" "}
+          <Link href="/account-deletion">account deletion instructions</Link> for the steps,
+          cancellation window, retained records and help if you cannot sign in.
+        </p>
+        <p>
           We retain information for as long as reasonably needed to operate the service, maintain
           security, satisfy legal/accounting obligations, resolve disputes and enforce agreements.
           Retention periods differ by data type. Deleted or removed records may remain for a limited
@@ -220,6 +241,10 @@ export default function PrivacyPolicyPage() {
       </LegalSection>
 
       <LegalSection title="12. Changes and contact">
+        <p>
+          <Link href="/support">AYIN support and safety</Link> provides public contact and reporting
+          guidance.
+        </p>
         <p>
           We may update this policy as AYIN changes. Material changes will be reflected by the
           updated date and, where appropriate, additional notice. For privacy or legal questions,

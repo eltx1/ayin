@@ -30,6 +30,8 @@ export class TrustService {
   async report(accountId: string, input: unknown) {
     const data = reportSchema.parse(input);
     const profile = await this.profile(accountId);
+    if (data.channelId)
+      await this.db.client.channel.findUniqueOrThrow({ where: { id: data.channelId } });
     if (data.videoId) await this.db.client.video.findUniqueOrThrow({ where: { id: data.videoId } });
     if (data.commentId)
       await this.db.client.comment.findUniqueOrThrow({ where: { id: data.commentId } });
@@ -37,6 +39,7 @@ export class TrustService {
       data: {
         reporterProfileId: profile.id,
         reason: data.reason,
+        ...(data.channelId ? { channelId: data.channelId } : {}),
         ...(data.videoId ? { videoId: data.videoId } : {}),
         ...(data.commentId ? { commentId: data.commentId } : {}),
         ...(data.details ? { details: data.details } : {}),

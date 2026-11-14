@@ -2,6 +2,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application>
+        <activity android:name="net.ayin.shell.MainActivity" android:supportsPictureInPicture="true" android:resizeableActivity="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+        </activity>
         <!-- Standard SDK provider retained. Measurement is deferred; ad requests require UMP. -->
         <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="${ayinAdMobAppId}" />
         <meta-data android:name="com.google.android.gms.ads.DELAY_APP_MEASUREMENT_INIT" android:value="true" />

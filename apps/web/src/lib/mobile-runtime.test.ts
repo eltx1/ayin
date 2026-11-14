@@ -66,6 +66,107 @@ const boot = async () => {
   await runtime.initializeMobile(new AbortController().signal);
   return runtime;
 };
+describe("live public config activation (bridge mocks, not SDK/device evidence)", () => {
+  function idleDocument(
+    dataset: Record<string, string> = {},
+    media: { paused: boolean; ended: boolean }[] = [],
+  ) {
+    vi.stubGlobal("document", {
+      visibilityState: "visible",
+      documentElement: { dataset },
+      querySelectorAll: () => media,
+    });
+    return dataset;
+  }
+  it("does not reconfigure native SDKs for an unchanged revision", async () => {
+    idleDocument();
+    const runtime = await boot();
+    native.request.mockClear();
+    await runtime.refreshMobileConfig();
+    expect(native.request).not.toHaveBeenCalledWith("runtime.configure", expect.anything());
+    expect(runtime.getMobileState().configPending).toBe(false);
+  });
+  it.each(["upload", "web-ad", "video"])(
+    "defers changed units during %s and applies exactly once when safe",
+    async (operation) => {
+      const dataset = idleDocument();
+      const runtime = await boot();
+      const previous = runtime.getMobileState().configRevision;
+      config.analytics = { enabled: false };
+      if (operation === "upload") dataset.ayinUploadActive = "true";
+      if (operation === "web-ad") dataset.ayinWebAdActive = "true";
+      if (operation === "video") idleDocument(dataset, [{ paused: false, ended: false }]);
+      native.request.mockClear();
+      await runtime.refreshMobileConfig();
+      expect(runtime.getMobileState().configRevision).toBe(previous);
+      expect(runtime.getMobileState().configPending).toBe(true);
+      expect(native.request).not.toHaveBeenCalledWith("runtime.configure", expect.anything());
+      delete dataset.ayinUploadActive;
+      delete dataset.ayinWebAdActive;
+      idleDocument(dataset);
+      expect(await runtime.applyPendingMobileConfig()).toBe(true);
+      expect(await runtime.applyPendingMobileConfig()).toBe(false);
+      expect(runtime.getMobileState().configRevision).not.toBe(previous);
+      expect(
+        native.request.mock.calls.filter(([method]) => method === "runtime.configure"),
+      ).toHaveLength(1);
+    },
+  );
+  it("retains a pending candidate after a native busy rejection", async () => {
+    idleDocument();
+    const runtime = await boot();
+    config.analytics = { enabled: false };
+    native.request.mockImplementation(async (method: string) => {
+      if (method === "runtime.configure") throw new Error("BUSY");
+      return {};
+    });
+    await runtime.refreshMobileConfig();
+    expect(runtime.getMobileState().configPending).toBe(true);
+    native.request.mockImplementation(async (method: string) =>
+      method === "runtime.configure" ? nativeInfo : {},
+    );
+    expect(await runtime.applyPendingMobileConfig()).toBe(true);
+  });
+  it("keeps the last valid configuration after invalid remote data", async () => {
+    idleDocument();
+    const runtime = await boot(),
+      previous = runtime.getMobileState().configRevision;
+    config.schemaVersion = 99;
+    await runtime.refreshMobileConfig();
+    expect(runtime.getMobileState().configRevision).toBe(previous);
+    expect(runtime.getMobileState().configFetchFailed).toBe(true);
+    expect(runtime.getMobileState().error).toBe(false);
+  });
+  it("does not erase incoming sources during initial unbound login, but clears on a real account switch", async () => {
+    nativeInfo.boundAccountId = null;
+    const runtime = await boot();
+    expect(native.request).not.toHaveBeenCalledWith("upload.clear");
+    identity = { account: { id: b }, profile: { isKids: false } };
+    await runtime.refreshMobileAccount();
+    expect(native.request).toHaveBeenCalledWith("upload.clear");
+  });
+  it("does not erase a retained source on temporary identity/network failure or notification opt-out", async () => {
+    const runtime = await boot();
+    native.request.mockClear();
+    await runtime.disableMobileNotifications().catch(() => undefined);
+    expect(native.request).not.toHaveBeenCalledWith("upload.clear");
+    vi.mocked(fetch).mockRejectedValueOnce(new Error("offline"));
+    await runtime.refreshMobileAccount();
+    expect(native.request).not.toHaveBeenCalledWith("upload.clear");
+    await runtime.detachMobileSession();
+    expect(native.request).toHaveBeenCalledWith("upload.clear");
+  });
+  it("retains source ownership through a transient lookup failure and clears before a later account switch", async () => {
+    const runtime = await boot();
+    native.request.mockClear();
+    vi.mocked(fetch).mockRejectedValueOnce(new Error("offline"));
+    await runtime.refreshMobileAccount();
+    expect(native.request).not.toHaveBeenCalledWith("upload.clear");
+    identity = { account: { id: b }, profile: { isKids: false } };
+    await runtime.refreshMobileAccount();
+    expect(native.request).toHaveBeenCalledWith("upload.clear");
+  });
+});
 describe("mobile identity, consent and notification orchestration (bridge mocks, not device evidence)", () => {
   it("holds the web-ad lease until every active break ends and hides an existing native banner", async () => {
     vi.stubGlobal("document", { documentElement: { dataset: {} } });

@@ -9,12 +9,20 @@ import {
   getMobileServerState,
   getMobileState,
   initializeMobile,
+  refreshMobileConfig,
   requestMobilePrivacy,
   setMobileAdultAffirmation,
   setMobileAnalyticsConsent,
   subscribeMobile,
 } from "@/lib/mobile-runtime";
 import styles from "@/app/(viewer)/account/account.module.css";
+import {
+  getMobileDiagnosticSnapshot,
+  sendMobileDiagnostics,
+  mobileDiagnosticsEnabled,
+  enableMobileDiagnostics,
+  disableMobileDiagnostics,
+} from "@/lib/mobile-diagnostics";
 export function MobileSettings() {
   const state = useSyncExternalStore(subscribeMobile, getMobileState, getMobileServerState);
   const { locale } = useI18n(),
@@ -73,6 +81,60 @@ export function MobileSettings() {
           )}
         </p>
       )}
+      <details>
+        <summary>{copy("App configuration and diagnostics", "إعدادات التطبيق والتشخيص")}</summary>
+        <p>
+          {copy(
+            "Configuration updates automatically in the foreground and activates after video, ads and uploads finish.",
+            "تُراجع الإعدادات تلقائيًا أثناء الاستخدام وتُطبق بعد انتهاء الفيديو والإعلان والرفع الجاري.",
+          )}
+        </p>
+        <dl>
+          <dt>{copy("Applied configuration", "نسخة الإعدادات المطبقة")}</dt>
+          <dd>{state.configRevision?.slice(0, 12) ?? "—"}</dd>
+          <dt>{copy("Last check", "آخر فحص")}</dt>
+          <dd>{state.lastConfigCheckAt ?? "—"}</dd>
+          <dt>{copy("Pending safe activation", "تحديث ينتظر وقتًا آمنًا")}</dt>
+          <dd>{String(state.configPending)}</dd>
+          <dt>{copy("Advertising state", "حالة الإعلانات")}</dt>
+          <dd>{getMobileDiagnosticSnapshot().ads.status}</dd>
+          <dt>{copy("Diagnostic sharing", "مشاركة التشخيص")}</dt>
+          <dd>{mobileDiagnosticsEnabled() ? copy("Enabled", "مفعّلة") : copy("Off", "متوقفة")}</dd>
+        </dl>
+        {state.configFetchFailed && (
+          <p role="status">
+            {copy(
+              "Could not fetch new settings. The last valid settings or safe recovery defaults remain active.",
+              "تعذر جلب إعدادات جديدة؛ تبقى آخر إعدادات صالحة أو إعدادات الاستعادة الآمنة فعّالة.",
+            )}
+          </p>
+        )}
+        <button disabled={busy} onClick={() => void perform(() => refreshMobileConfig())}>
+          {copy("Check settings now", "فحص الإعدادات الآن")}
+        </button>{" "}
+        <p>
+          {copy(
+            "Optional operational reports share app/bridge versions, configuration revision and bounded SDK error codes with AYIN administrators for seven days. No email, messages, tokens or ad-unit values are sent. This is separate from Firebase Analytics.",
+            "التشخيص الاختياري يشارك إصدار التطبيق والربط ونسخة الإعدادات وأكواد أخطاء SDK المحدودة مع إدارة AYIN لمدة سبعة أيام، دون البريد أو الرسائل أو الرموز أو قيم وحدات الإعلان. وهو مستقل عن Firebase Analytics.",
+          )}
+        </p>
+        <button disabled={busy} onClick={() => void perform(enableMobileDiagnostics)}>
+          {copy("Allow diagnostic sharing", "السماح بمشاركة التشخيص")}
+        </button>{" "}
+        <button
+          disabled={busy || !mobileDiagnosticsEnabled()}
+          onClick={() =>
+            void perform(async () => {
+              if (!(await sendMobileDiagnostics())) throw new Error("DIAGNOSTIC_NOT_SENT");
+            })
+          }
+        >
+          {copy("Send current diagnostic", "إرسال التشخيص الحالي")}
+        </button>{" "}
+        <button disabled={busy} onClick={() => void perform(disableMobileDiagnostics)}>
+          {copy("Stop sharing and delete report", "إيقاف المشاركة وحذف التقرير")}
+        </button>
+      </details>
       <label>
         <input
           type="checkbox"

@@ -47,7 +47,7 @@ def validate(platform, signed=False):
             raise ValueError('Firebase plist has invalid GOOGLE_APP_ID')
         if signed:
             require('AYIN_IOS_TEAM_ID', r'[A-Z0-9]{10}')
-            for key in ['AYIN_IOS_CERTIFICATE_BASE64', 'AYIN_IOS_CERTIFICATE_PASSWORD', 'AYIN_IOS_PROFILE_BASE64']:
+            for key in ['AYIN_IOS_CERTIFICATE_BASE64', 'AYIN_IOS_CERTIFICATE_PASSWORD', 'AYIN_IOS_PROFILE_BASE64', 'AYIN_IOS_SHARE_PROFILE_BASE64']:
                 require(key)
         return data
     return None

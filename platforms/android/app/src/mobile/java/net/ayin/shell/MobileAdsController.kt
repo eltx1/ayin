@@ -36,7 +36,6 @@ internal class MobileAdsController(
     private val configured: Boolean,
 ) {
     private var config = MobileConfig()
-    private var deferredConfig: MobileConfig? = null
     private val handler = Handler(Looper.getMainLooper())
     private val consent = UserMessagingPlatform.getConsentInformation(activity)
     private var consentRefreshed = false
@@ -50,6 +49,7 @@ internal class MobileAdsController(
     private var playing = false
     private var sensitive = false
     val isPresenting: Boolean get() = interstitialShowing || consentBusy
+    val isConfigurationBusy: Boolean get() = isPresenting || playing || sensitive
     private var banner: BaseAdView? = null
     private var bannerLoading = false
     private var bannerPlacement = ""
@@ -64,10 +64,11 @@ internal class MobileAdsController(
     private var shownThisSession = 0
     private var paidEvents = mutableSetOf<String>()
 
-    fun configure(value: MobileConfig) {
-        if (interstitialShowing) { deferredConfig = value; return }
+    fun configure(value: MobileConfig): Boolean {
+        if (isConfigurationBusy) return false
         if (value != config) { hideBanner(); clearInterstitial() }
         config = value
+        return true
     }
 
     fun request(method: String, p: JSONObject, done: (JSONObject?, String?) -> Unit) {
@@ -115,8 +116,8 @@ internal class MobileAdsController(
                             lastInterstitialAt = SystemClock.elapsedRealtime()
                             event("ad.shown", "interstitial", placement)
                         }
-                        override fun onAdDismissedFullScreenContent() { interstitialShowing = false; event("ad.dismissed", "interstitial", placement); applyDeferred() }
-                        override fun onAdFailedToShowFullScreenContent(error: AdError) { interstitialShowing = false; event("ad.failed", "interstitial", placement, error.code); applyDeferred() }
+                        override fun onAdDismissedFullScreenContent() { interstitialShowing = false; event("ad.dismissed", "interstitial", placement) }
+                        override fun onAdFailedToShowFullScreenContent(error: AdError) { interstitialShowing = false; event("ad.failed", "interstitial", placement, error.code) }
                     }
                     ad.show(activity)
                     done(JSONObject().put("state", "showing"), null)
@@ -288,7 +289,6 @@ internal class MobileAdsController(
         emit(JSONObject().put("type", "ad.revenue").put("format", format).put("placement", placement)
             .put("eventId", id).put("valueMicros", value.valueMicros).put("currency", value.currencyCode).put("precision", value.precisionType))
     }
-    private fun applyDeferred() { deferredConfig?.let { deferredConfig = null; configure(it) } }
     private fun clearInterstitial() { interstitialGeneration++; interstitialLoading = false; interstitial = null }
     private fun hideBanner() { bannerGeneration++; bannerLoading = false; banner?.destroy(); banner = null; host.removeAllViews(); host.visibility = View.GONE }
     fun playback(value: Boolean) { playing = value; if (value) { hideBanner(); clearInterstitial() } }

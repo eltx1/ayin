@@ -247,3 +247,37 @@ for (const lifecycle of ["pagehide", "hidden"] as const) {
     expect(order).toEqual([]);
   });
 }
+
+it("preserves actual mobile PiP on hide, stops on navigation and never auto-resumes", () => {
+  const play = vi.fn(async () => undefined);
+  const media = {
+    paused: false,
+    ended: false,
+    isConnected: true,
+    webkitPresentationMode: "picture-in-picture",
+    play,
+    pause: vi.fn(() => {
+      media.paused = true;
+    }),
+  };
+  const document = Object.assign(new EventTarget(), {
+    hidden: true,
+    documentElement: { dataset: {} },
+    querySelectorAll: () => [media],
+  });
+  const target = Object.assign(new EventTarget(), {
+    document,
+    AyinMobile: { version: 1 },
+    location: { href: "https://ayin.stream/watch/test", search: "", pathname: "/watch/test" },
+    navigator: { userAgent: "Mozilla/5.0" },
+  }) as unknown as Window;
+  const uninstall = installTvPlatformRuntime(target);
+  document.dispatchEvent(new Event("visibilitychange"));
+  expect(media.pause).not.toHaveBeenCalled();
+  target.dispatchEvent(new Event("pagehide"));
+  expect(media.pause).toHaveBeenCalledOnce();
+  document.hidden = false;
+  document.dispatchEvent(new Event("visibilitychange"));
+  expect(play).not.toHaveBeenCalled();
+  uninstall();
+});

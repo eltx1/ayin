@@ -13,6 +13,7 @@ import {
   type MobileConfig,
 } from "@/lib/mobile-config";
 import { AdminAdvertisingNavigation } from "./admin-advertising-navigation";
+import { AdminMobileDiagnostics } from "./admin-mobile-diagnostics";
 import styles from "./admin-mobile.module.css";
 export function AdminMobile() {
   const { locale } = useI18n(),
@@ -25,6 +26,8 @@ export function AdminMobile() {
   const [reason, setReason] = useState(""),
     [status, setStatus] = useState<unknown>(null),
     [deliveries, setDeliveries] = useState<unknown>(null);
+  const [diagnosticAccountId, setDiagnosticAccountId] = useState("");
+  const [diagnostics, setDiagnostics] = useState<unknown>(null);
   const [accountId, setAccountId] = useState(""),
     [installationId, setInstallationId] = useState(""),
     [title, setTitle] = useState(""),
@@ -45,6 +48,8 @@ export function AdminMobile() {
         setConfig(null);
         setStatus(null);
         setDeliveries(null);
+        setDiagnostics(null);
+        setDiagnosticAccountId("");
         setAccountId("");
         setInstallationId("");
         setTitle("");
@@ -175,6 +180,26 @@ export function AdminMobile() {
       </ActionButton>
       {message && <StatusNotice announce="polite">{message}</StatusNotice>}
       <div ref={privateBody}>
+        <AdminMobileDiagnostics
+          ar={ar}
+          accountId={diagnosticAccountId}
+          setAccountId={(value) => {
+            setDiagnosticAccountId(value);
+            setDiagnostics(null);
+          }}
+          rows={diagnostics}
+          busy={busy}
+          load={() =>
+            void run(async (request) => {
+              setDiagnostics(null);
+              setDiagnostics(
+                await request(
+                  "/admin/mobile/diagnostics?accountId=" + encodeURIComponent(diagnosticAccountId),
+                ),
+              );
+            })
+          }
+        />
         {config && (
           <>
             <section aria-labelledby="webview-ads-heading">

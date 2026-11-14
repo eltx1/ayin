@@ -1,0 +1,35 @@
+.control {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.panel {
+  display: grid;
+  flex: 1 0 100%;
+  gap: var(--space-3);
+  min-inline-size: min(18rem, 100%);
+  max-inline-size: 32rem;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.panel form,
+.panel label {
+  display: grid;
+  gap: var(--space-2);
+}
+.panel select,
+.panel textarea {
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  font: inherit;
+  padding: var(--space-2);
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.panel a {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}

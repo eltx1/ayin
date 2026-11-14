@@ -2,6 +2,7 @@ import SwiftUI
 import WebKit
 import Combine
 import GoogleMobileAds
+import AVFAudio
 
 @MainActor
 final class MobileNavigation: ObservableObject {
@@ -54,6 +55,8 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
     private var runtimeConfigured = false
     private var lastUnderAge = true
     private var deferredNativeEvents: [[String: Any]] = []
+    private lazy var filePicker = MobileFilePicker(owner: self)
+    private var promptedSharedVideo: String?
 
     init(nativeFallback: @escaping () -> Void) { self.nativeFallback = nativeFallback; super.init(nibName: nil, bundle: nil) }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -61,6 +64,8 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
+        // Configure media routing without activating/stealing audio at app launch.
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         let configuration = WKWebViewConfiguration()
         configuration.limitsNavigationsToAppBoundDomains = true
         configuration.allowsInlineMediaPlayback = true
@@ -71,7 +76,14 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
         configuration.websiteDataStore = .default()
         configuration.userContentController.add(WeakMobileScriptHandler(self), name: "ayinNative")
         let webViewAdsReady = MobileContract.validAdAppID(Bundle.main.object(forInfoDictionaryKey: "GADApplicationIdentifier"))
-        let capabilities = MobileContract.capabilities.filter { $0 != "ads.webview" || webViewAdsReady }
+        let capabilities = MobileContract.capabilities.filter {
+            if $0 == "ads.webview" { return webViewAdsReady }
+            if $0 == "upload.recovery" {
+                if #available(iOS 18.4, *) { return true }
+                return false
+            }
+            return true
+        }
             .map { "'\($0)'" }.joined(separator: ",")
         configuration.userContentController.addUserScript(WKUserScript(source: """
         (() => {
@@ -80,6 +92,10 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
             window.webkit.messageHandlers.ayinNative.postMessage(message);
           }});
           Object.defineProperty(window, 'AyinMobile', {value:bridge, writable:false, configurable:false});
+          document.addEventListener('click', event => {
+            if (event.target instanceof HTMLInputElement && event.target.type === 'file')
+              document.documentElement.dataset.ayinFileAccept = event.target.accept;
+          }, true);
         })();
         """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         webView = WKWebView(frame: .zero, configuration: configuration)
@@ -109,6 +125,11 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
         menu.menu = UIMenu(children: [
             UIAction(title: NSLocalizedString("Reload", comment: "Navigation"), image: UIImage(systemName: "arrow.clockwise")) { [weak self] _ in self?.webView.reload() },
             UIAction(title: NSLocalizedString("Privacy options", comment: "Privacy"), image: UIImage(systemName: "hand.raised")) { [weak self] _ in self?.openPrivacy() },
+            UIAction(title: "Shared video / الفيديو المشترك", image: UIImage(systemName: "square.and.arrow.down")) { [weak self] _ in self?.promptSharedVideo(force: true) },
+            UIAction(title: "Save shared video to Files / حفظ الفيديو المشترك في الملفات", image: UIImage(systemName: "folder")) { [weak self] _ in self?.exportSharedVideo() },
+            UIAction(title: "Discard saved upload source / حذف مصدر الرفع المحفوظ", image: UIImage(systemName: "trash"), attributes: .destructive) { [weak self] _ in
+                self?.filePicker.cancel(); SharedVideoInbox.clearUploadSources(); self?.promptedSharedVideo = nil
+            },
             UIAction(title: NSLocalizedString("Native video browser", comment: "Navigation"), image: UIImage(systemName: "play.rectangle")) { [weak self] _ in self?.suspend(); self?.nativeFallback() }
         ])
         toolbar.addArrangedSubview(backButton); toolbar.addArrangedSubview(title); toolbar.addArrangedSubview(menu)
@@ -134,10 +155,18 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
         MobileFirebase.shared.bind { [weak self] event in self?.event(event) }
         observerTokens = [
             NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.suspend(); self?.event(["type": "app.lifecycle", "state": "background"]) }
+                Task { @MainActor in await self?.enterBackground(); self?.event(["type": "app.lifecycle", "state": "background"]) }
             },
             NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.event(["type": "app.lifecycle", "state": "active"]) }
+                Task { @MainActor in self?.event(["type": "app.lifecycle", "state": "active"]); self?.promptSharedVideo() }
+            },
+            NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] notification in
+                guard (notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt) == AVAudioSession.InterruptionType.began.rawValue else { return }
+                Task { @MainActor in self?.suspend() }
+            },
+            NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] notification in
+                guard (notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt) == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue else { return }
+                Task { @MainActor in self?.suspend() }
             }
         ]
         open(MobileNavigation.shared.destination ?? AppEnvironment.webBaseURL)
@@ -173,6 +202,65 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
         webView.pauseAllMediaPlayback(completionHandler: nil)
     }
 
+    private func enterBackground() async {
+        ads?.resetInventory()
+        guard let webView, MobileContract.trusted(webView.url) else { return }
+        let activePiP = try? await webView.callAsyncJavaScript("return Array.from(document.querySelectorAll('video')).some(v => v.webkitPresentationMode === 'picture-in-picture' || document.pictureInPictureElement === v)", arguments: [:], in: nil, contentWorld: .page)
+        // Preserve only an actual PiP presentation, never general background audio.
+        if activePiP as? Bool != true { webView.pauseAllMediaPlayback(completionHandler: nil) }
+    }
+
+    private func promptSharedVideo(force: Bool = false) {
+        guard let webView, MobileContract.trusted(webView.url), presentedViewController == nil,
+              UIApplication.shared.applicationState == .active,
+              let inbox = try? SharedVideoInbox.shared(), let pending = inbox.pending(),
+              force || promptedSharedVideo != pending.fileName else { return }
+        let generation = documentGeneration
+        Task { [weak self] in
+            guard let self else { return }
+            let busy = try? await webView.callAsyncJavaScript("return document.documentElement.dataset.ayinUploadActive === 'true' || document.documentElement.dataset.ayinWebAdActive === 'true' || Array.from(document.querySelectorAll('video,audio')).some(m => !m.paused && !m.ended)", arguments: [:], in: nil, contentWorld: .page)
+            guard generation == documentGeneration, busy as? Bool == false, presentedViewController == nil else { return }
+            if webView.url?.path == "/upload" && !force { return }
+            promptedSharedVideo = pending.fileName
+            let instructions: String
+            if #available(iOS 18.4, *) {
+                instructions = "Open Upload, sign in if needed, then choose the shared video. Nothing uploads without your action.\nافتح الرفع وسجّل الدخول عند الحاجة ثم اختر الفيديو المشترك. لن يُرفع شيء دون اختيارك."
+            } else {
+                instructions = "On this iOS version, save this video to Files first. Then open AYIN Upload and select that saved file. Nothing has been uploaded.\nفي إصدار iOS هذا احفظ الفيديو في الملفات أولًا، ثم افتح رفع AYIN واختر الملف المحفوظ. لم يُرفع أي شيء."
+            }
+            let dialog = UIAlertController(title: "Shared video ready / الفيديو المشترك جاهز", message: instructions, preferredStyle: .alert)
+            if #unavailable(iOS 18.4) {
+                dialog.addAction(UIAlertAction(title: "Save to Files / الحفظ في الملفات", style: .default) { [weak self] _ in self?.exportSharedVideo() })
+            }
+            dialog.addAction(UIAlertAction(title: "Open Upload / فتح الرفع", style: .default) { _ in MobileNavigation.shared.open(URL(string: "https://ayin.stream/upload")!) })
+            dialog.addAction(UIAlertAction(title: "Later / لاحقًا", style: .cancel))
+            present(dialog, animated: true)
+        }
+    }
+
+    private func exportSharedVideo() {
+        guard presentedViewController == nil, let inbox = try? SharedVideoInbox.shared(),
+              let record = inbox.pending(), let url = try? inbox.file(for: record) else { return }
+        let picker = UIDocumentPickerViewController(forExporting: [url], asCopy: true)
+        present(picker, animated: true)
+    }
+
+    @available(iOS 18.4, *)
+    func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
+        guard frame.isMainFrame, frame.securityOrigin.protocol == "https", frame.securityOrigin.host == "ayin.stream", MobileContract.trusted(webView.url) else { completionHandler(nil); return }
+        let generation = documentGeneration
+        Task { [weak self] in
+            guard let self else { completionHandler(nil); return }
+            let input = try? await webView.callAsyncJavaScript("return {busy: document.documentElement.dataset.ayinUploadActive === 'true' || document.documentElement.dataset.ayinWebAdActive === 'true', accept: document.activeElement instanceof HTMLInputElement && document.activeElement.type === 'file' ? document.activeElement.accept : (document.documentElement.dataset.ayinFileAccept || '')}", arguments: [:], in: nil, contentWorld: .page)
+            guard generation == documentGeneration, let input = input as? [String: Any], input["busy"] as? Bool == false else { completionHandler(nil); return }
+            let videoOnly = (input["accept"] as? String)?.lowercased().contains("video") == true
+            filePicker.open(videoOnly: videoOnly) { [weak self] urls in
+                if urls != nil { self?.promptedSharedVideo = (try? SharedVideoInbox.shared())?.pending()?.fileName }
+                completionHandler(self?.documentGeneration == generation ? urls : nil)
+            }
+        }
+    }
+
     private func openPrivacy() {
         Task { [weak self] in
             guard let self else { return }
@@ -202,12 +290,14 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
         return nil
     }
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        filePicker.cancel()
         bridgeReady = false; runtimeConfigured = false; documentGeneration = UUID(); pendingIDs.removeAll(); seenIDs.removeAll(); ads.resetInventory()
         MobileFirebase.shared.navigating()
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         offlineView.isHidden = true
         backButton.isEnabled = webView.canGoBack
+        promptSharedVideo()
     }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { navigationFailed(error) }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { navigationFailed(error) }
@@ -254,6 +344,20 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
         guard generation == documentGeneration else { throw MobileBridgeError.invalidRequest }
         let firebase = MobileFirebase.shared
         switch method {
+        case "upload.clear":
+            guard params.isEmpty else { throw MobileBridgeError.invalidRequest }
+            filePicker.cancel(); SharedVideoInbox.clearUploadSources(); promptedSharedVideo = nil
+            return ["cleared": true]
+        case "share.open":
+            try keys(params, ["url"])
+            guard Set(params.keys) == ["url"], let url = MobileContract.shareURL(params["url"]),
+                  UIApplication.shared.applicationState == .active, presentedViewController == nil else { throw MobileBridgeError.invalidRequest }
+            ads.resetInventory()
+            let sheet = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+            sheet.popoverPresentationController?.sourceView = view
+            sheet.popoverPresentationController?.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
+            present(sheet, animated: true)
+            return ["shared": true] // Share-sheet presentation, not proof of recipient delivery.
         case "runtime.configure":
             try keys(params, ["config"])
             guard let raw = params["config"] else { throw MobileBridgeError.invalidConfig }
@@ -276,6 +380,9 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
                     "configured": ["firebase": firebase.configured, "ads": ads.appIDConfigured]]
         case "session.reset":
             try keys(params, [])
+            // Auth reconciliation also uses session.reset on an initial, unbound login.
+            // The hosted logout/real-account-switch path separately calls upload.clear.
+            filePicker.cancel()
             ads.sessionReset(); await firebase.reset()
             return ["reset": true]
         default: guard runtimeConfigured else { throw MobileBridgeError.disabled }

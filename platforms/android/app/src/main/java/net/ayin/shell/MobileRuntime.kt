@@ -24,7 +24,7 @@ internal interface MobileRuntime {
 internal object MobileBridgePolicy {
     val methods = setOf("runtime.configure", "privacy.request", "privacy.options", "analytics.consent",
         "analytics.event", "analytics.user", "ads.banner", "ads.hideBanner", "ads.interstitial",
-        "notifications.request", "notifications.token", "session.reset")
+        "notifications.request", "notifications.token", "session.reset", "media.pip", "share.open", "upload.clear")
     fun validId(value: String) = value.matches(Regex("[A-Za-z0-9_-]{1,80}"))
     fun bootstrap(capabilities: List<String>): String = """
         (() => {

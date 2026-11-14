@@ -1,6 +1,12 @@
 "use client";
 import { apiBaseUrl } from "./api";
 import {
+  cachedMobileConfig,
+  rememberMobileConfig,
+  mobileConfigRevision,
+  maxConfigAgeMs,
+} from "./mobile-config-cache";
+import {
   isMobileHost,
   mobileScreenName,
   requestMobile,
@@ -26,6 +32,12 @@ export interface MobileState {
   preferences: NotificationPreferences;
   notificationsEnabled: boolean;
   error: boolean;
+  configRevision: string | null;
+  configAppliedAt: string | null;
+  lastConfigCheckAt: string | null;
+  configSource: "remote" | "cache" | null;
+  configPending: boolean;
+  configFetchFailed: boolean;
 }
 const initial: MobileState = {
   adultAffirmed: false,
@@ -37,11 +49,23 @@ const initial: MobileState = {
   preferences: emptyNotificationPreferences(),
   notificationsEnabled: false,
   error: false,
+  configRevision: null,
+  configAppliedAt: null,
+  lastConfigCheckAt: null,
+  configSource: null,
+  configPending: false,
+  configFetchFailed: false,
 };
 let state = initial;
+let lastSuccessfulConfigCheckAt = 0;
 let generation = 0;
 let accountId: string | null = null;
+let profileId: string | null = null;
+export const getMobileProfileId = () => profileId;
 let identityEstablished = false;
+// A transient auth lookup failure revokes SDK eligibility, not ownership of a
+// retained source. Remember the last verified owner until logout/switch.
+let uploadSourceAccountId: string | null | undefined;
 let identityRefreshing = false;
 export const mobileIdentityRefreshing = () => identityRefreshing;
 export const getMobileAccountId = () => accountId;
@@ -101,9 +125,23 @@ function rememberNotificationOptOut(id: string, disabled: boolean) {
 export async function initializeMobile(signal: AbortSignal): Promise<void> {
   if (!isMobileHost()) return;
   try {
-    const response = await fetch(apiBaseUrl + "/mobile/config", { cache: "no-store", signal });
-    if (!response.ok) throw new Error("MOBILE_CONFIG_UNAVAILABLE");
-    const hostedConfig = parseMobileConfig(await response.json());
+    let hostedConfig: MobileConfig;
+    let source: "remote" | "cache" = "remote";
+    publish({ lastConfigCheckAt: new Date().toISOString() });
+    try {
+      const response = await fetch(apiBaseUrl + "/mobile/config", { cache: "no-store", signal });
+      if (!response.ok) throw new Error("MOBILE_CONFIG_UNAVAILABLE");
+      hostedConfig = parseMobileConfig(await response.json());
+      lastSuccessfulConfigCheckAt = Date.now();
+      rememberMobileConfig(hostedConfig, Date.now());
+    } catch (error) {
+      signal.throwIfAborted();
+      const cached = cachedMobileConfig();
+      if (!cached) throw error;
+      hostedConfig = cached;
+      source = "cache";
+    }
+    const revision = await mobileConfigRevision(hostedConfig);
     const config = mobileConfigForCapabilities(
       hostedConfig,
       supportsMobile("ads.gam") ? ["ads.gam"] : [],
@@ -136,10 +174,123 @@ export async function initializeMobile(signal: AbortSignal): Promise<void> {
       },
       analyticsConsent: consent,
       error: false,
+      configRevision: revision,
+      configAppliedAt: new Date().toISOString(),
+      configSource: source,
+      configFetchFailed: source === "cache",
     });
     await refreshMobileAccount(signal);
   } catch {
     if (!signal.aborted) publish({ ready: true, error: true, canRequestAds: false });
+  }
+}
+
+let pendingConfig: { value: MobileConfig; revision: string; checkedAt: number } | null = null;
+let refreshingConfig = false;
+let applyingConfig = false;
+/** No configuration changes during media, upload, web ads or a hidden session. Native also checks fullscreen ads. */
+export function mobileConfigurationBusy(): boolean {
+  if (typeof document === "undefined") return true;
+  return (
+    document.visibilityState !== "visible" ||
+    document.documentElement.dataset.ayinUploadActive === "true" ||
+    document.documentElement.dataset.ayinWebAdActive === "true" ||
+    [...document.querySelectorAll<HTMLMediaElement>("video,audio")].some(
+      (media) => !media.paused && !media.ended,
+    )
+  );
+}
+export async function applyPendingMobileConfig(signal?: AbortSignal): Promise<boolean> {
+  const pending = pendingConfig;
+  if (
+    !pending ||
+    !state.info ||
+    applyingConfig ||
+    mobileConfigurationBusy() ||
+    identityRefreshing ||
+    signal?.aborted
+  )
+    return false;
+  applyingConfig = true;
+  try {
+    const projected = mobileConfigForCapabilities(
+      pending.value,
+      supportsMobile("ads.gam") ? ["ads.gam"] : [],
+    );
+    const info = await requestMobile<MobileInfo>("runtime.configure", { config: projected });
+    if (signal?.aborted || pending !== pendingConfig) return false;
+    if (
+      !info ||
+      info.installationId !== state.info.installationId ||
+      info.platform !== state.info.platform ||
+      typeof info.configured?.ads !== "boolean" ||
+      typeof info.configured?.firebase !== "boolean" ||
+      (info.runtimeAllowed !== undefined && typeof info.runtimeAllowed !== "boolean")
+    )
+      throw new Error("INVALID_MOBILE_INFO");
+    pendingConfig = null;
+    if (state.error || state.configSource === "cache") privacyCheckedAccount = undefined;
+    publish({
+      info,
+      config: {
+        ...projected,
+        ...(pending.value.webViewAds ? { webViewAds: pending.value.webViewAds } : {}),
+      },
+      configRevision: pending.revision,
+      configAppliedAt: new Date().toISOString(),
+      configSource: "remote",
+      configPending: false,
+      configFetchFailed: false,
+      error: false,
+    });
+    await refreshMobileAccount(signal);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    // Keep the pending validated candidate when native reports a sensitive operation.
+    applyingConfig = false;
+  }
+}
+export async function refreshMobileConfig(signal?: AbortSignal): Promise<void> {
+  if (!isMobileHost() || !state.info || refreshingConfig || signal?.aborted) return;
+  refreshingConfig = true;
+  const checkedAt = Date.now();
+  publish({ lastConfigCheckAt: new Date(checkedAt).toISOString() });
+  try {
+    const response = await fetch(apiBaseUrl + "/mobile/config", {
+      cache: "no-store",
+      ...(signal ? { signal } : {}),
+    });
+    if (!response.ok) throw new Error("MOBILE_CONFIG_UNAVAILABLE");
+    const value = parseMobileConfig(await response.json());
+    const revision = await mobileConfigRevision(value);
+    if (signal?.aborted) return;
+    lastSuccessfulConfigCheckAt = checkedAt;
+    rememberMobileConfig(value, checkedAt);
+    if (revision === state.configRevision && !state.error && state.configSource !== "cache") {
+      pendingConfig = null;
+      publish({ configPending: false, configFetchFailed: false });
+      return;
+    }
+    pendingConfig = { value, revision, checkedAt };
+    publish({ configPending: true, configFetchFailed: false });
+    await applyPendingMobileConfig(signal);
+  } catch {
+    if (!signal?.aborted) {
+      const expired =
+        !lastSuccessfulConfigCheckAt || checkedAt - lastSuccessfulConfigCheckAt > maxConfigAgeMs;
+      publish({
+        configFetchFailed: true,
+        ...(expired ? { error: true, canRequestAds: false } : {}),
+      });
+      if (expired) {
+        void requestMobile("ads.hideBanner").catch(() => undefined);
+        void requestMobile("analytics.consent", { enabled: false }).catch(() => undefined);
+      }
+    }
+  } finally {
+    refreshingConfig = false;
   }
 }
 /** User ID and tokens stay transient. Server session guards reject in-flight requests after a switch. */
@@ -183,10 +334,27 @@ export async function refreshMobileAccount(signal?: AbortSignal): Promise<void> 
         "isKids" in identity.profile &&
         identity.profile.isKids === false
       );
+    profileId =
+      identity &&
+      typeof identity === "object" &&
+      "profile" in identity &&
+      identity.profile &&
+      typeof identity.profile === "object" &&
+      "id" in identity.profile &&
+      typeof identity.profile.id === "string" &&
+      uuid.test(identity.profile.id)
+        ? identity.profile.id
+        : null;
     const switched = identityEstablished
       ? next !== accountId
       : next !== (state.info.boundAccountId ?? null);
+    const previousSourceAccount =
+      uploadSourceAccountId === undefined ? state.info.boundAccountId : uploadSourceAccountId;
+    if (previousSourceAccount && previousSourceAccount !== next)
+      await requestMobile("upload.clear").catch(() => undefined);
     if (switched) {
+      // Initial native binding must not discard a video just shared into the app.
+      // Only an established account departure owns source cleanup.
       await requestMobile("session.reset");
       if (signal?.aborted || revision !== generation) return;
       privacyCheckedAccount = undefined;
@@ -198,6 +366,7 @@ export async function refreshMobileAccount(signal?: AbortSignal): Promise<void> 
     }
     if (signal?.aborted || revision !== generation) return;
     accountId = next;
+    uploadSourceAccountId = next;
     identityEstablished = true;
     let adultAffirmed = false;
     try {
@@ -263,6 +432,7 @@ export async function refreshMobileAccount(signal?: AbortSignal): Promise<void> 
   } catch {
     if (!signal?.aborted && revision === generation) {
       accountId = null;
+      profileId = null;
       childProfile = true;
       publish({ notificationsEnabled: false, canRequestAds: false });
       await requestMobile("session.reset").catch(() => undefined);
@@ -280,6 +450,8 @@ export async function detachMobileSession(): Promise<void> {
   const previous = accountId,
     installation = state.info?.installationId;
   accountId = null;
+  uploadSourceAccountId = null;
+  profileId = null;
   privacyCheckedAccount = undefined;
   childProfile = true;
   publish({
@@ -290,6 +462,7 @@ export async function detachMobileSession(): Promise<void> {
     preferences: emptyNotificationPreferences(),
   });
   // Reset immediately even if detach cannot reach the server. Backend binds deliveries to live auth sessions.
+  await requestMobile("upload.clear").catch(() => undefined);
   await requestMobile("session.reset").catch(() => undefined);
   if (previous && installation)
     await fetch(apiBaseUrl + "/mobile/devices/" + installation, {
@@ -365,6 +538,7 @@ export function updateMobilePrivacy(canRequestAds: boolean) {
 export function nativeDisplayInventoryActive() {
   return Boolean(
     isMobileHost() &&
+    !state.error &&
     state.info?.configured.ads &&
     state.config?.ads.enabled &&
     state.config.ads.platforms[state.info.platform].enabled &&
@@ -387,6 +561,7 @@ export function requestBrowseInterstitial(previous: string | null, next: string)
     !browse(previous) ||
     !browse(next) ||
     !state.ready ||
+    state.error ||
     !isMobileHost() ||
     !state.canRequestAds ||
     mobileRestricted() ||
