@@ -43,6 +43,7 @@ test("Clips details submits one real authenticated report for the selected video
   page,
 }) => {
   const catalog = fixture<Catalog>("seed");
+  let reportConfirmed = false;
   try {
     await login(page, catalog);
     await installMedia(page);
@@ -68,6 +69,7 @@ test("Clips details submits one real authenticated report for the selected video
       videoId: catalog.videos[0]!.id,
       reason: "HARASSMENT",
     });
+    reportConfirmed = true;
     await expect(panel.getByRole("status")).toContainText("Report received for review");
     await expect(panel.getByRole("button", { name: "Send report", exact: true })).toBeDisabled();
     expect(writes).toHaveLength(1);
@@ -77,7 +79,14 @@ test("Clips details submits one real authenticated report for the selected video
       details: "Isolated safety UI fixture",
     });
   } finally {
-    fixture("cleanup", { fixtureId: catalog.fixtureId });
+    const cleaned = fixture<{
+      ok: boolean;
+      removedReports: number;
+      remainingVideos: number;
+      remainingReports: number;
+    }>("cleanup", { fixtureId: catalog.fixtureId });
+    expect(cleaned).toMatchObject({ ok: true, remainingVideos: 0, remainingReports: 0 });
+    if (reportConfirmed) expect(cleaned.removedReports).toBe(1);
   }
 });
 
