@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -15,6 +16,7 @@ import { AdminGuard, RequireAdminRoles } from "../admin/admin.guard.js";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { TrustRateLimiter } from "./trust-rate-limiter.js";
 import { TrustService } from "./trust.service.js";
+import { reportSchema } from "./trust.schemas.js";
 
 @Controller("trust")
 @UseGuards(AuthGuard)
@@ -25,7 +27,16 @@ export class TrustController {
   ) {}
   @Post("reports") report(@Req() r: AuthenticatedRequest, @Body() b: unknown) {
     this.rateLimiter.consume(`report:${r.ayinAuth.accountId}`, 10);
-    return this.trust.report(r.ayinAuth.accountId, b);
+    const parsed = reportSchema.safeParse(b);
+    if (!parsed.success)
+      throw new BadRequestException({
+        error: {
+          code: "INVALID_REPORT",
+          message:
+            "Choose exactly one valid report target and provide a supported reason and bounded details.",
+        },
+      });
+    return this.trust.report(r.ayinAuth.accountId, parsed.data);
   }
   @Post("takedowns") takedown(@Req() r: AuthenticatedRequest, @Body() b: unknown) {
     this.rateLimiter.consume(`takedown:${r.ayinAuth.accountId}`, 5);

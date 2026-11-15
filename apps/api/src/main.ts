@@ -11,6 +11,7 @@ import { ObservabilityService } from "./observability/observability.service.js";
 import { releaseSha, StructuredLoggerService } from "./observability/structured-logger.service.js";
 import {
   applyApiSecurityHeaders,
+  apiAllowedRequestHeaders,
   isAllowedCookieMutationOrigin,
 } from "./security/request-security.js";
 
@@ -47,16 +48,7 @@ async function bootstrap(): Promise<void> {
   app.flushLogs();
   app.enableShutdownHooks();
   app.enableCors({
-    allowedHeaders: [
-      "authorization",
-      "content-type",
-      "x-ayin-auth-transport",
-      "x-ayin-expected-account",
-      "x-ayin-expected-session",
-      "x-ayin-locale",
-      "x-request-id",
-      "x-correlation-id",
-    ],
+    allowedHeaders: apiAllowedRequestHeaders,
     exposedHeaders: ["x-request-id", "x-correlation-id", "x-ayin-release"],
     credentials: true,
     methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],

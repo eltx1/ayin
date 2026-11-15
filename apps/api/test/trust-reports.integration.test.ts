@@ -2,8 +2,38 @@ import { randomUUID } from "node:crypto";
 import { createPrismaClient } from "@ayin/db";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { Test } from "@nestjs/testing";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { BadRequestException } from "@nestjs/common";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppModule } from "../src/app.module.js";
+import { TrustController } from "../src/trust/trust.controller.js";
+
+describe("Report HTTP boundary validation (unit)", () => {
+  it.each([
+    { reason: "OTHER" },
+    { channelId: randomUUID(), videoId: randomUUID(), reason: "OTHER" },
+    { channelId: randomUUID(), reason: "OTHER", reporterProfileId: randomUUID() },
+    { channelId: randomUUID(), reason: "OTHER", details: "a".repeat(4001) },
+  ])("classifies malformed payload as a sanitized 400 before persistence", (payload) => {
+    const report = vi.fn(),
+      consume = vi.fn(),
+      accountId = randomUUID();
+    const controller = new TrustController({ report } as never, { consume } as never);
+    let failure: unknown;
+    try {
+      controller.report({ ayinAuth: { accountId } } as never, payload);
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(BadRequestException);
+    expect((failure as BadRequestException).getStatus()).toBe(400);
+    expect((failure as BadRequestException).getResponse()).toMatchObject({
+      error: { code: "INVALID_REPORT" },
+    });
+    expect(JSON.stringify((failure as BadRequestException).getResponse())).not.toContain("aaaa");
+    expect(report).not.toHaveBeenCalled();
+    expect(consume).toHaveBeenCalledWith(`report:${accountId}`, 10);
+  });
+});
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (databaseUrl) {
@@ -134,6 +164,7 @@ databaseDescribe("Authenticated moderation report intake", () => {
         payload,
       });
       expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({ error: { code: "INVALID_REPORT" } });
     }
     const changed = await app.inject({
       method: "POST",
