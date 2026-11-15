@@ -1,12 +1,13 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
+import type * as MobileBridge from "./mobile-bridge";
 const native = vi.hoisted(() => ({
   request: vi.fn(),
   supports: vi.fn<(capability: string) => boolean>(() => true),
   host: vi.fn(() => true),
 }));
 vi.mock("./mobile-bridge", async (original) => ({
-  ...(await original<typeof import("./mobile-bridge")>()),
+  ...(await original<typeof MobileBridge>()),
   requestMobile: native.request,
   supportsMobile: native.supports,
   isMobileHost: native.host,
@@ -56,7 +57,10 @@ beforeEach(() => {
     method === "runtime.configure" ? nativeInfo : {},
   );
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 function optIn(id: string) {
   storage.set("ayin.mobile.adult.v1:" + id, "yes");
   storage.set("ayin.mobile.analytics.consent.v1:" + id, "yes");
@@ -66,6 +70,66 @@ const boot = async () => {
   await runtime.initializeMobile(new AbortController().signal);
   return runtime;
 };
+describe("expired config cannot regain optional service authority", () => {
+  it("discards a deferred candidate older than 24h and cannot restore analytics on focus", async () => {
+    let clock = Date.now();
+    vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const dataset: Record<string, string> = {};
+    vi.stubGlobal("document", {
+      visibilityState: "visible",
+      documentElement: { dataset },
+      querySelectorAll: () => [],
+    });
+    optIn(a);
+    const runtime = await boot();
+    expect(runtime.getMobileState().analyticsConsent).toBe(true);
+    dataset.ayinUploadActive = "true";
+    config.analytics = { enabled: false };
+    await runtime.refreshMobileConfig();
+    expect(runtime.getMobileState().configPending).toBe(true);
+    clock += 25 * 60 * 60 * 1000;
+    config.schemaVersion = 99;
+    await runtime.refreshMobileConfig();
+    expect(runtime.getMobileState()).toMatchObject({
+      configPending: false,
+      error: true,
+      analyticsConsent: false,
+    });
+    delete dataset.ayinUploadActive;
+    native.request.mockClear();
+    expect(await runtime.applyPendingMobileConfig()).toBe(false);
+    await runtime.refreshMobileAccount();
+    expect(native.request).not.toHaveBeenCalledWith("analytics.consent", { enabled: true });
+    expect(runtime.getMobileState().analyticsConsent).toBe(false);
+    runtime.trackMobileEvent("follow");
+    expect(native.request).not.toHaveBeenCalledWith("analytics.event", expect.anything());
+    await expect(runtime.setMobileAnalyticsConsent(true)).rejects.toThrow("ANALYTICS_UNAVAILABLE");
+    config.schemaVersion = 1;
+    config.analytics = { enabled: true };
+    await runtime.refreshMobileConfig();
+    expect(runtime.getMobileState().error).toBe(false);
+  });
+  it("refuses an expired deferred candidate even without a subsequent fetch", async () => {
+    let clock = Date.now();
+    vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const dataset: Record<string, string> = {};
+    vi.stubGlobal("document", {
+      visibilityState: "visible",
+      documentElement: { dataset },
+      querySelectorAll: () => [],
+    });
+    const runtime = await boot();
+    dataset.ayinUploadActive = "true";
+    config.analytics = { enabled: false };
+    await runtime.refreshMobileConfig();
+    clock += 25 * 60 * 60 * 1000;
+    delete dataset.ayinUploadActive;
+    native.request.mockClear();
+    expect(await runtime.applyPendingMobileConfig()).toBe(false);
+    expect(native.request).not.toHaveBeenCalledWith("runtime.configure", expect.anything());
+    expect(runtime.getMobileState()).toMatchObject({ configPending: false, error: true });
+  });
+});
 describe("live public config activation (bridge mocks, not SDK/device evidence)", () => {
   function idleDocument(
     dataset: Record<string, string> = {},
@@ -339,7 +403,9 @@ describe("mobile identity, consent and notification orchestration (bridge mocks,
     optIn(a);
     await boot();
     const reset = native.request.mock.calls.findIndex(([method]) => method === "session.reset");
-    const user = native.request.mock.calls.findIndex(([method]) => method === "analytics.user");
+    const user = native.request.mock.calls.findIndex(
+      ([method, params]) => method === "analytics.user" && params?.id !== null,
+    );
     expect(reset).toBeGreaterThan(-1);
     expect(user).toBeGreaterThan(reset);
   });

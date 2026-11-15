@@ -25,6 +25,10 @@ SDK/App ID changes, new native ad formats/adapters, permissions, signing/capabil
 
 ## Important capability limits
 
+Privacy follow-up, 15 November: a deferred configuration expires after 24 hours, including while activation is awaiting native acknowledgement. Expiry revokes Analytics authority and cannot be undone by a focus/identity refresh until a fresh configuration is safely applied. Native Analytics consent/user mutations are serialized and fenced to the captured account and consent epoch. A failed local consent write is not reported as saved: collection stays disabled in that session and the UI asks the user to allow storage and retry before reopening.
+
+Operational diagnostic activation is deliberately session-only: an old server grant never restarts reporting automatically. A failed withdrawal is recorded locally and retried at most once per minute while the same account is present; losing or blocking local storage still cannot auto-enable diagnostics. The settings display subscribes to explicit grant/withdrawal changes.
+
 - Source recovery is **not an OS-managed background R2 upload service**. Foreground multipart/resume/verification remains the existing upload path. Killing the app can pause transfer; access depends on the provider and OS. No native background transfer completion has been claimed.
 - iOS 18.4+ exposes the custom WKWebView file picker. Older iOS uses export to Files/reselection for incoming shared video. Share imports are one video, at most 2 GB, and do not upload automatically or share auth with the extension.
 - OAuth was not invented: no new OAuth provider or login replacement was added. Any future provider needs a system-browser callback implementation and separate acceptance.

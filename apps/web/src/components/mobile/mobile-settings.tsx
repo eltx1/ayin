@@ -22,9 +22,16 @@ import {
   mobileDiagnosticsEnabled,
   enableMobileDiagnostics,
   disableMobileDiagnostics,
+  subscribeMobileDiagnostics,
+  getMobileDiagnosticsServerState,
 } from "@/lib/mobile-diagnostics";
 export function MobileSettings() {
   const state = useSyncExternalStore(subscribeMobile, getMobileState, getMobileServerState);
+  const diagnosticsEnabled = useSyncExternalStore(
+    subscribeMobileDiagnostics,
+    mobileDiagnosticsEnabled,
+    getMobileDiagnosticsServerState,
+  );
   const { locale } = useI18n(),
     ar = locale === "ar";
   const [busy, setBusy] = useState(false),
@@ -49,12 +56,17 @@ export function MobileSettings() {
     try {
       await action();
       setMessage(copy("Preferences saved.", "تم حفظ التفضيلات."));
-    } catch {
+    } catch (error) {
       setMessage(
-        copy(
-          "Could not complete the request. Check app permissions and try again. Your video viewing remains available.",
-          "تعذر إكمال الطلب. راجع أذونات التطبيق وحاول مجددًا. تظل مشاهدة الفيديو متاحة.",
-        ),
+        error instanceof Error && error.message === "ANALYTICS_CHOICE_NOT_PERSISTED"
+          ? copy(
+              "Analytics is disabled for this session, but your choice could not be saved. Allow local storage and retry before reopening AYIN.",
+              "التحليلات متوقفة في الجلسة الحالية، لكن تعذر حفظ اختيارك. اسمح بالتخزين المحلي وأعد المحاولة قبل إعادة فتح AYIN.",
+            )
+          : copy(
+              "Could not complete the request. Check app permissions and try again. Your video viewing remains available.",
+              "تعذر إكمال الطلب. راجع أذونات التطبيق وحاول مجددًا. تظل مشاهدة الفيديو متاحة.",
+            ),
       );
     } finally {
       setBusy(false);
@@ -99,7 +111,7 @@ export function MobileSettings() {
           <dt>{copy("Advertising state", "حالة الإعلانات")}</dt>
           <dd>{getMobileDiagnosticSnapshot().ads.status}</dd>
           <dt>{copy("Diagnostic sharing", "مشاركة التشخيص")}</dt>
-          <dd>{mobileDiagnosticsEnabled() ? copy("Enabled", "مفعّلة") : copy("Off", "متوقفة")}</dd>
+          <dd>{diagnosticsEnabled ? copy("Enabled", "مفعّلة") : copy("Off", "متوقفة")}</dd>
         </dl>
         {state.configFetchFailed && (
           <p role="status">
@@ -114,15 +126,15 @@ export function MobileSettings() {
         </button>{" "}
         <p>
           {copy(
-            "Optional operational reports share app/bridge versions, configuration revision and bounded SDK error codes with AYIN administrators for seven days. No email, messages, tokens or ad-unit values are sent. This is separate from Firebase Analytics.",
-            "التشخيص الاختياري يشارك إصدار التطبيق والربط ونسخة الإعدادات وأكواد أخطاء SDK المحدودة مع إدارة AYIN لمدة سبعة أيام، دون البريد أو الرسائل أو الرموز أو قيم وحدات الإعلان. وهو مستقل عن Firebase Analytics.",
+            "Optional operational reports share app/bridge versions, configuration revision and bounded SDK error codes with AYIN administrators for seven days. No email, messages, tokens or ad-unit values are sent. Sharing must be enabled again in each new app session; failed withdrawal is retried. This is separate from Firebase Analytics.",
+            "التشخيص الاختياري يشارك إصدار التطبيق والربط ونسخة الإعدادات وأكواد أخطاء SDK المحدودة مع إدارة AYIN لمدة سبعة أيام، دون البريد أو الرسائل أو الرموز أو قيم وحدات الإعلان. يجب تفعيله مجددًا في كل جلسة تطبيق جديدة، ويُعاد طلب الإيقاف إن تعذر تأكيده. وهو مستقل عن Firebase Analytics.",
           )}
         </p>
         <button disabled={busy} onClick={() => void perform(enableMobileDiagnostics)}>
           {copy("Allow diagnostic sharing", "السماح بمشاركة التشخيص")}
         </button>{" "}
         <button
-          disabled={busy || !mobileDiagnosticsEnabled()}
+          disabled={busy || !diagnosticsEnabled}
           onClick={() =>
             void perform(async () => {
               if (!(await sendMobileDiagnostics())) throw new Error("DIAGNOSTIC_NOT_SENT");

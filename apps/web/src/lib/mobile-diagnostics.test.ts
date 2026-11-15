@@ -69,6 +69,11 @@ beforeEach(() => {
     }),
   );
   vi.stubGlobal("document", { visibilityState: "visible" });
+  const saved = new Map<string, string>();
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => saved.get(key) ?? null,
+    setItem: (key: string, value: string) => saved.set(key, value),
+  });
   vi.stubGlobal(
     "fetch",
     vi.fn(async (_url: string, init?: RequestInit) => {
@@ -88,9 +93,51 @@ describe("first-party operational diagnostics consent and minimization", () => {
       abort = new AbortController();
     api.installMobileDiagnosticsLifecycle(abort.signal);
     port.listeners.forEach((listener) => listener());
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
     expect(await api.sendMobileDiagnostics()).toBe(false);
-    expect(vi.mocked(fetch).mock.calls.every(([, init]) => !init?.method)).toBe(true);
+    expect(fetch).not.toHaveBeenCalled();
+    abort.abort();
+  });
+  it("notifies settings subscribers when an explicit grant or withdrawal changes sharing", async () => {
+    const api = await import("./mobile-diagnostics"),
+      changed = vi.fn();
+    const stop = api.subscribeMobileDiagnostics(changed);
+    await api.enableMobileDiagnostics();
+    expect(changed).toHaveBeenCalledOnce();
+    await api.disableMobileDiagnostics();
+    expect(changed).toHaveBeenCalledTimes(2);
+    stop();
+  });
+  it("never restores an old server grant after restart, including failed offline withdrawal", async () => {
+    const api = await import("./mobile-diagnostics");
+    await api.enableMobileDiagnostics();
+    vi.mocked(fetch).mockRejectedValueOnce(new Error("offline"));
+    await expect(api.disableMobileDiagnostics()).rejects.toThrow();
+    vi.resetModules();
+    port.listeners.clear();
+    const next = await import("./mobile-diagnostics"),
+      abort = new AbortController();
+    next.installMobileDiagnosticsLifecycle(abort.signal);
+    vi.mocked(fetch).mockClear();
+    port.listeners.forEach((listener) => listener());
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+    expect(vi.mocked(fetch).mock.calls.every(([, init]) => init?.method === "DELETE")).toBe(true);
+    expect(await next.sendMobileDiagnostics()).toBe(false);
+    expect(next.mobileDiagnosticsEnabled()).toBe(false);
+    abort.abort();
+  });
+  it("does not auto-restore a grant even when withdrawal storage is blocked", async () => {
+    vi.stubGlobal("localStorage", {
+      getItem: () => "allow",
+      setItem() {
+        throw new Error("blocked");
+      },
+    });
+    const api = await import("./mobile-diagnostics"),
+      abort = new AbortController();
+    api.installMobileDiagnosticsLifecycle(abort.signal);
+    port.listeners.forEach((listener) => listener());
+    expect(await api.sendMobileDiagnostics()).toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
     abort.abort();
   });
   it("requires a verified non-Kids profile independently from Firebase availability", async () => {

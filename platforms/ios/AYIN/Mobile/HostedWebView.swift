@@ -364,7 +364,7 @@ final class HostedWebController: UIViewController, WKNavigationDelegate, WKUIDel
             let config = try MobileRuntimeConfig.parse(raw)
             guard !ads.busy else { throw MobileBridgeError.busy }
             if runtimeConfigured {
-                let uploading = try? await webView.callAsyncJavaScript("return document.documentElement.dataset.ayinUploadActive === 'true' || document.documentElement.dataset.ayinWebAdActive === 'true' || /^\\/(?:en\\/|ar\\/)?upload(?:\\/|$)/.test(location.pathname)", arguments: [:], in: nil, contentWorld: .page)
+                let uploading = try? await webView.callAsyncJavaScript("return document.visibilityState !== 'visible' || document.documentElement.dataset.ayinUploadActive === 'true' || document.documentElement.dataset.ayinWebAdActive === 'true' || Array.from(document.querySelectorAll('video,audio')).some(m => !m.paused && !m.ended) || /^\\/(?:en\\/|ar\\/)?upload(?:\\/|$)/.test(location.pathname)", arguments: [:], in: nil, contentWorld: .page)
                 guard uploading as? Bool == false else { throw MobileBridgeError.busy }
             }
             guard generation == documentGeneration else { throw MobileBridgeError.invalidRequest }

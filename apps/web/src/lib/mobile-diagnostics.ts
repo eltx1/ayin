@@ -34,6 +34,39 @@ let consentVersion: number | null = null,
   consentEpoch = 0,
   consentLookup: string | null = null;
 export const mobileDiagnosticsEnabled = () => consentVersion !== null;
+export const getMobileDiagnosticsServerState = () => false;
+const consentListeners = new Set<() => void>();
+export const subscribeMobileDiagnostics = (listener: () => void) => {
+  consentListeners.add(listener);
+  return () => {
+    consentListeners.delete(listener);
+  };
+};
+function setConsentVersion(value: number | null) {
+  const changed = (consentVersion !== null) !== (value !== null);
+  consentVersion = value;
+  if (changed) consentListeners.forEach((listener) => listener());
+}
+const localChoices = new Map<string, "allow" | "deny">();
+const choiceKey = (key: string) => "ayin.mobile.diagnostics.choice.v1:" + key;
+function storedChoice(key: string) {
+  if (localChoices.has(key)) return localChoices.get(key);
+  try {
+    const value = localStorage.getItem(choiceKey(key));
+    return value === "allow" || value === "deny" ? value : null;
+  } catch {
+    return null;
+  } // Without a durable local choice, never auto-restore a grant.
+}
+function rememberChoice(key: string, value: "allow" | "deny") {
+  localChoices.set(key, value);
+  try {
+    localStorage.setItem(choiceKey(key), value);
+  } catch {
+    /* Current session still denies; next boot defaults to no automatic grant. */
+  }
+}
+let lastWithdrawalAttempt = 0;
 function context() {
   const state = getMobileState(),
     account = getMobileAccountId(),
@@ -61,7 +94,7 @@ function bind(key: string) {
   if (binding !== key) {
     binding = key;
     lastAttempt = 0;
-    consentVersion = null;
+    setConsentVersion(null);
     consentLookup = null;
     consentEpoch++;
   }
@@ -94,7 +127,7 @@ async function readConsent() {
     context()?.key !== current.key
   )
     throw new Error("DIAGNOSTICS_INTERRUPTED");
-  consentVersion = value.enabled ? value.consentVersion : null;
+  setConsentVersion(value.enabled ? value.consentVersion : null);
   return { current, expectedConsentVersion: value.consentVersion, epoch };
 }
 export async function enableMobileDiagnostics(): Promise<void> {
@@ -120,16 +153,19 @@ export async function enableMobileDiagnostics(): Promise<void> {
     value?.enabled !== true
   )
     throw new Error("DIAGNOSTICS_UNAVAILABLE");
-  consentVersion = value.consentVersion;
+  rememberChoice(current.key, "allow");
+  setConsentVersion(value.consentVersion);
   await sendMobileDiagnostics();
 }
 export async function disableMobileDiagnostics(): Promise<void> {
   const state = getMobileState(),
     account = getMobileAccountId();
   consentEpoch++;
-  consentVersion = null;
+  setConsentVersion(null);
   if (!account || !state.info) return;
   consentLookup = account + ":" + state.info.installationId;
+  rememberChoice(consentLookup, "deny");
+  lastWithdrawalAttempt = Date.now();
   const response = await fetch(apiBaseUrl + "/mobile/diagnostics/" + state.info.installationId, {
     method: "DELETE",
     credentials: "include",
@@ -265,15 +301,17 @@ export function installMobileDiagnosticsLifecycle(signal: AbortSignal): () => vo
     const key = account && state.info ? account + ":" + state.info.installationId : null;
     if (key) {
       bind(key);
-      if (context() && consentLookup !== key)
-        void readConsent()
-          .then(() => sendMobileDiagnostics())
-          .catch(() => undefined);
-      else if (consentVersion !== null) void sendMobileDiagnostics();
+      if (storedChoice(key) === "deny") {
+        if (Date.now() - lastWithdrawalAttempt >= 60_000)
+          void disableMobileDiagnostics().catch(() => undefined);
+      } else if (consentVersion !== null) void sendMobileDiagnostics();
+      // Operational diagnostics require an explicit enable in this app session.
+      // A server-side old grant (or an unreadable/unwritable local tombstone)
+      // must never reactivate sharing after a restart.
     }
     if (!account) {
       binding = null;
-      consentVersion = null;
+      setConsentVersion(null);
       consentEpoch++;
       consentLookup = null;
       resetMobileAdDiagnostic();

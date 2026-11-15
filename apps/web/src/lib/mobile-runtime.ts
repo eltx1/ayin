@@ -74,6 +74,7 @@ let privacyCheckedAccount: string | null | undefined = undefined;
 export function mobileRestricted(): boolean {
   if (typeof window === "undefined") return true;
   return (
+    state.error ||
     state.info?.runtimeAllowed === false ||
     !state.adultAffirmed ||
     childProfile ||
@@ -96,8 +97,65 @@ function publish(patch: Partial<MobileState>) {
   listeners.forEach((listener) => listener());
 }
 const consentKey = "ayin.mobile.analytics.consent.v1";
+let analyticsConsentEpoch = 0;
+let analyticsConsentQueue: Promise<unknown> = Promise.resolve();
+const analyticsConsentOverrides = new Map<string, boolean>();
+function invalidateMobileAnalyticsConsent() {
+  analyticsConsentEpoch++;
+  publish({ analyticsConsent: false });
+}
+function rememberAnalyticsConsent(id: string | null, enabled: boolean) {
+  const key = id ?? "guest";
+  analyticsConsentOverrides.set(key, enabled);
+  try {
+    localStorage.setItem(consentKey + ":" + key, enabled ? "yes" : "no");
+    return true;
+  } catch {
+    /* An explicit withdrawal still overrides previously stored consent this session. */
+    return false;
+  }
+}
+/** Serialize consent + user binding, fencing both sides of every native await. */
+function applyNativeAnalyticsConsent(
+  enabled: boolean,
+  id: string | null,
+  current: () => boolean,
+): Promise<boolean> {
+  const operation = analyticsConsentQueue.then(async () => {
+    if (!current()) return false;
+    try {
+      const consent = await requestMobile<{ enabled?: boolean }>("analytics.consent", { enabled });
+      if (!current()) {
+        if (enabled) await clearNativeAnalyticsConsent();
+        return false;
+      }
+      if (enabled && consent?.enabled === false) throw new Error("ANALYTICS_DISABLED");
+      await requestMobile("analytics.user", { id: enabled ? id : null });
+      if (!current()) {
+        if (enabled) await clearNativeAnalyticsConsent();
+        return false;
+      }
+      return true;
+    } catch (error) {
+      if (enabled) await clearNativeAnalyticsConsent();
+      throw error;
+    }
+  });
+  analyticsConsentQueue = operation.catch(() => undefined);
+  return operation;
+}
+async function clearNativeAnalyticsConsent() {
+  // Dispatch both revocations now; a delayed response must not send a stale
+  // user-clear after a newer, serialized opt-in has already completed.
+  await Promise.all([
+    requestMobile("analytics.consent", { enabled: false }).catch(() => undefined),
+    requestMobile("analytics.user", { id: null }).catch(() => undefined),
+  ]);
+}
 const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 function storedConsent(id: string | null) {
+  const override = analyticsConsentOverrides.get(id ?? "guest");
+  if (override !== undefined) return override;
   try {
     return localStorage.getItem(consentKey + ":" + (id ?? "guest")) === "yes";
   } catch {
@@ -202,6 +260,10 @@ export function mobileConfigurationBusy(): boolean {
 }
 export async function applyPendingMobileConfig(signal?: AbortSignal): Promise<boolean> {
   const pending = pendingConfig;
+  if (pending && Date.now() - pending.checkedAt > maxConfigAgeMs) {
+    expireMobileConfig();
+    return false;
+  }
   if (
     !pending ||
     !state.info ||
@@ -219,6 +281,10 @@ export async function applyPendingMobileConfig(signal?: AbortSignal): Promise<bo
     );
     const info = await requestMobile<MobileInfo>("runtime.configure", { config: projected });
     if (signal?.aborted || pending !== pendingConfig) return false;
+    if (Date.now() - pending.checkedAt > maxConfigAgeMs) {
+      expireMobileConfig();
+      return false;
+    }
     if (
       !info ||
       info.installationId !== state.info.installationId ||
@@ -252,6 +318,19 @@ export async function applyPendingMobileConfig(signal?: AbortSignal): Promise<bo
     applyingConfig = false;
   }
 }
+function expireMobileConfig() {
+  invalidateMobileAnalyticsConsent();
+  pendingConfig = null;
+  privacyCheckedAccount = undefined;
+  publish({ error: true, canRequestAds: false, analyticsConsent: false, configPending: false });
+  void requestMobile("ads.hideBanner").catch(() => undefined);
+  // Immediate revocation plus a queued barrier also catches an already in-flight enable.
+  void clearNativeAnalyticsConsent();
+  const epoch = analyticsConsentEpoch;
+  void applyNativeAnalyticsConsent(false, null, () => epoch === analyticsConsentEpoch).catch(
+    () => undefined,
+  );
+}
 export async function refreshMobileConfig(signal?: AbortSignal): Promise<void> {
   if (!isMobileHost() || !state.info || refreshingConfig || signal?.aborted) return;
   refreshingConfig = true;
@@ -282,12 +361,8 @@ export async function refreshMobileConfig(signal?: AbortSignal): Promise<void> {
         !lastSuccessfulConfigCheckAt || checkedAt - lastSuccessfulConfigCheckAt > maxConfigAgeMs;
       publish({
         configFetchFailed: true,
-        ...(expired ? { error: true, canRequestAds: false } : {}),
       });
-      if (expired) {
-        void requestMobile("ads.hideBanner").catch(() => undefined);
-        void requestMobile("analytics.consent", { enabled: false }).catch(() => undefined);
-      }
+      if (expired) expireMobileConfig();
     }
   } finally {
     refreshingConfig = false;
@@ -297,10 +372,15 @@ export async function refreshMobileConfig(signal?: AbortSignal): Promise<void> {
 export async function refreshMobileAccount(signal?: AbortSignal): Promise<void> {
   if (!isMobileHost() || !state.info) return;
   const revision = ++generation;
+  const consentEpoch = analyticsConsentEpoch;
   identityRefreshing = true;
   childProfile = true;
   publish({}); // Revoke hosted ad eligibility before waiting for the new identity.
-  await requestMobile("analytics.consent", { enabled: false }).catch(() => undefined);
+  await applyNativeAnalyticsConsent(
+    false,
+    null,
+    () => revision === generation && consentEpoch === analyticsConsentEpoch && !signal?.aborted,
+  ).catch(() => undefined);
   try {
     const response = await fetch(apiBaseUrl + "/auth/me", {
       credentials: "include",
@@ -380,16 +460,22 @@ export async function refreshMobileAccount(signal?: AbortSignal): Promise<void> 
       state.info.configured.firebase &&
       state.config?.analytics.enabled === true &&
       !mobileRestricted();
+    const consentCurrent = () =>
+      revision === generation &&
+      consentEpoch === analyticsConsentEpoch &&
+      !signal?.aborted &&
+      next === accountId &&
+      (!analyticsConsent || !mobileRestricted());
+    let analyticsApplied = false;
     if (state.info.configured.firebase)
-      await requestMobile("analytics.consent", { enabled: analyticsConsent }).catch(
-        () => undefined,
-      );
+      analyticsApplied = await applyNativeAnalyticsConsent(
+        analyticsConsent,
+        next,
+        consentCurrent,
+      ).catch(() => false);
     if (revision !== generation || signal?.aborted) return;
-    publish({ analyticsConsent });
-    if (state.info.configured.firebase)
-      await requestMobile("analytics.user", { id: analyticsConsent ? next : null }).catch(
-        () => undefined,
-      );
+    if (consentEpoch === analyticsConsentEpoch)
+      publish({ analyticsConsent: analyticsConsent && analyticsApplied });
     if (
       !mobileRestricted() &&
       privacyCheckedAccount !== next &&
@@ -401,6 +487,7 @@ export async function refreshMobileAccount(signal?: AbortSignal): Promise<void> 
     }
     if (
       next &&
+      !state.error &&
       state.info.configured.firebase &&
       state.config?.notifications.enabled &&
       !notificationsLocallyDisabled(next)
@@ -474,21 +561,42 @@ export async function detachMobileSession(): Promise<void> {
 }
 export async function setMobileAnalyticsConsent(enabled: boolean): Promise<void> {
   if (
-    (enabled && mobileRestricted()) ||
-    !state.config?.analytics.enabled ||
-    !state.info?.configured.firebase ||
-    !supportsMobile("analytics")
+    enabled &&
+    (identityRefreshing ||
+      mobileRestricted() ||
+      !state.config?.analytics.enabled ||
+      !state.info?.configured.firebase ||
+      !supportsMobile("analytics"))
   )
     throw new Error("ANALYTICS_UNAVAILABLE");
-  const consent = await requestMobile<{ enabled?: boolean }>("analytics.consent", { enabled });
-  if (enabled && consent?.enabled === false) throw new Error("ANALYTICS_DISABLED");
-  publish({ analyticsConsent: enabled });
-  try {
-    localStorage.setItem(consentKey + ":" + (accountId ?? "guest"), enabled ? "yes" : "no");
-  } catch {
-    /* Consent remains effective for this session. */
+  const expected = accountId,
+    revision = generation;
+  invalidateMobileAnalyticsConsent();
+  const epoch = analyticsConsentEpoch;
+  let persisted = true;
+  if (!enabled) {
+    persisted = rememberAnalyticsConsent(expected, false);
+    void clearNativeAnalyticsConsent();
   }
-  await requestMobile("analytics.user", { id: enabled ? accountId : null });
+  const current = () =>
+    revision === generation &&
+    expected === accountId &&
+    epoch === analyticsConsentEpoch &&
+    (!enabled || (!identityRefreshing && !mobileRestricted()));
+  if (!state.info?.configured.firebase || !supportsMobile("analytics")) {
+    if (!persisted) throw new Error("ANALYTICS_CHOICE_NOT_PERSISTED");
+    return;
+  }
+  const applied = await applyNativeAnalyticsConsent(enabled, expected, current);
+  if (!persisted) throw new Error("ANALYTICS_CHOICE_NOT_PERSISTED");
+  if (!applied || !current()) throw new Error("ANALYTICS_INTERRUPTED");
+  if (enabled && !rememberAnalyticsConsent(expected, true)) {
+    // Never confirm an opt-in that cannot survive a reload consistently. The
+    // withdrawal path preserves an in-memory deny even if storage is unavailable.
+    await setMobileAnalyticsConsent(false);
+    throw new Error("ANALYTICS_CHOICE_NOT_PERSISTED");
+  }
+  publish({ analyticsConsent: enabled });
 }
 export function trackMobileEvent(
   name: MobileEventName,
@@ -589,10 +697,11 @@ export async function registerMobileToken(
   if (
     !info ||
     !expected ||
+    state.error ||
     state.info?.runtimeAllowed === false ||
     !state.config?.notifications.enabled ||
     !state.notificationsEnabled ||
-    !/^[A-Za-z0-9_:.\-]{20,4096}$/.test(token)
+    !/^[A-Za-z0-9_:.-]{20,4096}$/.test(token)
   )
     return;
   const response = await fetch(apiBaseUrl + "/mobile/devices", {
@@ -615,7 +724,12 @@ export async function enableMobileNotifications(
   preferences: NotificationPreferences,
 ): Promise<void> {
   await refreshMobileAccount();
-  if (!accountId || state.info?.runtimeAllowed === false || !state.config?.notifications.enabled)
+  if (
+    !accountId ||
+    state.error ||
+    state.info?.runtimeAllowed === false ||
+    !state.config?.notifications.enabled
+  )
     throw new Error("NOTIFICATIONS_UNAVAILABLE");
   const expected = accountId;
   const permission = await requestMobile<{ granted: boolean }>(
