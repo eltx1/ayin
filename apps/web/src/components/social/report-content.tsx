@@ -32,6 +32,8 @@ function ReportContentSession({ target }: { target: ReportTarget }) {
     ar = locale === "ar";
   const copy = (en: string, arabic: string) => (ar ? arabic : en);
   const panelId = useId();
+  const reasonId = `${panelId}-reason`,
+    detailsId = `${panelId}-details`;
   const { onBeforeIdentitySuspend, onAudienceInvalidated } = useViewerProduct();
   const panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false),
@@ -192,30 +194,28 @@ function ReportContentSession({ target }: { target: ReportTarget }) {
           aria-label={copy("Report content", "الإبلاغ عن المحتوى")}
         >
           <form onSubmit={(event) => void submit(event)}>
-            <label>
-              {copy("Reason", "السبب")}
-              <select
-                value={reason}
-                disabled={locked}
-                onChange={(event) => setReason(event.target.value as ReportReason)}
-              >
-                {reportReasons.map((value) => (
-                  <option key={value} value={value}>
-                    {labels[value][ar ? 1 : 0]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              {copy("Details (optional)", "تفاصيل (اختياري)")}
-              <textarea
-                value={details}
-                maxLength={4000}
-                disabled={locked}
-                rows={3}
-                onChange={(event) => setDetails(event.target.value)}
-              />
-            </label>
+            <label htmlFor={reasonId}>{copy("Reason", "السبب")}</label>
+            <select
+              id={reasonId}
+              value={reason}
+              disabled={locked}
+              onChange={(event) => setReason(event.target.value as ReportReason)}
+            >
+              {reportReasons.map((value) => (
+                <option key={value} value={value}>
+                  {labels[value][ar ? 1 : 0]}
+                </option>
+              ))}
+            </select>
+            <label htmlFor={detailsId}>{copy("Details (optional)", "تفاصيل (اختياري)")}</label>
+            <textarea
+              id={detailsId}
+              value={details}
+              maxLength={4000}
+              disabled={locked}
+              rows={3}
+              onChange={(event) => setDetails(event.target.value)}
+            />
             <button type="submit" disabled={locked}>
               {status === "sending"
                 ? copy("Sending…", "جارٍ الإرسال…")

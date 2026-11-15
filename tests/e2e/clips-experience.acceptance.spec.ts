@@ -92,6 +92,9 @@ test("Clips report draft clears on a real cookie account switch without a report
     const panel = await openClipReport(page, first);
     const text = panel.getByLabel("Details (optional)", { exact: true });
     await text.fill("Private report draft for the original account");
+    // Re-resolve the exact label after React commits the controlled textarea.
+    // A wrapping label made its exact text depend on the controlled textarea value.
+    await expect(text).toHaveValue("Private report draft for the original account");
     const oldText = await text.elementHandle();
     second = fixture<Catalog>("seed");
     await login(page, second);
