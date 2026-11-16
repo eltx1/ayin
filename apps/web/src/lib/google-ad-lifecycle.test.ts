@@ -484,3 +484,70 @@ describe("IMA request ownership", () => {
     await playback;
   });
 });
+
+describe("new native mobile hosts never fall back to browser advertising inventory", () => {
+  it("blocks IMA/GPT loading and requests before remote config, including cached SDKs", async () => {
+    scriptHarness();
+    const ima = imaHarness(),
+      gpt = gptHarness();
+    Object.assign(window, {
+      self: window,
+      top: window,
+      AyinMobile: { version: 1, capabilities: [], request: vi.fn() },
+      google: { ima: ima.ima },
+      googletag: gpt.gpt,
+    });
+    vi.stubGlobal("fetch", vi.fn());
+    const { fetchVideoAdDecision } = await import("./video-ads");
+    const { fetchPageAdDecision } = await import("./page-ads");
+    expect(await fetchVideoAdDecision("synthetic-video")).toMatchObject({ enabled: false });
+    expect(await fetchPageAdDecision("browse", "/", "MOBILE")).toMatchObject({ enabled: false });
+    expect(fetch).not.toHaveBeenCalled();
+    const { GoogleImaVideoAdService } = await import("./google-ima-video-ad-service");
+    const service = new GoogleImaVideoAdService(),
+      target = targets(),
+      listener = callbacks();
+    await expect(service.preload()).rejects.toThrow("IMA_NATIVE_INVENTORY_DISABLED");
+    await expect(service.initialize(target.container, target.video)).rejects.toThrow(
+      "IMA_NATIVE_INVENTORY_DISABLED",
+    );
+    await expect(
+      service.play("PRE_ROLL", "https://ads.invalid/synthetic", listener),
+    ).rejects.toThrow("IMA_NATIVE_INVENTORY_DISABLED");
+    const { loadGooglePublisherTag, mountGooglePublisherTagSlot } =
+      await import("./google-gpt-page-ad-service");
+    await expect(loadGooglePublisherTag(consent)).rejects.toThrow("GPT_NATIVE_INVENTORY_DISABLED");
+    await expect(
+      mountGooglePublisherTagSlot({
+        divId: "synthetic",
+        adUnitPath: "/123/synthetic",
+        sizes: [[300, 250]],
+        responsive: [],
+        consent,
+        onRender: vi.fn(),
+      }),
+    ).rejects.toThrow("GPT_NATIVE_INVENTORY_DISABLED");
+    expect(document.head.append).not.toHaveBeenCalled();
+    expect(ima.attach).not.toHaveBeenCalled();
+    expect(gpt.gpt.defineSlot).not.toHaveBeenCalled();
+    expect(listener.onContentPause).not.toHaveBeenCalled();
+    expect(listener.onEvent).not.toHaveBeenCalled();
+  });
+  it.each(["browser", "pwa", "legacy-tv"])(
+    "preserves video/page decisions for %s",
+    async (kind) => {
+      scriptHarness();
+      if (kind === "legacy-tv")
+        Object.assign(window, { AyinNative: { getPlatform: () => "android-tv" } });
+      const fetcher = vi.fn(async () =>
+        Response.json({ enabled: false, reason: "SYNTHETIC_NO_AD" }),
+      );
+      vi.stubGlobal("fetch", fetcher);
+      const { fetchVideoAdDecision } = await import("./video-ads");
+      const { fetchPageAdDecision } = await import("./page-ads");
+      await fetchVideoAdDecision("synthetic-video");
+      await fetchPageAdDecision("browse", "/", "MOBILE");
+      expect(fetcher).toHaveBeenCalledTimes(2);
+    },
+  );
+});

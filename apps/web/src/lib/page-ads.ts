@@ -1,3 +1,4 @@
+import { webAdvertisingAllowed } from "./mobile-web-ads";
 import { apiBaseUrl } from "./api";
 
 export type PageAdDevice = "MOBILE" | "DESKTOP" | "TV";
@@ -51,6 +52,8 @@ export async function fetchPageAdDecision(
   device: PageAdDevice,
   signal?: AbortSignal,
 ) {
+  if (!webAdvertisingAllowed("page"))
+    return { enabled: false, reason: "WEBVIEW_PAGE_ADS_DISABLED" } as const;
   const search = new URLSearchParams({ route, device });
   const response = await fetch(
     `${apiBaseUrl}/ads/page/decision/${encodeURIComponent(key)}?${search.toString()}`,

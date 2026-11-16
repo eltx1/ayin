@@ -34,7 +34,7 @@ const workspaceCases = [
     sourcePath: "../components/admin/admin-sidebar.tsx",
     sourceSymbol: "visibleAdminNavigation",
     groups: adminNavigation,
-    count: 18,
+    count: 19,
   },
   {
     name: "Studio",

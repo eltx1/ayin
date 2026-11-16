@@ -1,3 +1,4 @@
+import { webAdvertisingAllowed } from "./mobile-web-ads";
 import { trackAnalyticsEvent } from "./analytics";
 import { apiBaseUrl } from "./api";
 import type { AdvertisingConsentSnapshot } from "./advertising-consent";
@@ -65,6 +66,9 @@ export interface VideoAdService {
 }
 
 export async function fetchVideoAdDecision(videoId: string, signal?: AbortSignal) {
+  // UMP consent for native ads is not browser IMA consent. Leave content playback unblocked.
+  if (!webAdvertisingAllowed("video"))
+    return { enabled: false, reason: "WEBVIEW_VIDEO_ADS_DISABLED" } as const;
   const response = await fetch(`${apiBaseUrl}/ads/video/decision/${encodeURIComponent(videoId)}`, {
     cache: "no-store",
     ...(signal ? { signal } : {}),

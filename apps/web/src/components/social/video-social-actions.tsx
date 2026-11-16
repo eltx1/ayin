@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ReportContentButton } from "./report-content";
+import { sharePublicUrl } from "@/lib/mobile-sharing";
 
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { ActionButton, StatusNotice } from "@/components/ui/design-system";
@@ -200,8 +202,7 @@ export function VideoSocialActions({
   async function share() {
     const url = window.location.href;
     try {
-      if (navigator.share) await navigator.share({ title: document.title, url });
-      else await navigator.clipboard.writeText(url);
+      if (!(await sharePublicUrl(url))) return;
       trackAnalyticsEvent("SHARE", { videoId });
     } catch {
       // Cancellation is a normal share-sheet outcome and must not affect playback or server state.
@@ -296,6 +297,7 @@ export function VideoSocialActions({
           ) : null}
         </StatusNotice>
       ) : null}
+      <ReportContentButton target={{ videoId }} />
     </div>
   );
 }

@@ -5,6 +5,11 @@ import type { AuthenticatedRequest } from "../auth/auth.guard.js";
 import { AuthHttpError } from "../auth/auth.errors.js";
 import { MfaService } from "../auth/mfa.service.js";
 import { DatabaseService } from "../database/database.service.js";
+import {
+  assertNoChannelBlock,
+  assertNoProfileBlock,
+  blockedAccountIds,
+} from "../user-blocks/user-blocks.policy.js";
 import { VideoPolicyService } from "../video-policy/video-policy.service.js";
 import {
   canEditComment,
@@ -24,11 +29,14 @@ export class CommentsService {
     @Inject(MfaService) private readonly mfa: MfaService,
   ) {}
 
-  async list(videoId: string, cursor = 0, limit = 30, countryCode?: string) {
+  async list(videoId: string, cursor = 0, limit = 30, countryCode?: string, accountId?: string) {
     const video = await this.availableVideo(videoId, countryCode, true);
     if (!video.commentsEnabled) return { enabled: false, items: [], nextCursor: null };
+    await assertNoChannelBlock(this.database.client, accountId, video.channelId);
+    const blocked = await blockedAccountIds(this.database.client, accountId);
+    const authorFilter = blocked.length ? { authorProfile: { accountId: { notIn: blocked } } } : {};
     const rows = await this.database.client.comment.findMany({
-      where: { videoId, parentId: null, status: "PUBLISHED" },
+      where: { videoId, parentId: null, status: "PUBLISHED", ...authorFilter },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       skip: cursor,
       take: limit + 1,
@@ -38,10 +46,10 @@ export class CommentsService {
         createdAt: true,
         updatedAt: true,
         authorProfileId: true,
-        authorProfile: { select: { name: true, slug: true } },
+        authorProfile: { select: { id: true, name: true, slug: true } },
         reactions: { where: { type: "LIKE" }, select: { id: true } },
         replies: {
-          where: { status: "PUBLISHED" },
+          where: { status: "PUBLISHED", ...authorFilter },
           orderBy: { createdAt: "asc" },
           take: 20,
           select: {
@@ -50,7 +58,7 @@ export class CommentsService {
             createdAt: true,
             updatedAt: true,
             authorProfileId: true,
-            authorProfile: { select: { name: true, slug: true } },
+            authorProfile: { select: { id: true, name: true, slug: true } },
             reactions: { where: { type: "LIKE" }, select: { id: true } },
           },
         },
@@ -104,6 +112,7 @@ export class CommentsService {
       throw this.policyError(error);
     }
     return this.database.client.$transaction(async (tx) => {
+      await assertNoChannelBlock(tx, accountId, video.channelId);
       // Both creation and profile suppression lock the existing profile before
       // checking suppression/writing comments, including the first hide.
       await tx.$queryRaw`SELECT "id" FROM "ViewerProfile" WHERE "id" = ${profile.id}::uuid FOR UPDATE`;
@@ -116,10 +125,11 @@ export class CommentsService {
       if (parentId) {
         const parent = await tx.comment.findUnique({
           where: { id: parentId },
-          select: { videoId: true, parentId: true, status: true },
+          select: { videoId: true, parentId: true, status: true, authorProfileId: true },
         });
         if (!parent || parent.videoId !== videoId || parent.status !== "PUBLISHED")
           throw new CommentsError("PARENT_NOT_FOUND", "Reply target not found.", 404);
+        await assertNoProfileBlock(tx, accountId, parent.authorProfileId);
         if (parent.parentId)
           throw new CommentsError(
             "THREAD_DEPTH_LIMIT",
@@ -199,7 +209,8 @@ export class CommentsService {
     this.rateLimiter.consume(`reaction:${accountId}`, 90);
     const profile = await this.resolveProfile(accountId, requestedProfileId);
     this.assertAdultProfile(profile);
-    await this.assertPublishedComment(commentId, countryCode);
+    const targetComment = await this.assertPublishedComment(commentId, countryCode);
+    await assertNoProfileBlock(this.database.client, accountId, targetComment.authorProfileId);
     if (enabled) {
       await this.database.client.reaction.upsert({
         where: { profileId_commentId: { profileId: profile.id, commentId } },
@@ -441,7 +452,12 @@ export class CommentsService {
   private async assertPublishedComment(commentId: string, countryCode?: string) {
     const comment = await this.database.client.comment.findUnique({
       where: { id: commentId },
-      select: { status: true, videoId: true, parent: { select: { status: true } } },
+      select: {
+        status: true,
+        videoId: true,
+        authorProfileId: true,
+        parent: { select: { status: true } },
+      },
     });
     if (
       !comment ||
@@ -450,6 +466,7 @@ export class CommentsService {
     )
       throw new CommentsError("COMMENT_NOT_FOUND", "Comment not found.", 404);
     await this.availableVideo(comment.videoId, countryCode);
+    return comment;
   }
 
   private assertAdultProfile(profile: { isKids: boolean }) {

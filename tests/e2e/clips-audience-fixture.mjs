@@ -169,11 +169,23 @@ try {
           data: { isDefault: true, isKids: true },
         });
       } else if (command === "cleanup") {
+        // Report targets use SET NULL, but the database requires exactly one target.
+        // Delete reports targeting only these ownership-verified disposable video
+        // IDs; otherwise the FK update aborts cleanup and leaks public Clips.
+        const removedReports = await tx.report.deleteMany({
+          where: { videoId: { in: ids } },
+        });
         await tx.videoPolicy.deleteMany({ where: { videoId: { in: ids } } });
         await tx.video.deleteMany({ where: { id: { in: ids }, channelId: channel.id } });
         await tx.channel.delete({ where: { id: channel.id } });
         await tx.account.delete({ where: { id: account.id } });
         await tx.platformSetting.delete({ where: marker(input.fixtureId) });
+        return {
+          ok: true,
+          removedReports: removedReports.count,
+          remainingVideos: await tx.video.count({ where: { id: { in: ids } } }),
+          remainingReports: await tx.report.count({ where: { videoId: { in: ids } } }),
+        };
       } else throw new Error("Unknown Clips fixture command.");
       return { ok: true };
     });

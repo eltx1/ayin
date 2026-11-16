@@ -12,6 +12,7 @@ import {
 } from "react";
 
 import { useI18n } from "@/components/i18n/i18n-provider";
+import { requestMobile, supportsMobile } from "@/lib/mobile-bridge";
 import { formatPlayerTime, translatePlayer, type PlayerTranslationKey } from "@/lib/i18n/player";
 import { type TranslationValues } from "@/lib/i18n/translator";
 import { TvFocusScope } from "@/components/tv/tv-focus-scope";
@@ -449,6 +450,34 @@ export function AyinPlayer({
 
   const togglePip = useCallback(async () => {
     const video = videoRef.current;
+    if (document.documentElement.dataset.ayinWebAdActive === "true") return;
+    if (video && supportsMobile("media.pip")) {
+      try {
+        if (!document.fullscreenElement) await toggleShellAwareFullscreen(rootRef.current!);
+        const result = await requestMobile<{ entered: boolean }>("media.pip");
+        if (result?.entered) return;
+      } catch {
+        /* Fall back to the platform's browser media API when available. */
+      }
+    }
+    const webkitVideo = video as
+      | (HTMLVideoElement & {
+          webkitPresentationMode?: string;
+          webkitSupportsPresentationMode?(mode: string): boolean;
+          webkitSetPresentationMode?(mode: string): void;
+        })
+      | null;
+    if (
+      webkitVideo?.webkitSetPresentationMode &&
+      webkitVideo.webkitSupportsPresentationMode?.("picture-in-picture")
+    ) {
+      webkitVideo.webkitSetPresentationMode(
+        webkitVideo.webkitPresentationMode === "picture-in-picture"
+          ? "inline"
+          : "picture-in-picture",
+      );
+      return;
+    }
     if (!video || !document.pictureInPictureEnabled || !("requestPictureInPicture" in video))
       return;
     if (document.pictureInPictureElement) await document.exitPictureInPicture();
@@ -924,7 +953,7 @@ export function AyinPlayer({
               className={`${styles.iconButton} ${styles.pipButton}`}
               data-tv-focusable="true"
               data-tv-focus-id={`player-pip-${videoId}`}
-              onClick={() => void togglePip()}
+              onClick={() => void togglePip().catch(() => undefined)}
               title={t("player.pip")}
               type="button"
             >

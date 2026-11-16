@@ -1,0 +1,21 @@
+// One consented, short-lived operational snapshot per app installation. No raw tokens/text.
+model MobileDiagnostic {
+  id               String    @id @default(uuid()) @db.Uuid
+  installationId   String    @unique @db.Uuid
+  accountId        String    @db.Uuid
+  sessionId        String    @db.Uuid
+  platform         String?   @db.VarChar(10)
+  appVersion       String?   @db.VarChar(64)
+  snapshot         Json?     @db.JsonB
+  receivedAt       DateTime?
+  consentVersion   Int       @default(0)
+  consentRevokedAt DateTime?
+  expiresAt        DateTime
+
+  account Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  session AccountSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, receivedAt])
+  @@index([sessionId])
+  @@index([expiresAt])
+}

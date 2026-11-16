@@ -6,6 +6,7 @@ export const trustRecordSchema = z.object({
 });
 export const reportSchema = z
   .object({
+    channelId: uuid.optional(),
     videoId: uuid.optional(),
     commentId: uuid.optional(),
     reason: z.enum([
@@ -20,8 +21,11 @@ export const reportSchema = z
     ]),
     details: z.string().max(4000).optional(),
   })
+  .strict()
   .refine(
-    (v) => Number(Boolean(v.videoId)) + Number(Boolean(v.commentId)) === 1,
+    (v) =>
+      Number(Boolean(v.videoId)) + Number(Boolean(v.commentId)) + Number(Boolean(v.channelId)) ===
+      1,
     "Exactly one report target is required",
   );
 export const takedownSchema = z.object({

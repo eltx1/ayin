@@ -299,6 +299,10 @@
     display: grid;
   }
   .overlay {
+    /* Arabic actions may need another row on narrow screens. Reserve their
+       natural height in the stage grid instead of clipping links under the
+       bottom navigation; useClipsViewport observes this metadata row. */
+    max-block-size: none;
     padding: var(--space-2) var(--space-3);
   }
   .sheet {

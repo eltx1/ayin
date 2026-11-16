@@ -67,3 +67,16 @@ export function applyApiSecurityHeaders(
   reply.header("cache-control", cacheControl);
   if (cacheControl === "private, no-store") reply.header("pragma", "no-cache");
 }
+/** Explicit trusted-client headers, shared by production bootstrap and CORS acceptance tests. */
+export const apiAllowedRequestHeaders = [
+  "authorization",
+  "content-type",
+  "x-ayin-auth-transport",
+  "x-ayin-expected-account",
+  "x-ayin-expected-session",
+  "x-ayin-viewer-profile",
+  "x-ayin-diagnostics-consent-version",
+  "x-ayin-locale",
+  "x-request-id",
+  "x-correlation-id",
+];

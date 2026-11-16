@@ -12,6 +12,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.UUID
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -22,10 +23,108 @@ import org.json.JSONObject
 @RunWith(AndroidJUnit4::class)
 class ShellBaselineInstrumentedTest {
     @Test
+    fun explicitSourceCleanupRejectsArgumentsAndPreservesSourceOnSessionReset() {
+        if (BuildConfig.SHELL_PLATFORM != "android") return
+        launch().use { scenario ->
+            loadHarness(scenario)
+            assertTrue(awaitJsBoolean(scenario, "window.AyinMobile.capabilities.includes('upload.sources')"))
+            scenario.onActivity { activity ->
+                activity.getSharedPreferences("ayin_selected_video_v1", android.content.Context.MODE_PRIVATE)
+                    .edit().putString("uri", "content://synthetic.example/selected-video")
+                    .putLong("selectedAt", System.currentTimeMillis()).commit()
+            }
+            evaluateJavascript(scenario, """
+                window.__sourceResponses = {};
+                window.addEventListener('ayin:mobile-response', e => { window.__sourceResponses[e.detail.id] = e.detail; });
+                window.AyinMobile.request({id:'source_bad',method:'upload.clear',params:{unexpected:true}});
+                window.AyinMobile.request({id:'source_reset',method:'session.reset',params:{}});
+                true
+            """.trimIndent())
+            assertTrue(awaitJsBoolean(scenario, "window.__sourceResponses.source_bad?.error === 'INVALID_PARAMETERS' && window.__sourceResponses.source_reset?.ok === true"))
+            scenario.onActivity { activity ->
+                assertTrue(activity.getSharedPreferences("ayin_selected_video_v1", android.content.Context.MODE_PRIVATE).contains("uri"))
+            }
+            evaluateJavascript(scenario, "window.AyinMobile.request({id:'source_clear',method:'upload.clear',params:{}}); true")
+            assertTrue(awaitJsBoolean(scenario, "window.__sourceResponses.source_clear?.ok === true && window.__sourceResponses.source_clear?.result.cleared === true"))
+            scenario.onActivity { activity ->
+                assertFalse(activity.getSharedPreferences("ayin_selected_video_v1", android.content.Context.MODE_PRIVATE).contains("uri"))
+            }
+        }
+    }
+
+    @Test
+    fun nativeSharingRejectsPrivateDestinationsAndPipRejectsExtraArguments() {
+        if (BuildConfig.SHELL_PLATFORM != "android") return
+        launch().use { scenario ->
+            loadHarness(scenario)
+            assertTrue(awaitJsBoolean(scenario, "window.AyinMobile.capabilities.includes('share')"))
+            evaluateJavascript(scenario, """
+                window.__invalidNative = {};
+                window.addEventListener('ayin:mobile-response', e => { window.__invalidNative[e.detail.id] = e.detail; });
+                window.AyinMobile.request({id:'share_private',method:'share.open',params:{url:'https://ayin.stream/account?token=secret'}});
+                window.AyinMobile.request({id:'pip_extra',method:'media.pip',params:{unexpected:true}});
+                true
+            """.trimIndent())
+            assertTrue(awaitJsBoolean(scenario, "window.__invalidNative.share_private?.ok === false && window.__invalidNative.share_private?.error === 'INVALID_PARAMETERS'"))
+            assertTrue(awaitJsBoolean(scenario, "window.__invalidNative.pip_extra?.ok === false && window.__invalidNative.pip_extra?.error === 'INVALID_PARAMETERS'"))
+        }
+    }
+
+    @Test
+    fun activeWebAdBlocksNativeFullscreenBeforeSdkDispatch() {
+        if (BuildConfig.SHELL_PLATFORM != "android") return
+        launch().use { scenario ->
+            loadHarness(scenario)
+            val requestId = "web_ad_busy_" + UUID.randomUUID().toString()
+            evaluateJavascript(scenario, """
+                document.documentElement.dataset.ayinWebAdActive = 'true';
+                const receiveBusyResponse = (event) => {
+                  if (event.detail.id !== '$requestId') return;
+                  window.__webAdBusy = event.detail;
+                  window.removeEventListener('ayin:mobile-response', receiveBusyResponse);
+                };
+                window.addEventListener('ayin:mobile-response', receiveBusyResponse);
+                window.AyinMobile.request({id:'$requestId',method:'ads.interstitial',params:{placement:'browse_transition',naturalTransition:true}});
+                window.addEventListener('ayin:mobile-response', e => { if (e.detail.id === 'config_while_web_ad') window.__busyConfig = e.detail; });
+                window.AyinMobile.request({id:'config_while_web_ad',method:'runtime.configure',params:{config:{}}});
+                true
+            """.trimIndent())
+            assertTrue(awaitJsBoolean(scenario, "window.__webAdBusy?.ok === false && window.__webAdBusy?.error === 'SENSITIVE_OPERATION'"))
+            assertTrue(awaitJsBoolean(scenario, "window.__busyConfig?.ok === false && window.__busyConfig?.error === 'SENSITIVE_OPERATION'"))
+            evaluateJavascript(scenario, "delete document.documentElement.dataset.ayinWebAdActive; true")
+        }
+    }
+
+    @Test
     fun bridgeDpadMediaBackFullscreenAndLifecycleStayShared() {
         launch().use { scenario ->
             loadHarness(scenario)
             assertTrue(awaitJsBoolean(scenario, "typeof window.AyinNative === 'object'"))
+            if (BuildConfig.SHELL_PLATFORM == "android") {
+                assertTrue(awaitJsBoolean(scenario, "typeof window.AyinMobile === 'object' && window.AyinMobile.version === 1"))
+                // Real SDK registration occurs before bootstrap; this is not a mocked capability.
+                assertTrue(awaitJsBoolean(scenario, "window.AyinMobile.capabilities.includes('ads.webview')"))
+                val invalidId = "invalid_" + UUID.randomUUID().toString()
+                val validId = "valid_" + UUID.randomUUID().toString()
+                evaluateJavascript(scenario, """
+                    const receiveTestResponse = (event) => {
+                      if (event.detail.id === '$invalidId') window.__invalidMobile = event.detail;
+                      if (event.detail.id === '$validId') window.__validMobile = event.detail;
+                      if (window.__invalidMobile && window.__validMobile) {
+                        window.removeEventListener('ayin:mobile-response', receiveTestResponse);
+                      }
+                    };
+                    window.addEventListener('ayin:mobile-response', receiveTestResponse);
+                    window.AyinMobile.request({id:'$invalidId',method:'eval',params:{}});
+                    window.AyinMobile.request({id:'$validId',method:'session.reset',params:{}});
+                    true
+                """.trimIndent())
+                assertTrue(awaitJsBoolean(scenario, "window.__invalidMobile?.ok === false && window.__invalidMobile?.error === 'INVALID_REQUEST'"))
+                assertTrue(awaitJsBoolean(scenario, "window.__validMobile?.ok === true && window.__validMobile?.result?.detached === true"))
+            } else {
+                // Mobile-only feature detection must never disable existing TV/Fire web behavior.
+                assertTrue(awaitJsBoolean(scenario, "typeof window.AyinMobile === 'undefined'"))
+            }
             assertEquals(
                 JSONObjectQuote(BuildConfig.SHELL_PLATFORM),
                 evaluateJavascript(scenario, "window.AyinNative.getPlatform()"),
@@ -100,7 +199,7 @@ class ShellBaselineInstrumentedTest {
                     .contains("ayin_task77_session=baseline"),
             )
 
-            loadHarness(scenario)
+            val harnessId = loadHarness(scenario)
             evaluateJavascript(
                 scenario,
                 "history.pushState({}, '', '/watch/task77-spa-route'); true",
@@ -128,6 +227,10 @@ class ShellBaselineInstrumentedTest {
             )
             scenario.onActivity {
                 assertTrue(it.lastTrustedUrlForTests().endsWith("/watch/task77-spa-route"))
+            }
+            assertTrue(awaitJsBoolean(scenario, "document.readyState === 'complete' && window.__ayinHarnessId === '$harnessId'"))
+            scenario.onActivity {
+                assertEquals(BuildConfig.AYIN_ORIGIN + "/watch/task77-spa-route", it.webView.url)
             }
             assertTrue(
                 CookieManager.getInstance()
@@ -178,13 +281,17 @@ class ShellBaselineInstrumentedTest {
     private fun launch(): ActivityScenario<MainActivity> {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         return ActivityScenario.launch(
-            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            Intent(context, MainActivity::class.java)
+                .putExtra(MainActivity.TEST_FIXTURE_MODE, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
     }
 
-    private fun loadHarness(scenario: ActivityScenario<MainActivity>) {
+    private fun loadHarness(scenario: ActivityScenario<MainActivity>): String {
+        val harnessId = System.nanoTime().toString()
+        var harnessUrl = ""
         scenario.onActivity {
-            it.loadTestHtmlForTests(
+            harnessUrl = it.loadTestHtmlForTests(
                 """
                 <!doctype html>
                 <html>
@@ -210,14 +317,21 @@ class ShellBaselineInstrumentedTest {
                         window.__lastKeyCode = event.keyCode;
                       });
                       document.getElementById('first').focus();
+                      window.__ayinHarnessId = '$harnessId';
                     </script>
                   </body>
                 </html>
                 """.trimIndent(),
             )
         }
-        assertTrue(awaitJsBoolean(scenario, "document.readyState === 'complete'"))
-        scenario.onActivity { it.webView.requestFocus() }
+        assertTrue(awaitJsBoolean(scenario, "document.readyState === 'complete' && window.__ayinHarnessId === '$harnessId'"))
+        scenario.onActivity {
+            assertEquals("Harness must have the exact trusted HTTPS fixture URL", harnessUrl, it.webView.url)
+            it.webView.requestFocus()
+        }
+        assertTrue(awaitJsBoolean(scenario, "location.href === ${JSONObject.quote(harnessUrl)}"))
+        assertTrue(awaitJsBoolean(scenario, "location.origin === ${JSONObject.quote(BuildConfig.AYIN_ORIGIN)}"))
+        return harnessId
     }
 
     private fun awaitJsBoolean(
@@ -230,7 +344,11 @@ class ShellBaselineInstrumentedTest {
             if (evaluateJavascript(scenario, expression) == "true") return true
             Thread.sleep(50)
         }
-        return false
+        var nativeUrl: String? = null
+        scenario.onActivity { nativeUrl = it.webView.url }
+        val bridgeResponses = evaluateJavascript(scenario, "JSON.stringify({invalid:window.__invalidMobile,valid:window.__validMobile})")
+        throw AssertionError("WebView condition failed: $expression; nativeUrl=$nativeUrl; location=" +
+            evaluateJavascript(scenario, "location.href") + "; bridgeResponses=$bridgeResponses")
     }
 
     private fun evaluateJavascript(

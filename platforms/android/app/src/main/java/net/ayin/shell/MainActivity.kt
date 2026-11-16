@@ -1,7 +1,14 @@
 package net.ayin.shell
 
 import android.annotation.SuppressLint
+import android.app.PictureInPictureParams
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.util.Rational
 import android.content.ComponentCallbacks2
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
@@ -16,6 +23,12 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.FrameLayout
+import android.widget.Button
+import android.widget.TextView
+import android.view.Gravity
+import android.webkit.WebResourceResponse
 import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.ValueCallback
@@ -28,10 +41,14 @@ import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AlertDialog
+import androidx.core.view.ViewCompat
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +59,12 @@ import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
     internal lateinit var webView: WebView
+    private lateinit var mobileRuntime: MobileRuntime
+    private lateinit var bannerHost: FrameLayout
+    private lateinit var offlineView: LinearLayout
+    private var documentGeneration = 0L
+    private val pendingMobileRequests = mutableSetOf<String>()
+    private val completedMobileRequests = ArrayDeque<String>()
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
     private var lastTrustedUrl = BuildConfig.AYIN_ORIGIN
@@ -51,6 +74,7 @@ class MainActivity : AppCompatActivity() {
     private var shellFullscreen = false
     private var networkCallbackRegistered = false
     private var lastNetworkOnline: Boolean? = null
+    @Volatile private var testDocument: Pair<String, String>? = null
     private data class VideoSelection(
         val view: WebView,
         val url: String,
@@ -59,33 +83,35 @@ class MainActivity : AppCompatActivity() {
     )
     private val fileSelection = FileSelectionLease<VideoSelection>()
     private var fileValidationJob: Job? = null
+    private val retainedVideo by lazy { RetainedVideoSource(this) }
+    private var incomingVideo: Uri? = null
+    private var sourceDialog: AlertDialog? = null
+    private var mediaPlaying = false
+    private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    private var audioFocus: AudioFocusRequest? = null
+    private var sharePresenting = false
+    private var noisyReceiverRegistered = false
+    private val noisyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
+                pauseMedia()
+                abandonAudioFocus()
+            }
+        }
+    }
     private val videoPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        val selection = fileSelection.receiveResult() ?: return@registerForActivityResult
+        mobileRuntime.sensitive(false)
         val clip = result.data?.clipData
         val uri = result.data?.data ?: clip?.takeIf { it.itemCount == 1 }?.getItemAt(0)?.uri
         val singleSelection = clip == null || (clip.itemCount == 1 && clip.getItemAt(0).uri == uri)
-        val eligible = result.resultCode == RESULT_OK && uri != null &&
-            singleSelection && uri.scheme == "content" &&
-            ownsFileSelection(selection)
+        val selection = fileSelection.receiveResult()
+        val eligible = result.resultCode == RESULT_OK && uri != null && singleSelection &&
+            VideoSourcePolicy.contentUri(uri.toString())
         if (!eligible || uri == null) {
-            fileSelection.completeValidation(selection)?.callback?.onReceiveValue(null)
+            selection?.let { fileSelection.completeValidation(it)?.callback?.onReceiveValue(null) }
             return@registerForActivityResult
         }
-        fileValidationJob = lifecycleScope.launch {
-            val selected = withContext(Dispatchers.IO) {
-                runCatching {
-                    if (!VideoFileSelection.accepts(contentResolver.getType(uri), selection.types)) {
-                        null
-                    } else {
-                        // A temporary user-selected document grant suffices. Never persist it.
-                        contentResolver.openFileDescriptor(uri, "r")?.use { arrayOf(uri) }
-                    }
-                }.getOrNull()
-            }
-            // Provider I/O may finish after navigation, renderer replacement, or a new request.
-            val current = fileSelection.completeValidation(selection) ?: return@launch
-            current.callback.onReceiveValue(selected.takeIf { ownsFileSelection(current) })
-        }
+        validateVideoChoice(selection, uri, result.data?.flags ?: 0)
     }
 
     private val connectivityManager by lazy {
@@ -108,6 +134,10 @@ class MainActivity : AppCompatActivity() {
         CookieManager.getInstance().setAcceptCookie(true)
         attachWebView(createConfiguredWebView())
         registerNetworkCallback()
+        if (BuildConfig.SHELL_PLATFORM == "android") {
+            ContextCompat.registerReceiver(this, noisyReceiver, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY), ContextCompat.RECEIVER_NOT_EXPORTED)
+            noisyReceiverRegistered = true
+        }
 
         onBackPressedDispatcher.addCallback(
             this,
@@ -116,13 +146,18 @@ class MainActivity : AppCompatActivity() {
             },
         )
 
-        val restored = savedInstanceState?.let { webView.restoreState(it) } != null
+        // Instrumentation supplies its HTTPS document after launch. Do not start a
+        // competing production request (including restore) in this debug-only mode.
+        val fixtureMode = BuildConfig.DEBUG && intent.getBooleanExtra(TEST_FIXTURE_MODE, false)
+        val restored = !fixtureMode && savedInstanceState?.let { webView.restoreState(it) } != null
         lastTrustedUrl =
             savedInstanceState?.getString(STATE_LAST_TRUSTED_URL)?.takeIf(::isTrustedWebUrl)
                 ?: BuildConfig.AYIN_ORIGIN
         directBackArmed = savedInstanceState?.getBoolean(STATE_DIRECT_BACK_ARMED) ?: false
 
-        if (!restored) loadIntent(intent)
+        if (!fixtureMode) {
+            if (!restored || intent.action == Intent.ACTION_SEND) loadIntent(intent) else mobileRuntime.opened(intent)
+        }
         webView.requestFocus()
         debugLog("created platform=${BuildConfig.SHELL_PLATFORM} restored=$restored")
     }
@@ -143,20 +178,28 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        sharePresenting = false
         webView.onResume()
+        mobileRuntime.resume()
         emitLifecycle("resume")
         debugLog("lifecycle=resume")
     }
 
     override fun onPause() {
-        emitLifecycle("pause")
+        mobileRuntime.pause()
+        if (!isInPictureInPictureMode) {
+            emitLifecycle("pause")
+            if (BuildConfig.SHELL_PLATFORM == "android") { pauseMedia(); abandonAudioFocus() }
+            webView.onPause()
+        }
         CookieManager.getInstance().flush()
-        webView.onPause()
         debugLog("lifecycle=pause")
         super.onPause()
     }
 
     override fun onStop() {
+        if (BuildConfig.SHELL_PLATFORM == "android") pauseMedia()
+        abandonAudioFocus()
         emitLifecycle("stop")
         CookieManager.getInstance().flush()
         debugLog("lifecycle=stop")
@@ -179,6 +222,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         cancelFileSelection()
+        abandonAudioFocus()
+        if (noisyReceiverRegistered) {
+            unregisterReceiver(noisyReceiver)
+            noisyReceiverRegistered = false
+        }
+        if (::mobileRuntime.isInitialized) mobileRuntime.destroy()
         unregisterNetworkCallback()
         customViewCallback = null
         customView = null
@@ -241,8 +290,40 @@ class MainActivity : AppCompatActivity() {
 
     private fun attachWebView(view: WebView) {
         webView = view
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.BLACK) }
+        // Target 36 enforces edge-to-edge. Reserve cutout/system/IME space for web and native ads.
+        ViewCompat.setOnApplyWindowInsetsListener(root) { container, insets ->
+            val safe = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout() or WindowInsetsCompat.Type.ime())
+            container.setPadding(safe.left, safe.top, safe.right, safe.bottom)
+            insets
+        }
+        bannerHost = FrameLayout(this)
+        val stage = FrameLayout(this)
+        stage.addView(view, FrameLayout.LayoutParams(-1, -1))
+        offlineView = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.BLACK)
+            visibility = View.GONE
+            addView(TextView(this@MainActivity).apply {
+                text = "AYIN\nتعذر الاتصال. تحقق من الإنترنت ثم أعد المحاولة.\nUnable to connect. Check your connection and retry."
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                setPadding(32, 32, 32, 32)
+            })
+            addView(Button(this@MainActivity).apply {
+                text = "إعادة المحاولة / Retry"
+                setOnClickListener { loadTrustedUrl(lastTrustedUrl) }
+            })
+        }
+        stage.addView(offlineView, FrameLayout.LayoutParams(-1, -1))
+        root.addView(stage, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(bannerHost, LinearLayout.LayoutParams(-1, -2))
+        mobileRuntime = MobileRuntimeFactory.create(this, bannerHost, ::emitMobileEvent)
+        mobileRuntime.registerWebView(view)
         installOriginScopedBridge(view)
-        setContentView(view)
+        setContentView(root)
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mobileRuntime.resume()
         view.requestFocus()
     }
 
@@ -251,6 +332,9 @@ class MainActivity : AppCompatActivity() {
         cancelFileSelection()
         if (customView != null) hideCustomView()
 
+        mobileRuntime.destroy()
+        documentGeneration++
+        pendingMobileRequests.clear()
         val previous = webView
         (previous.parent as? ViewGroup)?.removeView(previous)
         previous.stopLoading()
@@ -288,6 +372,7 @@ class MainActivity : AppCompatActivity() {
         val platform = JSONObject.quote(BuildConfig.SHELL_PLATFORM)
         return """
             (() => {
+              if (window.top !== window) return;
               const transport = window.AyinNativeTransport;
               if (!transport) return;
               const send = (payload) => transport.postMessage(JSON.stringify(payload));
@@ -321,13 +406,97 @@ class MainActivity : AppCompatActivity() {
               });
               reportNavigation();
             })();
-        """.trimIndent()
+        """.trimIndent() + if (mobileRuntime.capabilities.isEmpty()) "" else "\n" + MobileBridgePolicy.bootstrap(mobileRuntime.capabilities)
+    }
+
+    private fun emitMobileEvent(event: JSONObject) {
+        runOnUiThread {
+            if (!isDestroyed && ::webView.isInitialized && isTrustedWebUrl(webView.url ?: "")) {
+                webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('ayin:mobile-event',{detail:$event}));", null)
+            }
+        }
+    }
+
+    private fun handleMobileRequest(payload: JSONObject) {
+        val id = payload.optString("id")
+        val method = payload.optString("method")
+        if (payload.opt("id") !is String || !MobileBridgePolicy.validId(id) || id in pendingMobileRequests || id in completedMobileRequests) return
+        val params = payload.optJSONObject("params")
+        val generation = documentGeneration
+        fun send(result: JSONObject?, error: String?) {
+            runOnUiThread {
+                if (!pendingMobileRequests.remove(id)) return@runOnUiThread
+                completedMobileRequests.addLast(id)
+                if (completedMobileRequests.size > 256) completedMobileRequests.removeFirst()
+                if (generation != documentGeneration || isDestroyed || !isTrustedWebUrl(webView.url ?: "")) return@runOnUiThread
+                val response = JSONObject().put("id", id).put("ok", error == null)
+                if (error != null) response.put("error", error) else response.put("result", result ?: JSONObject())
+                webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('ayin:mobile-response',{detail:$response}));", null)
+            }
+        }
+        if (pendingMobileRequests.size >= 16) return
+        pendingMobileRequests.add(id)
+        if (payload.keys().asSequence().toSet() != setOf("type", "id", "method", "params") || payload.opt("method") !is String ||
+            method !in MobileBridgePolicy.methods || params == null) { send(null, "INVALID_REQUEST"); return }
+        webView.postDelayed({ send(null, "TIMEOUT") }, 180_000)
+        fun invokeNative() {
+            if (generation != documentGeneration || isDestroyed) return
+            // Session reset also runs during initial binding and transient identity failures.
+            // Only explicit logout/known-account change calls upload.clear from the web.
+            if (method == "session.reset" && params.length() == 0) cancelFileSelection()
+            if (method == "upload.clear" && BuildConfig.SHELL_PLATFORM == "android") {
+                if (params.length() != 0) { send(null, "INVALID_PARAMETERS"); return }
+                cancelFileSelection()
+                retainedVideo.clear()
+                incomingVideo = null
+                send(JSONObject().put("cleared", true), null)
+                return
+            }
+            if (method == "share.open" && BuildConfig.SHELL_PLATFORM == "android") {
+                val url = params.opt("url")
+                if (params.keys().asSequence().toSet() != setOf("url") || url !is String || !VideoSourcePolicy.publicShareUrl(url)) {
+                    send(null, "INVALID_PARAMETERS"); return
+                }
+                if (sharePresenting || !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) || !hasWindowFocus()) {
+                    send(null, "BUSY"); return
+                }
+                try {
+                    sharePresenting = true
+                    startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"; putExtra(Intent.EXTRA_TEXT, url)
+                    }, getString(R.string.ayin_share)))
+                    send(JSONObject().put("shared", true), null)
+                } catch (_: RuntimeException) { sharePresenting = false; send(null, "SHARE_UNAVAILABLE") }
+                return
+            }
+            if (method == "media.pip" && BuildConfig.SHELL_PLATFORM == "android") {
+                if (params.length() != 0) { send(null, "INVALID_PARAMETERS"); return }
+                enterVideoPip(::send); return
+            }
+            try { mobileRuntime.request(method, params, ::send) } catch (_: Exception) { send(null, "INVALID_PARAMETERS") }
+        }
+        if (method in setOf("ads.banner", "ads.interstitial", "runtime.configure")) {
+            // A web IMA ad may pause content, so playing-video checks alone are insufficient.
+            // Recheck the actual trusted document immediately before native ad/config dispatch.
+            val script = """
+                (() => document.documentElement.dataset.ayinUploadActive === 'true' ||
+                  document.documentElement.dataset.ayinWebAdActive === 'true' ||
+                  Array.from(document.querySelectorAll('video,audio')).some(m => !m.paused && !m.ended))()
+            """.trimIndent()
+            try {
+                webView.evaluateJavascript(script) { busy ->
+                    if (generation != documentGeneration || isDestroyed) return@evaluateJavascript
+                    if (busy == "false") invokeNative() else send(null, "SENSITIVE_OPERATION")
+                }
+            } catch (_: RuntimeException) { send(null, "SENSITIVE_OPERATION") }
+        } else invokeNative()
     }
 
     private fun handleBridgeMessage(raw: String) {
         if (raw.length > MAX_BRIDGE_MESSAGE_LENGTH) return
         val payload = runCatching { JSONObject(raw) }.getOrNull() ?: return
         when (payload.optString("type")) {
+            "mobile" -> runOnUiThread { handleMobileRequest(payload) }
             "openExternal" -> {
                 val url = payload.optString("url").take(MAX_EXTERNAL_URL_LENGTH)
                 val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return
@@ -343,6 +512,9 @@ class MainActivity : AppCompatActivity() {
                 val state = payload.optString("state").take(MAX_PLAYBACK_STATE_LENGTH)
                 runOnUiThread {
                     webView.keepScreenOn = state == "playing"
+                    mediaPlaying = state == "playing"
+                    if (mediaPlaying) requestAudioFocus() else abandonAudioFocus()
+                    mobileRuntime.playback(state == "playing")
                     debugLog("playback=$state")
                 }
             }
@@ -353,6 +525,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     cancelFileSelection()
                     lastTrustedUrl = url
+                    mobileRuntime.navigation()
                     debugLog("navigation=$url")
                 }
             }
@@ -379,6 +552,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadIntent(intent: Intent) {
         cancelFileSelection()
+        if (BuildConfig.SHELL_PLATFORM == "android" && intent.action == Intent.ACTION_SEND) {
+            val stream = runCatching {
+                if (android.os.Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                else @Suppress("DEPRECATION") intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            }.getOrNull()
+            val singleStream = runCatching { intent.clipData == null ||
+                (intent.clipData!!.itemCount == 1 && intent.clipData!!.getItemAt(0).uri == stream) }.getOrDefault(false)
+            if (stream != null && singleStream && intent.type?.startsWith("video/") == true &&
+                intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0 && VideoSourcePolicy.contentUri(stream.toString())) {
+                incomingVideo = stream
+                loadTrustedUrl(BuildConfig.AYIN_ORIGIN + "/upload")
+                return
+            }
+        }
         val raw = intent.dataString
         val target = ShellNavigation.normalizeDeepLink(raw) ?: BuildConfig.AYIN_ORIGIN
         directBackArmed =
@@ -386,12 +573,14 @@ class MainActivity : AppCompatActivity() {
             ShellNavigation.exitOnBackRequested(raw)
         debugLog("deep-link=$target direct-back=$directBackArmed")
         loadTrustedUrl(target)
+        mobileRuntime.opened(intent)
     }
 
     private fun loadTrustedUrl(target: String) {
         if (!isTrustedWebUrl(target)) return
         lastTrustedUrl = target
         mainFrameLoadFailed = false
+        offlineView.visibility = View.GONE
         webView.loadUrl(target)
     }
 
@@ -534,9 +723,28 @@ class MainActivity : AppCompatActivity() {
         }
 
     private inner class AyinWebViewClient : WebViewClient() {
+        override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+            if (BuildConfig.DEBUG && request.isForMainFrame && request.method == "GET" && isTrustedOrigin(request.url)) {
+                val fixture = testDocument
+                if (fixture != null && request.url.toString() == fixture.first) {
+                    return WebResourceResponse(
+                        "text/html", "UTF-8", 200, "OK", mapOf("Cache-Control" to "no-store"),
+                        fixture.second.byteInputStream(Charsets.UTF_8),
+                    )
+                }
+            }
+            return super.shouldInterceptRequest(view, request)
+        }
+
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
             super.onPageStarted(view, url, favicon)
-            if (view === webView) cancelFileSelection()
+            if (view === webView) {
+                cancelFileSelection()
+                documentGeneration++
+                pendingMobileRequests.clear()
+                completedMobileRequests.clear()
+                mobileRuntime.navigation()
+            }
             if (isTrustedWebUrl(url)) mainFrameLoadFailed = false
         }
 
@@ -557,6 +765,9 @@ class MainActivity : AppCompatActivity() {
                 return
             }
             lastTrustedUrl = currentTrustedUrl(view)
+            offlineView.visibility = View.GONE
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mobileRuntime.resume()
+            mobileRuntime.pageReady()
             if (rendererRecoveryPending) {
                 rendererRecoveryPending = false
                 emitLifecycle("renderer-recovered")
@@ -573,6 +784,16 @@ class MainActivity : AppCompatActivity() {
             if (!request.isForMainFrame) return
             mainFrameLoadFailed = true
             debugLog("main-frame-error=${error.errorCode}")
+            offlineView.visibility = View.VISIBLE
+            mobileRuntime.pause()
+        }
+
+        override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, errorResponse: WebResourceResponse) {
+            if (request.isForMainFrame && errorResponse.statusCode >= 500) {
+                mainFrameLoadFailed = true
+                offlineView.visibility = View.VISIBLE
+                mobileRuntime.pause()
+            }
         }
 
         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
@@ -608,18 +829,7 @@ class MainActivity : AppCompatActivity() {
                 callback.onReceiveValue(null)
                 return true
             }
-            val picker = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = types.singleOrNull() ?: "video/*"
-                putExtra(Intent.EXTRA_MIME_TYPES, types.toTypedArray())
-                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            try {
-                videoPicker.launch(picker)
-            } catch (_: RuntimeException) {
-                fileSelection.launchFailed()?.callback?.onReceiveValue(null)
-            }
+            chooseVideoSource(selection)
             return true
         }
 
@@ -645,9 +855,148 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun cancelFileSelection() {
+        sourceDialog?.dismiss()
+        sourceDialog = null
         fileValidationJob?.cancel()
         fileValidationJob = null
         fileSelection.cancel()?.callback?.onReceiveValue(null)
+    }
+
+    private fun chooseVideoSource(selection: VideoSelection) {
+        val previous = if (BuildConfig.SHELL_PLATFORM == "android") incomingVideo ?: retainedVideo.restored() else null
+        if (previous == null) { launchVideoPicker(selection); return }
+        var chosen = false
+        val isShared = incomingVideo != null
+        sourceDialog = AlertDialog.Builder(this)
+            .setTitle(R.string.ayin_choose_upload_video)
+            .setItems(arrayOf(getString(if (isShared) R.string.ayin_use_shared_video else R.string.ayin_use_previous_video), getString(R.string.ayin_choose_another_video), getString(R.string.ayin_forget_previous_video))) { _, which ->
+                chosen = true
+                when (which) {
+                    0 -> {
+                        incomingVideo = null
+                        val current = fileSelection.receiveResult()
+                        mobileRuntime.sensitive(false)
+                        if (current != null) validateVideoChoice(current, previous, 0)
+                    }
+                    1 -> launchVideoPicker(selection)
+                    else -> { incomingVideo = null; retainedVideo.clear(); launchVideoPicker(selection) }
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .create().also { dialog ->
+                dialog.setOnDismissListener {
+                    sourceDialog = null
+                    if (!chosen) {
+                        mobileRuntime.sensitive(false)
+                        fileSelection.launchFailed()?.callback?.onReceiveValue(null)
+                    }
+                }
+                mobileRuntime.sensitive(true)
+                dialog.show()
+            }
+    }
+
+    private fun launchVideoPicker(selection: VideoSelection) {
+        if (!ownsFileSelection(selection)) {
+            fileSelection.launchFailed()?.callback?.onReceiveValue(null); return
+        }
+        val picker = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = selection.types.singleOrNull() ?: "video/*"
+            putExtra(Intent.EXTRA_MIME_TYPES, selection.types.toTypedArray())
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        try {
+            mobileRuntime.sensitive(true)
+            videoPicker.launch(picker)
+        } catch (_: RuntimeException) {
+            mobileRuntime.sensitive(false)
+            fileSelection.launchFailed()?.callback?.onReceiveValue(null)
+        }
+    }
+
+    private fun validateVideoChoice(selection: VideoSelection?, uri: Uri, offeredFlags: Int) {
+        if (selection != null && !ownsFileSelection(selection)) {
+            fileSelection.completeValidation(selection)?.callback?.onReceiveValue(null); return
+        }
+        fileValidationJob = lifecycleScope.launch {
+            val readable = withContext(Dispatchers.IO) {
+                runCatching {
+                    VideoFileSelection.accepts(contentResolver.getType(uri), selection?.types ?: listOf("video/*")) &&
+                        contentResolver.openFileDescriptor(uri, "r")?.use { true } == true
+                }.getOrDefault(false)
+            }
+            // Source recovery does not bypass account/session or web file-fingerprint checks.
+            if (selection == null) {
+                return@launch
+            }
+            val current = fileSelection.completeValidation(selection) ?: return@launch
+            val permitted = readable && ownsFileSelection(current)
+            if (permitted && BuildConfig.SHELL_PLATFORM == "android") retainedVideo.remember(uri, offeredFlags)
+            else if (!readable && retainedVideo.restored() == uri) retainedVideo.clear()
+            current.callback.onReceiveValue(if (permitted) arrayOf(uri) else null)
+        }
+    }
+
+    private fun pauseMedia() {
+        if (::webView.isInitialized && isTrustedWebUrl(webView.url ?: ""))
+            webView.evaluateJavascript("document.querySelectorAll('video,audio').forEach(m => m.pause());", null)
+        mediaPlaying = false
+        if (::mobileRuntime.isInitialized) mobileRuntime.playback(false)
+        if (::webView.isInitialized) webView.keepScreenOn = false
+    }
+
+    private fun requestAudioFocus() {
+        if (BuildConfig.SHELL_PLATFORM != "android" || audioFocus != null) return
+        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MOVIE).build())
+            .setOnAudioFocusChangeListener { change ->
+                if (change < 0) runOnUiThread { pauseMedia(); abandonAudioFocus() }
+            }.build()
+        if (audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) audioFocus = request
+        else pauseMedia()
+    }
+
+    private fun abandonAudioFocus() {
+        audioFocus?.let { audioManager.abandonAudioFocusRequest(it) }
+        audioFocus = null
+    }
+
+    private fun enterVideoPip(done: (JSONObject?, String?) -> Unit) {
+        if (customView == null || !mediaPlaying || !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) || !packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)) {
+            done(null, "PIP_UNAVAILABLE"); return
+        }
+        val generation = documentGeneration
+        webView.evaluateJavascript("""
+            (() => {
+              const video = Array.from(document.querySelectorAll('video')).find(v => !v.paused && !v.ended);
+              return {busy: document.documentElement.dataset.ayinWebAdActive === 'true' ||
+                document.documentElement.dataset.ayinUploadActive === 'true' || !video,
+                width: video?.videoWidth || 16, height: video?.videoHeight || 9};
+            })()
+        """.trimIndent()) { raw ->
+            if (generation != documentGeneration || isDestroyed) return@evaluateJavascript
+            val media = runCatching { JSONObject(raw) }.getOrNull()
+            if (media == null || media.optBoolean("busy", true)) { done(null, "SENSITIVE_OPERATION"); return@evaluateJavascript }
+            try {
+                mobileRuntime.pause() // PiP is content-only; native ads cannot remain visible.
+                val width = media.optInt("width", 16).coerceIn(1, 8192)
+                val height = media.optInt("height", 9).coerceIn(1, 8192)
+                val ratio = if (width.toDouble() / height in (1.0 / 2.39)..2.39) Rational(width, height) else Rational(16, 9)
+                val entered = enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(ratio).build())
+                if (!entered) mobileRuntime.resume()
+                done(JSONObject().put("entered", entered), null)
+            } catch (_: RuntimeException) { mobileRuntime.resume(); done(null, "PIP_UNAVAILABLE") }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(inPip: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(inPip, newConfig)
+        if (!inPip && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            webView.onResume()
+            mobileRuntime.resume()
+        }
     }
 
     private fun ownsFileSelection(selection: VideoSelection): Boolean =
@@ -684,21 +1033,26 @@ class MainActivity : AppCompatActivity() {
         debugLog("fullscreen=$enabled")
     }
 
-    internal fun loadTestHtmlForTests(html: String) {
+    internal fun loadTestHtmlForTests(html: String): String {
         check(BuildConfig.DEBUG)
-        webView.loadDataWithBaseURL(
-            BuildConfig.AYIN_ORIGIN,
-            html,
-            "text/html",
-            "UTF-8",
-            null,
-        )
+        check(intent.getBooleanExtra(TEST_FIXTURE_MODE, false))
+        val target = "${BuildConfig.AYIN_ORIGIN}/__ayin_shell_test__/${System.nanoTime()}"
+        webView.stopLoading()
+        testDocument = target to html
+        // Exercise the production HTTPS origin boundary, never a data: document.
+        webView.loadUrl(target)
+        return target
     }
 
     internal fun simulateRendererRecoveryForTests() {
         check(BuildConfig.DEBUG)
         val target = currentTrustedUrl()
         lastTrustedUrl = target
+        // Re-create the same local test document at its current SPA URL; recovery
+        // must not depend on a production route or network availability.
+        if (intent.getBooleanExtra(TEST_FIXTURE_MODE, false)) {
+            testDocument = testDocument?.let { target to it.second }
+        }
         replaceWebView(target, rendererRecovery = true)
     }
 
@@ -718,8 +1072,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        internal const val TEST_FIXTURE_MODE = "net.ayin.shell.TEST_FIXTURE_MODE"
         private const val TAG = "AyinShell"
-        private const val MAX_BRIDGE_MESSAGE_LENGTH = 4096
+        private const val MAX_BRIDGE_MESSAGE_LENGTH = 32768
         private const val MAX_EXTERNAL_URL_LENGTH = 2048
         private const val MAX_PLAYBACK_STATE_LENGTH = 64
         private const val BACK_DISPATCH_TIMEOUT_MS = 250L

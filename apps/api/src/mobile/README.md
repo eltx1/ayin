@@ -1,0 +1,34 @@
+# AYIN mobile backend (bridge/config schema 1)
+
+The existing PostgreSQL `PlatformSetting` row `PLATFORM.mobileRuntimeConfigV1` is the only runtime configuration authority. `GET /mobile/config` returns the safe schema defaults when no setting exists or the stored schema is invalid. The browser reaches these endpoints via the existing `/api` proxy; the Nest server has no `/v1` prefix. Configuration contains no credentials. Hosted web UI changes use the existing AYIN deployment and rollback; downloadable executable bundles are not supported or advertised.
+
+## Authentication, devices and account privacy
+
+- `POST /mobile/devices` registers `{installationId,token,platform,appVersion,preferences}` against the currently authenticated account **and server session**. `token` must be the Firebase registration token, including on iOS; APNs tokens are not interchangeable. Installation IDs are client-generated UUIDs and do not authorize any account access.
+- `GET /mobile/devices/:installationId` returns only the current session's validated preferences and enabled status. Tokens and hashes are never returned.
+- `DELETE /mobile/devices/:installationId` detaches only this current account/session; a delayed old-account request cannot unregister a new binding. POST rejects an installation or token still assigned to another active session. Logout removes the current session's registrations transactionally; delivery additionally rechecks account state, auth version, live session, preferences, mutual user blocks and current token hash.
+- Preferences are explicit booleans for `system/channel/video/comment/subscription/moderation/monetization`, all defaulting false. Registration limits to twenty active devices per account. Removing account data removes addresses; privacy export includes device/platform/version/preferences without tokens.
+- Existing notification events push neutral `AYIN / You have a new notification.` text. Private comments, names and finance/moderation text are fetched only after authentication. OS-queued alerts cannot be recalled on logout. Client must reject a mismatched `recipientAccountId` before presentation/navigation when interception is possible.
+- `GET /mobile/notifications/:notificationId/destination` requires notification ownership and resolves current public `/watch/<slug>`, `/c/<handle>` or `/notifications`. Removed/private/blocked targets fall back to the inbox. Playback still uses the existing entitlement/territory enforcement.
+
+## Administrator controls
+
+`GET/PUT /admin/mobile/config`, `GET /admin/mobile/status`, `GET /admin/mobile/deliveries?accountId=<uuid>`, `POST /admin/mobile/push` require current SUPERADMIN. Writes require recent password/MFA step-up and revalidate role/session/MFA under the existing administrative write lock. PUT accepts `{config,reason}`. Send accepts `{accountId,installationId?,dedupeKey,title,body,type,destination,reason}`; there is no broadcast route. A known opted-in device is required. `destination` is `{kind:'video',id}`, `{kind:'channel',id}`, or `{kind:'notifications'}`. Deduplication UUIDs must be new for a different request. Tests intentionally create an inbox entry for the selected account; their user-selected title/body must contain no private data.
+
+The audit stores actor, target account, type and device count, without delivery tokens or message bodies. Admin sends are capped at ten requests/minute; delivery at five attempts/device/minute. Duplicate notification/device claims are serialized and unique in PostgreSQL. Failures/timeouts are not retried automatically because the provider may already have accepted the message. Stale pending records become `DELIVERY_OUTCOME_UNKNOWN`; use a new explicit request to retest. `SENT` means FCM accepted the request, **not** that a device displayed it.
+
+## Secure external setup
+
+1. Enable the Firebase Cloud Messaging HTTP v1 API for the existing Firebase project.
+2. Mount a service-account JSON file with the minimum Firebase Cloud Messaging API sender permissions, outside Git, build artifacts, public web directories and logs. Set `GOOGLE_APPLICATION_CREDENTIALS` to the mounted path and `FCM_PROJECT_ID` to its matching project. The server exchanges an RS256 OAuth assertion for a cached short-lived access token using the official HTTPS endpoints; no long-lived server key is exposed to the client. This implementation supports a mounted service-account file; workload-identity ADC is not implemented.
+3. Configure the matching Android/iOS Firebase files in their secure build inputs and connect APNs credentials in Firebase for iOS. iOS delivery uses FCM registration tokens and APNs alert payloads. Android receives data messages and renders locally after permission/account checks. There are no silent-push/background-delivery guarantees. Rich notification media is disabled because the first release has no notification service extension.
+4. Apply the additive Prisma migration through normal release CI. Keep `MOBILE_PUSH_WORKER_ENABLED=false` and runtime notifications disabled during deployment. Register the intended test account/device, opt in, enable runtime notifications, then perform the targeted admin test. Record actual physical-device receipt/open evidence separately from provider acceptance.
+5. Only when normal event delivery is approved set `MOBILE_PUSH_WORKER_ENABLED=true`. The worker consumes existing AYIN inbox notifications, not a separate marketing queue. It polls in bounded batches, honors per-type preferences and mutual blocks, limits events to the last 24 hours and registrations made before the event, removes expired/revoked addresses, and retains redacted delivery records for thirty days. All automatic processing is disabled when credentials or either switch are missing.
+
+`ads.enabled` and the platform's own `ads.platforms.<platform>.enabled` must both allow advertising. Unknown audience and child-directed advertising cannot be enabled in schema v1. Production formats require proper native app ad-unit IDs only for enabled platforms. Rollout/minimum versions and local consent still gate native execution. Firebase analytics/push remain independent of AYIN login/database.
+
+## Verification boundaries
+
+`src/mobile/*.test.ts` verifies strict schemas, config consistency, FCM error handling and payload privacy. `test/mobile-runtime.integration.test.ts` uses actual PostgreSQL, Nest authentication, transactions and registration/delivery state with **only the external FCM sender stubbed**. These tests are not evidence of an ad impression, Analytics DebugView delivery, APNs provisioning, or a physical push receipt. The internal-device acceptance run is required before store submission.
+
+References: https://firebase.google.com/docs/cloud-messaging/send/v1-api and https://firebase.google.com/docs/cloud-messaging/error-codes .

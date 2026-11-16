@@ -13,12 +13,14 @@ const publicRoutes = [
   "/creator-terms",
   "/cookies",
   "/privacy",
+  "/account-deletion",
+  "/support",
   "/terms",
 ] as const;
 
 // Only routes with meaningful localized UI should be advertised as hreflang alternates.
 // Add routes here as their product copy is localized; page implementations remain shared.
-const localizedPublicRoutes = new Set<string>(["/"]);
+const localizedPublicRoutes = new Set<string>(["/", "/account-deletion", "/support"]);
 
 function localizedUrlXml(path: string): string[] {
   const alternates = localizedSitemapLinks(path)

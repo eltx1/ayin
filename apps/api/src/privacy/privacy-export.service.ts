@@ -482,6 +482,38 @@ export class PrivacyExportService {
       }),
     ]);
 
+    const [mobileDevices, userBlocks, mobileDiagnostics] = await Promise.all([
+      this.database.client.mobileDevice.findMany({
+        where: { accountId },
+        select: {
+          installationId: true,
+          platform: true,
+          appVersion: true,
+          preferences: true,
+          createdAt: true,
+          lastSeenAt: true,
+          revokedAt: true,
+        },
+      }),
+      this.database.client.userBlock.findMany({
+        where: { blockerAccountId: accountId },
+        select: { blockedAccountId: true, createdAt: true },
+      }),
+      this.database.client.mobileDiagnostic.findMany({
+        where: { accountId, expiresAt: { gt: new Date() } },
+        select: {
+          installationId: true,
+          platform: true,
+          appVersion: true,
+          snapshot: true,
+          receivedAt: true,
+          expiresAt: true,
+          consentVersion: true,
+          consentRevokedAt: true,
+        },
+      }),
+    ]);
+
     return jsonSafe({
       exportVersion: 1,
       generatedAt: new Date(),
@@ -499,12 +531,16 @@ export class PrivacyExportService {
         liveChatMessages,
       },
       notifications,
+      mobileDevices,
+      mobileDiagnostics,
+      userBlocks,
       moderation: { reports, communityReports },
       finance: { contracts, earnings, payouts, payoutProfiles, revenueDisputes },
       privacy: { deletionRequests, events: privacyEvents },
       exclusions: [
         "password hashes and authentication secrets",
         "session tokens and MFA secrets",
+        "push delivery tokens and credential material",
         "raw/internal media storage keys and checksums",
         "encrypted payout destinations",
         "privileged moderation case notes and staff identities",

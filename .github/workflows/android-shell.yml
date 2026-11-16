@@ -4,13 +4,20 @@ on:
   pull_request:
     paths:
       - "platforms/android/**"
-      - "apps/web/src/lib/native-shell-bridge.ts"
-      - "apps/web/src/lib/native-shell-bridge.test.ts"
+      - "apps/web/src/lib/native-shell-bridge*"
+      - "apps/web/src/lib/mobile-*.ts"
       - "apps/web/src/lib/tv-platform-runtime.ts"
       - "apps/web/src/components/player/ayin-player.tsx"
       - "apps/web/src/components/player/live-ayin-player.tsx"
+      - "scripts/mobile-*"
+      - "scripts/android-emulator-*"
       - ".github/workflows/android-shell.yml"
   workflow_dispatch:
+    inputs:
+      include_tv_emulators:
+        description: "Also test existing Google TV / Fire TV flavors (additional runners)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -19,11 +26,21 @@ concurrency:
   group: android-shell-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  AYIN_BUILD_ENVIRONMENT: development
+  AYIN_SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
   android-shell:
     runs-on: ubuntu-24.04
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
+      - name: Validate mobile release security gates
+        run: |
+          python3 scripts/mobile-validation-test.py
+          python3 scripts/mobile-android-screenshot-test.py
+          python3 scripts/android-emulator-supervisor-test.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -37,7 +54,6 @@ jobs:
           test -n "$tools_bin"
           echo "$tools_bin" >> "$GITHUB_PATH"
           echo "$sdk_root/platform-tools" >> "$GITHUB_PATH"
-          echo "$sdk_root/emulator" >> "$GITHUB_PATH"
       - name: Install Android SDK
         run: |
           set -euo pipefail
@@ -46,76 +62,79 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.13"
-      - name: Build mobile, Google TV and Fire TV debug shells
-        shell: bash
+      - name: Resolve locked dependencies
         run: |
           set -euo pipefail
-          for attempt in 1 2 3; do
-            if gradle -p platforms/android               :app:assembleMobileDebug               :app:assembleTvDebug               :app:assembleFireTvDebug; then
-              exit 0
-            fi
-            if [ "$attempt" -eq 3 ]; then exit 1; fi
-            sleep $((attempt * 10))
-          done
-      - name: Run Android JVM baseline tests
-        shell: bash
+          flags=()
+          if [ ! -f platforms/android/app/gradle.lockfile ]; then flags+=(--write-locks); fi
+          gradle -p platforms/android --no-daemon :app:dependencies "${flags[@]}"
+      - name: Unit tests, lint and minified release compilation
         run: |
           set -euo pipefail
-          for attempt in 1 2 3; do
-            if gradle -p platforms/android               :app:testMobileDebugUnitTest               :app:testTvDebugUnitTest               :app:testFireTvDebugUnitTest; then
-              exit 0
-            fi
-            if [ "$attempt" -eq 3 ]; then exit 1; fi
-            sleep $((attempt * 10))
-          done
-      - name: Run Android lint
-        shell: bash
+          gradle -p platforms/android --no-daemon --stacktrace \
+            :app:testMobileDebugUnitTest :app:testTvDebugUnitTest :app:testFireTvDebugUnitTest \
+            :app:lintMobileDebug :app:lintMobileRelease :app:lintTvDebug :app:lintFireTvDebug \
+            :app:assembleMobileDebug :app:assembleTvDebug :app:assembleFireTvDebug \
+            :app:assembleMobileRelease :app:bundleMobileRelease
+      - name: Check release native library and APK alignment
         run: |
           set -euo pipefail
-          for attempt in 1 2 3; do
-            if gradle -p platforms/android               :app:lintMobileDebug               :app:lintTvDebug               :app:lintFireTvDebug; then
-              exit 0
-            fi
-            if [ "$attempt" -eq 3 ]; then exit 1; fi
-            sleep $((attempt * 10))
-          done
+          python3 scripts/mobile-android-page-size.py platforms/android/app/build/outputs/bundle/mobileRelease/app-mobile-release.aab
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          "$sdk_root/build-tools/35.0.0/zipalign" -c -P 16 4 platforms/android/app/build/outputs/apk/mobile/release/app-mobile-release-unsigned.apk
+      - name: Collect distributable files and provenance
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ayin-android"
+          cp platforms/android/app/build/outputs/apk/mobile/debug/app-mobile-debug.apk "$RUNNER_TEMP/ayin-android/"
+          cp platforms/android/app/build/outputs/bundle/mobileRelease/app-mobile-release.aab "$RUNNER_TEMP/ayin-android/ayin-mobile-release-unsigned.aab"
+          cp platforms/android/app/build/outputs/mapping/mobileRelease/mapping.txt "$RUNNER_TEMP/ayin-android/"
+          cp platforms/android/app/gradle.lockfile "$RUNNER_TEMP/ayin-android/gradle.lockfile"
+          python3 scripts/mobile-build-metadata.py --platform android --signing unsigned \
+            --output "$RUNNER_TEMP/ayin-android/build-metadata.json" \
+            --artifact "$RUNNER_TEMP/ayin-android/app-mobile-debug.apk" \
+            --artifact "$RUNNER_TEMP/ayin-android/ayin-mobile-release-unsigned.aab" \
+            --artifact "$RUNNER_TEMP/ayin-android/mapping.txt"
+          echo "Debug APK uses test ads. Release AAB is unsigned; external Firebase/Ads configuration is not injected in public PR jobs." > "$RUNNER_TEMP/ayin-android/READ-ME.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ayin-android-${{ github.sha }}
+          path: ${{ runner.temp }}/ayin-android/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload resolved Gradle lock for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ayin-android-dependency-locks-${{ github.sha }}
+          path: platforms/android/**/gradle.lockfile
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Upload JVM and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ayin-android-reports-${{ github.sha }}
+          path: |
+            platforms/android/app/build/reports/
+            platforms/android/app/build/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
   emulator-baseline:
     name: Emulator baseline (${{ matrix.name }})
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: Android 16 mobile
-            api: "36"
-            tag: google_apis
-            device: pixel_6
-            arch: x86_64
-            flavor: Mobile
-            package: net.ayin.app.mobile
-            apk: app-mobile-debug.apk
-            remoteSmoke: "false"
-          - name: Google TV Android 16
-            api: "36"
-            tag: google-tv
-            device: tv_1080p
-            arch: x86
-            flavor: Tv
-            package: net.ayin.app.tv
-            apk: app-tv-debug.apk
-            remoteSmoke: "true"
-          - name: Fire flavor on Google TV Android 16 emulator
-            api: "36"
-            tag: google-tv
-            device: tv_1080p
-            arch: x86
-            flavor: FireTv
-            package: net.ayin.app.firetv
-            apk: app-fireTv-debug.apk
-            remoteSmoke: "true"
+      matrix: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.include_tv_emulators && '{"include":[{"name":"Android 16 mobile","api":"36","tag":"google_apis","device":"pixel_6","arch":"x86_64","flavor":"Mobile","package":"net.ayin.app.mobile","apk":"app-mobile-debug.apk","remoteSmoke":"false"},{"name":"Google TV Android 16","api":"36","tag":"google-tv","device":"tv_1080p","arch":"x86","flavor":"Tv","package":"net.ayin.app.tv","apk":"app-tv-debug.apk","remoteSmoke":"true"},{"name":"Fire flavor on Google TV Android 16","api":"36","tag":"google-tv","device":"tv_1080p","arch":"x86","flavor":"FireTv","package":"net.ayin.app.firetv","apk":"app-fireTv-debug.apk","remoteSmoke":"true"}]}' || '{"include":[{"name":"Android 16 mobile","api":"36","tag":"google_apis","device":"pixel_6","arch":"x86_64","flavor":"Mobile","package":"net.ayin.app.mobile","apk":"app-mobile-debug.apk","remoteSmoke":"false"}]}') }}
     steps:
       - uses: actions/checkout@v7
+      - name: Validate mobile release security gates
+        run: |
+          python3 scripts/mobile-validation-test.py
+          python3 scripts/mobile-android-screenshot-test.py
+          python3 scripts/android-emulator-supervisor-test.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -138,6 +157,33 @@ jobs:
           set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "emulator" "platforms;android-${{ matrix.api }}" "system-images;android-${{ matrix.api }};${{ matrix.tag }};${{ matrix.arch }}"
+      - name: Install verified stable emulator for capture comparison
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          # Official 37.1.11 Stable (2026-07-30), build 15917651 and published SHA256:
+          # https://developer.android.com/studio/emulator_archive
+          # Isolate this engine comparison; keep the runner SDK metadata and API 36 image.
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          test -d "$sdk_root/system-images/android-${{ matrix.api }}/${{ matrix.tag }}/${{ matrix.arch }}"
+          install_dir="$(mktemp -d "$RUNNER_TEMP/ayin-emulator-37.1.11.XXXXXX")"
+          archive="$install_dir/emulator.zip"
+          timeout --kill-after=5s 200s curl --fail --show-error --location \
+            --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 180 \
+            --retry 1 --retry-max-time 180 \
+            'https://redirector.gvt1.com/edgedl/android/repository/emulator-linux_x64-15917651.zip' \
+            --output "$archive"
+          printf '%s  %s\n' '95771e0ae431897b2a4bd2d97fa095f29a8b0624a7b216baf529f9306161c266' "$archive" | sha256sum --check --strict -
+          unzip -q "$archive" -d "$install_dir"
+          rm "$archive"
+          # Match the headless launch; a GUI version probe requires unrelated X11 libraries.
+          version_status=0
+          version="$(ANDROID_SDK_ROOT="$sdk_root" timeout --kill-after=2s 15s "$install_dir/emulator/emulator" -no-window -version 2>&1)" || version_status=$?
+          printf '%s\n' "$version"
+          if [ "$version_status" -ne 0 ]; then exit "$version_status"; fi
+          grep -Eq '^Android emulator version 37\.1\.11(\.0)? \(build_id 15917651\)' <<< "$version"
+          echo "ANDROID_SDK_ROOT=$sdk_root" >> "$GITHUB_ENV"
+          echo "$install_dir/emulator" >> "$GITHUB_PATH"
       - name: Start emulator
         run: |
           set -euo pipefail
@@ -155,7 +201,13 @@ jobs:
           adb kill-server || true
           adb start-server
           sudo chmod 666 /dev/kvm || true
-          nohup env ADB_VENDOR_KEYS="$ADB_VENDOR_KEYS" emulator -avd "$avd_name"             -no-window             -no-audio             -no-boot-anim             -no-snapshot             -gpu swiftshader_indirect             -no-metrics >"$RUNNER_TEMP/ayin-emulator.log" 2>&1 &
+          # API 36 console capture exited SIGSEGV with auto-selected swangle/SwiftShader.
+          # Select the documented Mesa backend explicitly; keep the engine/image/capture gates.
+          # https://developer.android.com/studio/run/emulator-acceleration
+          # CI covers software GLES, not Vulkan or physical-device graphics.
+          # Disable guest Vulkan after capture context failures; official workaround:
+          # https://developer.android.com/studio/run/emulator-troubleshooting#cannot-open-webpage
+          nohup env ADB_VENDOR_KEYS="$ADB_VENDOR_KEYS" python3 scripts/android-emulator-supervisor.py --report "$RUNNER_TEMP/ayin-emulator-exit.json" -- emulator -avd "$avd_name"             -no-window             -no-audio             -no-boot-anim             -no-snapshot             -gpu lavapipe             -feature -Vulkan             -no-metrics >"$RUNNER_TEMP/ayin-emulator.log" 2>&1 &
           emulator_pid=$!
           if ! timeout 120 adb wait-for-device; then
             cat "$RUNNER_TEMP/ayin-emulator.log"
@@ -196,6 +248,24 @@ jobs:
             adb logcat -d -t 400 || true
             exit 1
           fi
+      - name: Preserve connected test diagnostics
+        if: always()
+        timeout-minutes: 1
+        run: |
+          mkdir -p "$RUNNER_TEMP/ayin-android-test-diagnostics"
+          # A lost emulator must not block upload of already completed test reports.
+          timeout --kill-after=5s 20s adb logcat -d -s TestRunner:V AndroidJUnitRunner:V AndroidRuntime:E AyinShell:I '*:S' > "$RUNNER_TEMP/ayin-android-test-diagnostics/instrumentation-logcat.txt" 2>/dev/null || true
+      - name: Upload connected test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ayin-android-connected-tests-${{ matrix.flavor }}-${{ github.sha }}
+          path: |
+            platforms/android/app/build/reports/androidTests/connected/
+            platforms/android/app/build/outputs/androidTest-results/connected/
+            ${{ runner.temp }}/ayin-android-test-diagnostics/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Run ADB deep-link and TV remote smoke
         shell: bash
         timeout-minutes: 5
@@ -225,10 +295,75 @@ jobs:
             grep -q "dpad=" <<<"$logs"
             grep -q "remote=PLAY_PAUSE" <<<"$logs"
           fi
+      - name: Capture actual emulator startup diagnostic
+        timeout-minutes: 4
+        run: |
+          set -euo pipefail
+          package="${{ matrix.package }}"
+          timeout --kill-after=5s 20s adb shell am force-stop "$package"
+          timeout --kill-after=5s 30s adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n "$package/net.ayin.shell.MainActivity"
+          sleep 10
+          mkdir -p "$RUNNER_TEMP/ayin-android-diagnostic"
+          # Persist process state before the operation that previously lost the emulator.
+          ps -eo pid,ppid,stat,rss,comm | awk 'NR == 1 || /qemu|emulator|adb|python3/' > "$RUNNER_TEMP/ayin-emulator-before-capture.txt"
+          free -m >> "$RUNNER_TEMP/ayin-emulator-before-capture.txt"
+          python3 scripts/mobile-android-screenshot.py --output "$RUNNER_TEMP/ayin-android-diagnostic/startup.png"
+          python3 scripts/mobile-build-metadata.py --platform android --signing debug \
+            --output "$RUNNER_TEMP/ayin-android-diagnostic/build-metadata.json" \
+            --artifact "$RUNNER_TEMP/ayin-android-diagnostic/startup.png"
+          echo "Actual Android emulator startup capture. Diagnostic only; not store-approved or a physical-device Ads/FCM test." > "$RUNNER_TEMP/ayin-android-diagnostic/READ-ME.txt"
+      - name: Upload emulator startup diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: ayin-android-diagnostic-${{ matrix.flavor }}-${{ github.sha }}
+          path: ${{ runner.temp }}/ayin-android-diagnostic/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve host diagnostics on emulator failure
+        if: failure()
+        timeout-minutes: 1
+        run: |
+          python3 - <<'PY'
+          import datetime, json, os, pathlib, subprocess
+          def read(args):
+              try:
+                  result = subprocess.run(args, capture_output=True, text=True, timeout=5)
+                  return {"exitCode": result.returncode, "stdout": result.stdout, "stderr": result.stderr}
+              except (OSError, subprocess.TimeoutExpired) as error:
+                  return {"unavailable": str(error)}
+          processes = read(["ps", "-eo", "pid,ppid,stat,rss,comm"])
+          if "stdout" in processes:
+              processes["stdout"] = "\n".join(line for index, line in enumerate(processes["stdout"].splitlines())
+                  if index == 0 or any(name in line.lower() for name in ("qemu", "emulator", "adb")))
+          # This isolated CI runner grants non-interactive sudo. Record refusal if unavailable.
+          # Filter before serializing; never dump the entire kernel log into an artifact.
+          kernel = read(["sudo", "-n", "dmesg", "--level=err,warn"])
+          if "stdout" in kernel:
+              kernel["stdout"] = "\n".join(line for line in kernel["stdout"].splitlines()
+                  if any(term in line.lower() for term in ("oom", "out of memory", "killed process", "qemu", "emulator")))
+          crashpad = []
+          for root in pathlib.Path("/tmp/android-runner").glob("emu-crash-*.db"):
+              for candidate in list(root.rglob("*"))[:100]:
+                  if candidate.is_file() and not candidate.is_symlink():
+                      info = candidate.stat()
+                      # Metadata only: raw process dumps may include in-memory credentials.
+                      crashpad.append({"path": str(candidate.relative_to(root)), "bytes": info.st_size, "mtime": info.st_mtime})
+          output = pathlib.Path(os.environ["RUNNER_TEMP"]) / "ayin-emulator-host.json"
+          output.write_text(json.dumps({
+              "capturedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              "processes": processes, "memory": read(["free", "-m"]),
+              "disk": read(["df", "-h", os.environ["RUNNER_TEMP"]]), "kernel": kernel, "crashpadFiles": crashpad,
+              "note": "Host diagnostics only. Missing kernel access or matching messages does not exclude OOM or a crash."
+          }, indent=2) + "\n")
+          PY
       - name: Upload emulator log on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: task77-emulator-${{ matrix.flavor }}-${{ matrix.api }}
-          path: ${{ runner.temp }}/ayin-emulator.log
+          path: |
+            ${{ runner.temp }}/ayin-emulator.log
+            ${{ runner.temp }}/ayin-emulator-host.json
+            ${{ runner.temp }}/ayin-emulator-exit.json
+            ${{ runner.temp }}/ayin-emulator-before-capture.txt
           retention-days: 7

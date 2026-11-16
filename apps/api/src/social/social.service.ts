@@ -1,6 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
 
 import { analyticsPseudonym } from "../analytics/analytics-identity.js";
+import {
+  assertNoChannelBlock,
+  filterBlockedNotifications,
+} from "../user-blocks/user-blocks.policy.js";
 import { DatabaseService } from "../database/database.service.js";
 
 export class SocialError extends Error {
@@ -21,6 +25,7 @@ export class SocialService {
   async channelState(accountId: string, channelId: string, requestedProfileId?: string) {
     const profile = await this.resolveProfile(accountId, requestedProfileId);
     await this.assertChannel(channelId);
+    await assertNoChannelBlock(this.database.client, accountId, channelId);
     const [count, subscription] = await Promise.all([
       this.database.client.subscription.count({ where: { channelId } }),
       this.database.client.subscription.findUnique({
@@ -50,6 +55,7 @@ export class SocialService {
 
     const profileHash = analyticsPseudonym(profile.id);
     const result = await this.database.client.$transaction(async (tx) => {
+      await assertNoChannelBlock(tx, accountId, channelId);
       const existing = await tx.subscription.findUnique({
         where: { profileId_channelId: { profileId: profile.id, channelId } },
         select: { id: true },
@@ -115,7 +121,7 @@ export class SocialService {
 
   async videoState(accountId: string, videoId: string, requestedProfileId?: string) {
     const profile = await this.resolveProfile(accountId, requestedProfileId);
-    await this.assertVideo(videoId);
+    await this.assertVideo(videoId, accountId);
     const [reaction, likeCount, watchLater, myList] = await Promise.all([
       this.database.client.reaction.findUnique({
         where: { profileId_videoId: { profileId: profile.id, videoId } },
@@ -147,7 +153,7 @@ export class SocialService {
     requestedProfileId?: string,
   ) {
     const profile = await this.resolveProfile(accountId, requestedProfileId);
-    await this.assertVideo(videoId);
+    await this.assertVideo(videoId, accountId);
     await this.database.client.reaction.upsert({
       where: { profileId_videoId: { profileId: profile.id, videoId } },
       create: { profileId: profile.id, videoId, type },
@@ -158,7 +164,7 @@ export class SocialService {
 
   async clearReaction(accountId: string, videoId: string, requestedProfileId?: string) {
     const profile = await this.resolveProfile(accountId, requestedProfileId);
-    await this.assertVideo(videoId);
+    await this.assertVideo(videoId, accountId);
     await this.database.client.reaction.deleteMany({ where: { profileId: profile.id, videoId } });
     return this.videoState(accountId, videoId, profile.id);
   }
@@ -171,7 +177,7 @@ export class SocialService {
     requestedProfileId?: string,
   ) {
     const profile = await this.resolveProfile(accountId, requestedProfileId);
-    await this.assertVideo(videoId);
+    await this.assertVideo(videoId, accountId);
     if (saved) {
       const args = {
         where: { profileId_videoId: { profileId: profile.id, videoId } },
@@ -205,7 +211,11 @@ export class SocialService {
       },
     });
     return {
-      items: records.slice(0, limit),
+      items: await filterBlockedNotifications(
+        this.database.client,
+        accountId,
+        records.slice(0, limit),
+      ),
       nextCursor: records.length > limit ? cursor + limit : null,
     };
   }
@@ -242,7 +252,7 @@ export class SocialService {
     return channel;
   }
 
-  private async assertVideo(videoId: string) {
+  private async assertVideo(videoId: string, accountId?: string) {
     const video = await this.database.client.video.findFirst({
       where: {
         id: videoId,
@@ -251,9 +261,10 @@ export class SocialService {
         removedAt: null,
         channel: { status: "ACTIVE", removedAt: null },
       },
-      select: { id: true },
+      select: { id: true, channelId: true },
     });
     if (!video) throw new SocialError("VIDEO_NOT_FOUND", "This video is not available.", 404);
+    await assertNoChannelBlock(this.database.client, accountId, video.channelId);
     return video;
   }
 }

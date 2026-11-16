@@ -173,6 +173,13 @@ export function QuickUpload() {
     (busy || uncertain || Boolean(videoId && !resumedUpload && signature !== savedSignature));
 
   useEffect(() => {
+    document.documentElement.dataset.ayinUploadActive = busy ? "true" : "false";
+    return () => {
+      delete document.documentElement.dataset.ayinUploadActive;
+    };
+  }, [busy]);
+
+  useEffect(() => {
     if (!dirty) return;
     const unload = (event: BeforeUnloadEvent) => {
       event.preventDefault();

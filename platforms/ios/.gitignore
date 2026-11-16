@@ -1,0 +1,8 @@
+AYIN/GoogleService-Info.plist
+Config/Local.xcconfig
+*.mobileprovision
+*.p12
+*.p8
+*.ipa
+*.xcarchive
+DerivedData/
