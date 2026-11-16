@@ -23,7 +23,7 @@ The native shell supports Google Mobile Ads **25.5.0 Android / 13.11.0 iOS** wit
 
 GAM paths are bounded to 256 characters and `/numeric_network/segment[/segment]`, with alphanumeric, underscore, dot or hyphen segments. Web URLs/HTML and whitespace are rejected. Provider labels are inferred from validated units. Older shells lacking `ads.gam` receive an in-memory compatible copy with all GAM units removed and ads disabled, preserving Firebase/push configuration. The server's saved configuration is unchanged.
 
-Unit IDs, enabled flags, timeouts and limits can change remotely within installed capabilities. New SDKs, formats, adapters, embedded app IDs and signing require a new binary. Settings are applied at runtime initialization; do not promise an immediate push of configuration into an already open session. To roll back delivery, disable app ads in admin, save/read back, and verify after a fresh app session. Native ads cannot initialize without their required app configuration and consent.
+Unit IDs, enabled flags, timeouts and limits can change remotely within installed capabilities. New SDKs, formats, adapters, embedded app IDs and signing require a new binary. Compatible hosted clients check configuration at initialization, every five minutes while visible, on focus/resume after at least 30 seconds, and through the manual check. A validated revision waits for a safe boundary outside playback, uploads, consent forms and active ads; this is not an instant broadcast. To roll back delivery, disable app ads in admin, save/read back, and verify the applied revision in the app. Older clients may require a fresh app session. Native ads cannot initialize without their required app configuration and consent.
 
 ## WebView and native ads together
 
@@ -120,7 +120,7 @@ For Android Analytics DebugView, use `adb shell setprop debug.firebase.analytics
 
 ## Rollback
 
-Turn off platform-specific ads, analytics or notifications in AYIN mobile admin for a feature rollback. Client configuration is fetched at hosted-interface initialization, so this is not an instant broadcast to already-open sessions: it takes effect at the next initialization. The server push dispatcher separately rechecks configuration before sending. Keep the push worker disabled until delivery configuration is accepted. Do not modify settings during an ad or upload; clients apply them on safe initialization boundaries. Existing in-flight OS push delivery is not recallable.
+Turn off platform-specific ads, analytics or notifications in AYIN mobile admin for a feature rollback. Compatible hosted clients refresh on the bounded schedule described above and defer application until a safe boundary; verify the applied revision rather than assuming immediate delivery. Invalid, expired or offline fallback configuration cannot enable optional native collection or ads. The server push dispatcher separately rechecks configuration before sending. Keep the push worker disabled until delivery configuration is accepted. Do not force an active ad, playback or upload to reload. Existing in-flight OS push delivery is not recallable.
 
 For a WebView-only ad rollback, turn off the affected platform's page/video WebView switches and save/read back, then verify a newly initialized app session. Native SDK inventory is controlled separately. Use the existing website ad editors to stop the corresponding web placement everywhere if required.
 
