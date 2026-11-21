@@ -39,6 +39,7 @@ jobs:
       - name: Validate mobile release security gates
         run: |
           python3 scripts/mobile-validation-test.py
+          python3 scripts/mobile-android-ugc-evidence-test.py
           python3 scripts/mobile-android-screenshot-test.py
           python3 scripts/android-emulator-supervisor-test.py
       - uses: actions/setup-java@v4
