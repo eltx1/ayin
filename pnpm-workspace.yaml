@@ -15,6 +15,8 @@ overrides:
   "next@16.3.8>sharp": 0.35.5
   fastify: 5.12.5
   deepmerge-ts: 8.0.0
+  # GHSA-7589-6fvf-x4pw: retain Prisma 7.10.0 and patch only its Effect dependency.
+  "@prisma/config@7.10.0>effect": 3.22.1
   mysql2: 3.23.1
   "source-map-js@>=1.0.0 <1.2.2": 1.2.2
   "fast-uri@>=3.0.0 <3.1.8": 3.1.8
