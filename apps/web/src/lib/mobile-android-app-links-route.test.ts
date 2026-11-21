@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { GET } from "@/app/.well-known/assetlinks.json/route";
 
 const variable = "ANDROID_APP_LINKS_SHA256_FINGERPRINTS";
-const testFingerprint = Array.from({ length: 32 }, (_, i) =>
-  i.toString(16).padStart(2, "0"),
-).join(":");
+const testFingerprint = Array.from({ length: 32 }, (_, i) => i.toString(16).padStart(2, "0")).join(
+  ":",
+);
 
 afterEach(() => vi.unstubAllEnvs());
 
