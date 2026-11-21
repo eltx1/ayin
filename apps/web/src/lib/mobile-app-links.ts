@@ -8,7 +8,9 @@ export function androidAssetLinks(raw: string | undefined): unknown[] | null {
       fingerprints.length > 10 ||
       fingerprints.some(
         (value) =>
-          typeof value !== "string" || !/^(?:[A-Fa-f0-9]{2}:){31}[A-Fa-f0-9]{2}$/.test(value),
+          typeof value !== "string" ||
+          !/^(?:[A-Fa-f0-9]{2}:){31}[A-Fa-f0-9]{2}$/.test(value) ||
+          /^(?:00:){31}00$/.test(value),
       )
     )
       return null;

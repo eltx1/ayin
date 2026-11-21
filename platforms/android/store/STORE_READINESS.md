@@ -61,21 +61,18 @@ The following are intentionally not invented in Task 77 and must be approved bef
 - release notes;
 - Play/Amazon tester tracks and rollout percentage.
 
-## Release App Links template
+## Mobile Play App Links
 
-After signing is final, the production assetlinks.json needs one statement per package that should own ayin.stream URLs. Example shape:
+For `net.ayin.app.mobile`, set `ANDROID_APP_LINKS_SHA256_FINGERPRINTS` in the
+hosted web runtime to a JSON array of colon-separated SHA-256 fingerprints obtained under
+App Integrity → Play App Signing in Play Console. The certificate fingerprint
+is public metadata. Do not use an upload key, emulator/debug cert, or a
+placeholder. No TV or Fire TV association is published by this route.
 
-```json
-[
-  {
-    "relation": ["delegate_permission/common.handle_all_urls"],
-    "target": {
-      "namespace": "android_app",
-      "package_name": "net.ayin.app.tv",
-      "sha256_cert_fingerprints": ["REPLACE_WITH_FINAL_RELEASE_SHA256"]
-    }
-  }
-]
-```
-
-Do not publish the placeholder.
+Once the intended web revision and runtime setting are active, verify that
+`https://ayin.stream/.well-known/assetlinks.json` returns HTTP 200 directly with
+`application/json`, no redirect, and the exact package and fingerprint.
+Then use the Play-distributed test build and Android's domain verification
+to verify a real watch URL opens the app. The endpoint intentionally returns
+404 without caching when unset or malformed; neither is release
+evidence. Do not mark App Links verified based on a sideloaded debug APK.
