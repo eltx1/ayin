@@ -66,6 +66,21 @@ class ReleaseConfigurationTests(unittest.TestCase):
             self.assertEqual(generated['client'][0]['api_key'][0]['current_key'], self.base()['AYIN_FIREBASE_API_KEY'])
             self.assertNotIn(self.base()['AYIN_FIREBASE_API_KEY'], result.stdout + result.stderr)
 
+    def test_android_rejects_cross_project_firebase_configuration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'google-services.json'
+            fields = {**self.base(), 'AYIN_FIREBASE_SENDER_ID': '987654321'}
+            result = subprocess.run(
+                [sys.executable, str(Path(__file__).with_name('mobile-release-config.py')),
+                 'android', '--firebase-json', str(output)],
+                env=fields, capture_output=True, text=True,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('must belong to the same Firebase project', result.stderr)
+            self.assertFalse(output.exists())
+            for name in ('AYIN_FIREBASE_SENDER_ID', 'AYIN_FIREBASE_ANDROID_APP_ID', 'AYIN_FIREBASE_API_KEY'):
+                self.assertNotIn(fields[name], result.stdout + result.stderr)
+
     def test_signed_config_requires_key(self):
         with patch.dict(os.environ, self.base(), clear=True), self.assertRaisesRegex(ValueError, 'AYIN_ANDROID_KEYSTORE_BASE64'):
             config.validate('android', signed=True)
