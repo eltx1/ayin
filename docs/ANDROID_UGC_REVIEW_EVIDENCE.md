@@ -26,6 +26,21 @@ Test on the Play-delivered internal-track build that comes from the exact candid
 
 Repeat affected verification when the actual hosted distribution, configuration or catalog policy changes, even without a deployment SHA change. A SHA match is not proof that server-side settings or catalog state stayed the same. The Data Safety, age/audience and ads declarations, signature acceptance, App Links, privacy and deletion verification are separate release checks.
 
+## Play pre-launch crawler and human sign-in
+
+Record the automated Play pre-launch result separately. Google's crawler does not
+inject credentials into web-based WebView authentication. Treat that report as
+guest-path evidence for AYIN, not as proof of signed-in behavior. If helpful,
+configure up to three previously verified guest deep links with stable content.
+
+Use the nonprivileged test account provided in the Play Console App access
+fields to verify the actual installed internal-track build manually. Give
+repeatable sign-in steps in English and check them on a fresh install without
+staff intervention. Do not add a reviewer bypass or weaken production auth.
+
+See [pre-launch report behavior](https://support.google.com/googleplay/android-developer/answer/9842757)
+and [reviewer sign-in details](https://support.google.com/googleplay/android-developer/answer/15748846).
+
 ## Local validation
 
 With Python 3.11 or later, work from a secure local directory. Put the evidence record beside the original candidate bundle and `build-metadata.json` from the Android distribution workflow. Record **every** key below as an object with `result: "PASS"` and `evidenceRef` only after the referenced record is actually verified. Opaque IDs may use ASCII letters, digits, dots, underscores and hyphens, length 3–96. Placeholders or PENDING are not acceptance.
