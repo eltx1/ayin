@@ -25,10 +25,12 @@ def validate(platform, signed=False):
     if app_id.startswith('ca-app-pub-3940256099942544~'):
         raise ValueError('Release must use the owner-configured App ID, not a Google sample App ID')
     if platform == 'android':
-        require('AYIN_FIREBASE_ANDROID_APP_ID', r'1:[0-9]+:android:[a-fA-F0-9]+')
+        firebase_app_id = require('AYIN_FIREBASE_ANDROID_APP_ID', r'1:[0-9]+:android:[a-fA-F0-9]+')
         require('AYIN_FIREBASE_API_KEY', r'AIza[A-Za-z0-9_-]{35}')
         require('AYIN_FIREBASE_PROJECT_ID', r'[a-z][a-z0-9-]{4,28}[a-z0-9]')
-        require('AYIN_FIREBASE_SENDER_ID', r'[0-9]+')
+        sender_id = require('AYIN_FIREBASE_SENDER_ID', r'[0-9]+')
+        if firebase_app_id.split(':')[1] != sender_id:
+            raise ValueError('AYIN_FIREBASE_ANDROID_APP_ID and AYIN_FIREBASE_SENDER_ID must belong to the same Firebase project')
         if signed:
             for key in ['AYIN_ANDROID_KEYSTORE_BASE64', 'AYIN_ANDROID_KEYSTORE_PASSWORD', 'AYIN_ANDROID_KEY_ALIAS', 'AYIN_ANDROID_KEY_PASSWORD']:
                 require(key)
