@@ -23,7 +23,7 @@ const contentSecurityPolicy = [
   "object-src 'none'",
   "form-action 'self'",
   "frame-ancestors 'none'",
-  "script-src 'self' 'unsafe-inline' https://securepubads.g.doubleclick.net https://imasdk.googleapis.com https://www.googletagservices.com",
+  "script-src 'self' 'unsafe-inline' https://securepubads.g.doubleclick.net https://imasdk.googleapis.com https://www.googletagservices.com https://www.googletagmanager.com",
   "style-src 'self' 'unsafe-inline'",
   `img-src 'self' data: blob: https: ${explicitMediaOrigins}`.trim(),
   `media-src 'self' blob: https: ${explicitMediaOrigins}`.trim(),

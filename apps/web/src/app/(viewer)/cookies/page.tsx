@@ -1,3 +1,4 @@
+import { WebAnalyticsPreference } from "@/components/analytics/web-analytics";
 import type { Metadata } from "next";
 
 import { LegalNotice, LegalPage, LegalSection } from "@/components/legal/legal-page";
@@ -57,6 +58,7 @@ export default function CookiesPage() {
       </LegalSection>
 
       <LegalSection title="5. Consent controls">
+        <WebAnalyticsPreference />
         <p>
           Where consent is legally required before optional advertising or storage technologies are
           used, AYIN will present an appropriate consent choice. Before Google personalized
