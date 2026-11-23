@@ -44,8 +44,9 @@ internal class GoogleMobileRuntime(
     private val permission = activity.activityResultRegistry.register("ayin_notification_permission", ActivityResultContracts.RequestPermission()) { granted ->
         val callback = permissionDone
         permissionDone = null
-        if (!granted) prefs.edit().putBoolean("push_enabled", false).commit()
-        callback?.invoke(JSONObject().put("granted", granted), null)
+        val allowed = granted && MobilePushState.systemAllowsNotifications(activity)
+        if (!allowed) prefs.edit().putBoolean("push_enabled", false).commit()
+        callback?.invoke(JSONObject().put("granted", allowed), null)
     }
 
     init {
@@ -198,7 +199,11 @@ internal class GoogleMobileRuntime(
             if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 permissionDone = done
                 permission.launch(Manifest.permission.POST_NOTIFICATIONS)
-            } else done(JSONObject().put("granted", NotificationManagerCompat.from(activity).areNotificationsEnabled()), null)
+            } else {
+                val allowed = MobilePushState.systemAllowsNotifications(activity)
+                if (!allowed) prefs.edit().putBoolean("push_enabled", false).commit()
+                done(JSONObject().put("granted", allowed), null)
+            }
             return
         }
         if (!MobilePushState.allowed(activity)) { done(JSONObject().put("token", JSONObject.NULL), null); return }

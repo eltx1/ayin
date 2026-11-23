@@ -30,8 +30,13 @@ internal object MobilePushState {
     }
     fun allowed(context: Context): Boolean = prefs(context).getBoolean("push_enabled", false) &&
         !prefs(context).getString("account_id", null).isNullOrEmpty() &&
-        NotificationManagerCompat.from(context).areNotificationsEnabled() &&
+        systemAllowsNotifications(context)
+    fun systemAllowsNotifications(context: Context): Boolean {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        val channel = manager.getNotificationChannel(CHANNEL) ?: return false
+        return channel.importance != NotificationManager.IMPORTANCE_NONE && manager.areNotificationsEnabled() &&
         (Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
+    }
     fun channel(context: Context) {
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL, "AYIN updates", NotificationManager.IMPORTANCE_DEFAULT))
