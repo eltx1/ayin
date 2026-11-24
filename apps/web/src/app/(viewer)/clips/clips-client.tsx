@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { useI18n } from "@/components/i18n/i18n-provider";
-import { ActionButton } from "@/components/ui/design-system";
+import { ActionButton, ActionLink } from "@/components/ui/design-system";
 import { useViewerProduct } from "@/components/viewer/viewer-product-context";
 import { EmptyState, ErrorState } from "@/components/viewer/view-states";
 import { releaseHtmlMediaElement } from "@/lib/adaptive-playback";
@@ -15,6 +15,7 @@ import {
   type RegisterClipPositionAuthority,
 } from "@/lib/clips";
 import { ClipsReadError, readClips } from "@/lib/clips-request";
+import { localizePath } from "@/lib/i18n/routing";
 import { translateClips } from "@/lib/i18n/clips";
 
 import { ClipsFeed, type ClipsPosition } from "./clips-feed";
@@ -259,7 +260,15 @@ export function ClipsClient() {
     );
   if (!current.page.items.length && !current.page.nextCursor)
     return (
-      <EmptyState title={text("clips.emptyTitle")} description={text("clips.emptyDescription")} />
+      <EmptyState
+        title={text("clips.emptyTitle")}
+        description={text("clips.emptyDescription")}
+        action={
+          <ActionLink href={localizePath("/search", locale)}>
+            {text("clips.exploreVideos")}
+          </ActionLink>
+        }
+      />
     );
   return (
     <div ref={root} key={key} data-private-viewer-state>
