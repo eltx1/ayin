@@ -1,0 +1,143 @@
+name: Break-glass MFA reset
+
+# Owner-only recovery for a locked-out administrator whose authenticator no longer works.
+# It mirrors MfaService.resetBySuperadmin: deletes the MFA credential, bumps authVersion,
+# revokes every session and writes an admin audit log entry. The account then signs in
+# with its password only and can enroll MFA again from the account page.
+
+on:
+  workflow_dispatch:
+    inputs:
+      account_email:
+        description: Email of the AYIN account whose MFA must be removed
+        required: true
+        type: string
+      confirmation:
+        description: Type RESET-MFA to confirm
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ayin-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  reset:
+    if: ${{ github.ref == 'refs/heads/main' && github.actor == github.repository_owner }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      DEPLOY_HOST: 13.63.216.89
+      DEPLOY_USER: ayin
+      SSH_PORT: "22"
+      REMOTE_HOME: /home/ayin
+      PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
+    steps:
+      - name: Validate inputs
+        shell: bash
+        env:
+          ACCOUNT_EMAIL: ${{ inputs.account_email }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          email="$(printf '%s' "$ACCOUNT_EMAIL" | tr '[:upper:]' '[:lower:]' | xargs)"
+          echo "::add-mask::$email"
+          [[ "$CONFIRMATION" == 'RESET-MFA' ]] || { echo "confirmation must be RESET-MFA" >&2; exit 1; }
+          [[ "$email" =~ ^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$ ]] || { echo "invalid email" >&2; exit 1; }
+          echo "TARGET_EMAIL=$email" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v7
+
+      - name: Configure pinned AYIN SSH trust
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          candidate="$HOME/.ssh/known_hosts.candidate"
+          bash deploy/acquire-ssh-host-key.sh "$candidate"
+          actual="$(ssh-keygen -lf "$candidate" -E sha256 | awk 'NR == 1 {print $2}')"
+          [[ "$actual" == "$PINNED_SSH_HOST_FINGERPRINT" ]] || { echo "SSH host fingerprint mismatch" >&2; exit 1; }
+          mv "$candidate" "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Write reset script
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/mfa-reset.mjs" <<'EOF'
+          import { readFileSync } from "node:fs";
+          import { pathToFileURL } from "node:url";
+
+          const home = "/home/ayin";
+          const env = new Map();
+          for (const raw of readFileSync(`${home}/env/api.env`, "utf8").split(/\r?\n/u)) {
+            const line = raw.trim();
+            if (!line || line.startsWith("#")) continue;
+            const i = line.indexOf("=");
+            if (i > 0) env.set(line.slice(0, i).trim(), line.slice(i + 1));
+          }
+          if (env.get("APP_ENV") !== "production") throw new Error("api.env is not production");
+          const databaseUrl = env.get("DATABASE_URL");
+          if (!databaseUrl) throw new Error("DATABASE_URL missing");
+
+          const { createPrismaClient } = await import(
+            pathToFileURL(`${home}/htdocs/current/packages/db/dist/index.js`).href
+          );
+          const email = (process.env.TARGET_EMAIL ?? "").trim().toLowerCase();
+          const masked = email.replace(/^(.{0,2}).*@/u, "$1***@");
+          const prisma = createPrismaClient(databaseUrl);
+          try {
+            const account = await prisma.account.findUnique({
+              where: { email },
+              select: { id: true, mfaCredential: { select: { status: true } } },
+            });
+            if (!account) throw new Error(`no account found for ${masked}`);
+            console.log(`Account ${masked}: MFA status before = ${account.mfaCredential?.status ?? "NONE"}`);
+            await prisma.$transaction(async (tx) => {
+              const removed = await tx.accountMfaCredential.deleteMany({ where: { accountId: account.id } });
+              await tx.account.update({
+                where: { id: account.id },
+                data: { authVersion: { increment: 1 } },
+              });
+              const sessions = await tx.accountSession.updateMany({
+                where: { accountId: account.id, revokedAt: null },
+                data: { revokedAt: new Date(), revokeReason: "MFA_RESET" },
+              });
+              await tx.adminAuditLog.create({
+                data: {
+                  actorAccountId: account.id,
+                  action: "admin.mfa_reset",
+                  entityType: "Account",
+                  entityId: account.id,
+                  reason: "Break-glass owner MFA reset via GitHub Actions (broken authenticator)",
+                  metadata: { method: "github-actions-break-glass", sessionsRevoked: sessions.count, credentialsRemoved: removed.count },
+                },
+              });
+              console.log(`Removed ${removed.count} MFA credential(s), revoked ${sessions.count} session(s).`);
+            });
+            const after = await prisma.accountMfaCredential.count({ where: { accountId: account.id } });
+            if (after !== 0) throw new Error("MFA credential still present after reset");
+            console.log("MFA disabled. Sign in with email + password only.");
+          } finally {
+            await prisma.$disconnect();
+          }
+          EOF
+
+      - name: Reset MFA on production
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote="$REMOTE_HOME/.deploy-bootstrap/mfa-reset-$GITHUB_RUN_ID.mjs"
+          ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "install -d -m 700 '$REMOTE_HOME/.deploy-bootstrap'"
+          scp -P "$SSH_PORT" "$RUNNER_TEMP/mfa-reset.mjs" "$DEPLOY_USER@$DEPLOY_HOST:$remote"
+          ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd '$REMOTE_HOME/htdocs/current' || exit 1; status=0; TARGET_EMAIL='$TARGET_EMAIL' node '$remote' || status=\$?; rm -f '$remote'; exit \$status"
