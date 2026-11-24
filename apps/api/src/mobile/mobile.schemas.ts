@@ -141,8 +141,16 @@ export const defaultMobileRuntimeConfig: MobileRuntimeConfig = {
     banner: { enabled: false },
     interstitial: { enabled: false, cooldownSeconds: 180, maxPerSession: 3 },
     platforms: {
-      android: { enabled: false, bannerUnitId: "", interstitialUnitId: "" },
-      ios: { enabled: false, bannerUnitId: "", interstitialUnitId: "" },
+      android: {
+        enabled: false,
+        bannerUnitId: "/23374456398/AYIN/android_banner",
+        interstitialUnitId: "/23374456398/AYIN/android_interstitial",
+      },
+      ios: {
+        enabled: false,
+        bannerUnitId: "/23374456398/AYIN/ios_banner",
+        interstitialUnitId: "/23374456398/AYIN/ios_interstitial",
+      },
     },
     requestTimeoutMs: 10000,
     retryCount: 1,
