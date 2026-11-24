@@ -1,0 +1,41 @@
+name: Build requested mobile store candidates
+on:
+  push:
+    branches: [main]
+    paths: ["platforms/mobile-release.json"]
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      name: ${{ steps.read.outputs.name }}
+      code: ${{ steps.read.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: read
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          release = json.loads(Path("platforms/mobile-release.json").read_text())
+          name, code = release["version"], release["build"]
+          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", name) or type(code) is not int or not 1 <= code <= 999999999:
+              raise SystemExit("Invalid mobile release version or build number")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"name={name}\ncode={code}", file=output)
+          PY
+  build:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [android, ios]
+    uses: ./.github/workflows/mobile-release.yml
+    with:
+      platform: ${{ matrix.platform }}
+      version_name: ${{ needs.version.outputs.name }}
+      version_code: ${{ needs.version.outputs.code }}
+      signed: true
