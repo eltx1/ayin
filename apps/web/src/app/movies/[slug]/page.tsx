@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { PageAdSlot } from "@/components/ads/page-ad-slot";
 import { mediaAssetUrl } from "@/lib/channel";
 import { translateCatalogDetail } from "@/lib/i18n/catalog-detail";
 import { formatNumber } from "@/lib/i18n/format";
@@ -121,6 +122,7 @@ export default async function MoviePage({ params }: MoviePageProps) {
           </div>
         </div>
       </section>
+      <PageAdSlot placementKey="content_detail" />
       <script
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
         type="application/ld+json"

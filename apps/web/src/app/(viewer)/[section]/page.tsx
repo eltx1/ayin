@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { PageAdSlot } from "@/components/ads/page-ad-slot";
 import { PublicDirectory } from "@/components/viewer/public-directory";
 import { getRequestLocale } from "@/lib/i18n/server";
 import { localizePath } from "@/lib/i18n/routing";
@@ -40,6 +41,9 @@ export default async function SectionPage({ params, searchParams }: Props) {
   ]);
   if (!isDirectorySection(section)) notFound();
   return (
-    <PublicDirectory section={section} locale={locale} cursor={query.cursor} query={query.q} />
+    <>
+      {section === "tv" ? <PageAdSlot placementKey="tv_directory" /> : null}
+      <PublicDirectory section={section} locale={locale} cursor={query.cursor} query={query.q} />
+    </>
   );
 }

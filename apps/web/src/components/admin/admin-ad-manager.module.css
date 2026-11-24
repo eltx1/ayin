@@ -1,0 +1,507 @@
+.page {
+  display: grid;
+  gap: var(--space-4, 1rem);
+  min-width: 0;
+}
+
+.summary {
+  display: grid;
+  gap: var(--space-3, 0.75rem);
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.summaryCard {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 12px);
+  display: grid;
+  gap: 0.5rem;
+  align-content: start;
+  justify-items: start;
+  padding: var(--space-3, 0.875rem);
+}
+
+.summaryCard > span {
+  color: var(--text-muted);
+  font-size: var(--text-sm, 0.875rem);
+}
+
+.summaryCard small {
+  color: var(--text-muted);
+  font-size: var(--text-xs, 0.75rem);
+}
+
+.summaryCard[data-danger="true"] {
+  background: var(--status-danger-bg);
+  border-color: var(--danger);
+}
+
+.tabs {
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.tab {
+  background: transparent;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  min-height: 44px;
+  padding: 0.5rem 0.9rem;
+}
+
+.tab[aria-selected="true"] {
+  border-bottom-color: var(--brand-magenta);
+  color: var(--text-primary);
+}
+
+.tab:focus-visible {
+  outline: var(--focus-width, 2px) solid var(--focus-ring, currentColor);
+  outline-offset: 2px;
+}
+
+.panel {
+  display: grid;
+  gap: var(--space-4, 1rem);
+  min-width: 0;
+}
+
+.panelHead {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 12px);
+  display: grid;
+  gap: var(--space-3, 0.75rem);
+  padding: var(--space-3, 0.875rem);
+}
+
+.switch {
+  align-items: flex-start;
+  cursor: pointer;
+  display: flex;
+  gap: 0.75rem;
+  position: relative;
+}
+
+/* The native checkbox stays focusable and covers the track, so a click anywhere toggles it. */
+.switch input {
+  cursor: pointer;
+  height: 28px;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  margin: 0;
+  opacity: 0;
+  position: absolute;
+  width: 48px;
+}
+
+.switchTrack {
+  background: var(--surface-pressed, var(--border-strong));
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  flex: 0 0 auto;
+  height: 26px;
+  margin-top: 1px;
+  position: relative;
+  transition: background var(--duration-fast, 120ms);
+  width: 46px;
+}
+
+.switchTrack::after {
+  background: var(--text-primary);
+  border-radius: 50%;
+  content: "";
+  height: 20px;
+  inset-block-start: 2px;
+  inset-inline-start: 2px;
+  position: absolute;
+  transition: inset-inline-start var(--duration-fast, 120ms);
+  width: 20px;
+}
+
+.switch input:checked + .switchTrack {
+  background: var(--brand-gradient);
+  border-color: transparent;
+}
+
+.switch input:checked + .switchTrack::after {
+  inset-inline-start: 22px;
+}
+
+.switch input:focus-visible + .switchTrack {
+  outline: var(--focus-width, 2px) solid var(--focus-ring, currentColor);
+  outline-offset: 2px;
+}
+
+.switch input:disabled + .switchTrack {
+  opacity: 0.5;
+}
+
+.switchText {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.switchText small {
+  color: var(--text-muted);
+  font-size: var(--text-sm, 0.85rem);
+  line-height: 1.5;
+}
+
+.map {
+  display: grid;
+  gap: var(--space-3, 0.75rem);
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.wireframe {
+  background: var(--surface-subtle, var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 12px);
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.75rem;
+}
+
+.wireframe figcaption {
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.wfBar,
+.wfHero,
+.wfPlayer {
+  align-items: center;
+  background: var(--surface-raised);
+  border-radius: 6px;
+  color: var(--text-muted);
+  display: flex;
+  font-size: var(--text-xs, 0.75rem);
+  justify-content: center;
+  min-height: 22px;
+}
+
+.wfHero {
+  min-height: 54px;
+}
+
+.wfPlayer {
+  aspect-ratio: 16 / 9;
+}
+
+.wfRow,
+.wfText,
+.wfThumb {
+  background: var(--surface-raised);
+  border-radius: 4px;
+  min-height: 14px;
+  opacity: 0.6;
+}
+
+.wfThumb {
+  min-height: 24px;
+}
+
+.wfColumns {
+  display: grid;
+  gap: 0.35rem;
+  grid-template-columns: 2fr 1fr;
+}
+
+.wfColumns > div {
+  display: grid;
+  gap: 0.35rem;
+  align-content: start;
+}
+
+.marker {
+  align-items: center;
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  color: var(--text-muted);
+  display: flex;
+  font-size: var(--text-xs, 0.75rem);
+  font-weight: 800;
+  justify-content: center;
+  min-height: 22px;
+  min-width: 28px;
+  text-decoration: none;
+}
+
+.marker[data-on="true"] {
+  background: var(--brand-gradient-soft);
+  border: 1px solid var(--border-brand);
+  color: var(--text-primary);
+}
+
+.otherPages {
+  display: grid;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  align-content: start;
+}
+
+.otherPages li {
+  align-items: center;
+  display: flex;
+  gap: 0.6rem;
+}
+
+.slotList {
+  display: grid;
+  gap: var(--space-3, 0.75rem);
+}
+
+.slot {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 12px);
+  display: grid;
+  gap: var(--space-3, 0.75rem);
+  padding: var(--space-3, 0.875rem);
+  scroll-margin-top: 90px;
+}
+
+.slot[data-open="true"],
+.slot:target {
+  border-color: var(--border-brand);
+}
+
+.slotHead {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.slotNumber {
+  align-items: center;
+  background: var(--surface-pressed, var(--surface));
+  border-radius: 50%;
+  display: flex;
+  flex: 0 0 36px;
+  font-weight: 800;
+  height: 36px;
+  justify-content: center;
+}
+
+.slotNumber[data-on="true"] {
+  background: var(--brand-gradient);
+  color: #fff;
+}
+
+.slotTitle {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.slotTitle h3 {
+  font-size: var(--text-lg, 1.05rem);
+  margin: 0;
+}
+
+.slotTitle p {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.slotMeta {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.sizes {
+  color: var(--text-muted);
+  font-size: var(--text-xs, 0.75rem);
+}
+
+.slotForm {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: var(--space-3, 0.75rem);
+  padding-top: var(--space-3, 0.75rem);
+}
+
+.choices,
+.devices {
+  border: 0;
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+}
+
+.choices legend,
+.devices legend {
+  font-weight: 700;
+  margin-bottom: 0.4rem;
+  padding: 0;
+}
+
+.choices {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.choice {
+  align-items: flex-start;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 8px);
+  cursor: pointer;
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.7rem;
+}
+
+.choice[data-selected="true"] {
+  background: var(--surface-selected, var(--surface));
+  border-color: var(--border-brand);
+}
+
+.choice span {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.choice small {
+  color: var(--text-muted);
+}
+
+.devices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.devices label {
+  align-items: center;
+  display: flex;
+  gap: 0.4rem;
+  min-height: 32px;
+}
+
+.field,
+.breakCard {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.breakCard {
+  align-content: start;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 12px);
+  padding: var(--space-3, 0.875rem);
+}
+
+.breakCard hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 0.4rem 0;
+  width: 100%;
+}
+
+.field label,
+.breakCard > label {
+  font-weight: 650;
+  margin-top: 0.3rem;
+}
+
+.field small {
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.field textarea,
+.field input,
+.breakCard textarea,
+.breakCard input:not([type="checkbox"]),
+.inline select,
+.twoFields input {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm, 8px);
+  color: var(--text-primary);
+  font: inherit;
+  min-height: var(--control-height, 44px);
+  padding: 0.55rem 0.7rem;
+  width: 100%;
+}
+
+.field textarea,
+.breakCard textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  resize: vertical;
+}
+
+.breaks,
+.formatGrid {
+  display: grid;
+  gap: var(--space-3, 0.75rem);
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.twoFields {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.twoFields label,
+.inline {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.inline span,
+.twoFields span {
+  color: var(--text-muted);
+  font-size: var(--text-sm, 0.85rem);
+}
+
+.inline select {
+  max-width: 280px;
+}
+
+.error {
+  color: var(--danger);
+  font-size: var(--text-sm, 0.85rem);
+}
+
+.formActions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.advanced {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding-top: var(--space-3, 0.75rem);
+}
+
+@media (max-width: 560px) {
+  .slotHead {
+    flex-wrap: wrap;
+  }
+
+  .slotHead > :last-child {
+    width: 100%;
+  }
+}

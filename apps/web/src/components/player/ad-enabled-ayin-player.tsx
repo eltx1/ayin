@@ -239,6 +239,9 @@ function AdEnabledPlayerSession(props: AyinPlayerProps) {
       if (!lifecycle.active || lifecycle.busy || !decision || !adContainer || !contentVideo)
         return false;
       if (props.completedAdBreaks?.has(slot)) return false;
+      // Per-break tags (pre/mid/post) win; a decision without them uses its single tag.
+      const breakTagUrl = decision.tagUrls ? decision.tagUrls[slot] : decision.tagUrl;
+      if (!breakTagUrl) return false;
       if (!canServeSessionAd(decision.frequencyCapPerSession)) return false;
       const scope = createAdvertisingConsentScope(consent);
       if (!scope.isCurrent()) {
@@ -288,7 +291,7 @@ function AdEnabledPlayerSession(props: AyinPlayerProps) {
         contentPausedForAd = true;
         await service.play(
           slot,
-          decision.tagUrl,
+          breakTagUrl,
           {
             onEvent: (type, errorCode) => {
               if (lifecycle.active && scope.isCurrent()) {

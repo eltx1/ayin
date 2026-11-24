@@ -12,11 +12,14 @@ import {
 } from "@/lib/advertising-consent";
 import { useAdvertisingConsent } from "@/lib/use-advertising-consent";
 import { GptRuntimeError, mountGooglePublisherTagSlot } from "@/lib/google-gpt-page-ad-service";
+import { stripLocalePrefix } from "@/lib/i18n/routing";
+import { pageAdsSuppressed, subscribePageAdSuppression } from "@/lib/page-ad-suppression";
 import {
   detectPageAdDevice,
   fetchPageAdDecision,
   getPageAdSessionId,
   type HousePageAdDemand,
+  pageAdFrameUrl,
   recordPageAdEvent,
   subscribePageAdDevice,
   type PageAdDevice,
@@ -33,13 +36,20 @@ export function PageAdSlot({ placementKey }: { placementKey: string }) {
     () => webAdvertisingAllowed("page"),
     () => true,
   );
-  if (!webAdsAllowed) return null;
+  const suppressed = useSyncExternalStore(
+    subscribePageAdSuppression,
+    pageAdsSuppressed,
+    () => true,
+  );
+  if (!webAdsAllowed || suppressed) return null;
   if (!device || !pathname) return <div className={styles.probe} aria-hidden="true" />;
+  // Placements match unlocalized routes ("/", "/watch/*"); "/ar/..." must match them too.
+  const route = stripLocalePrefix(pathname);
   return (
     <PageAdSlotSession
-      key={JSON.stringify([placementKey, pathname, device, consent])}
+      key={JSON.stringify([placementKey, route, device, consent])}
       placementKey={placementKey}
-      route={pathname}
+      route={route}
       device={device}
       consent={consent}
     />
@@ -63,6 +73,23 @@ function PageAdSlotSession({
   const gptRef = useRef<HTMLDivElement | null>(null);
   const [house, setHouse] = useState<HousePageAdDemand | null>(null);
   const [showGpt, setShowGpt] = useState(false);
+  const [frame, setFrame] = useState<{ url: string; fixedHeight: number | null } | null>(null);
+  const [frameHeight, setFrameHeight] = useState(0);
+  const frameRef = useRef<HTMLIFrameElement | null>(null);
+
+  useEffect(() => {
+    if (!frame) return;
+    const onMessage = (event: MessageEvent) => {
+      const source = frameRef.current?.contentWindow;
+      if (!source || event.source !== source) return;
+      const data = event.data as { type?: unknown; height?: unknown } | null;
+      if (data?.type !== "ayin-ad-frame-size" || typeof data.height !== "number") return;
+      if (!Number.isFinite(data.height)) return;
+      setFrameHeight(Math.max(0, Math.min(1200, Math.ceil(data.height))));
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [frame]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -108,6 +135,21 @@ function PageAdSlotSession({
         provider: decision.demand.provider,
       });
       if (!isActive()) return;
+
+      if (decision.demand.provider === "CODE") {
+        setFrame({
+          url: pageAdFrameUrl(placementKey, decision.demand.version),
+          fixedHeight: decision.demand.height,
+        });
+        await recordPageAdEvent({
+          key: placementKey,
+          eventType: "IMPRESSION",
+          requestId,
+          sessionId,
+          provider: "CODE",
+        });
+        return;
+      }
 
       if (decision.demand.provider === "HOUSE") {
         setHouse(decision.demand);
@@ -213,15 +255,30 @@ function PageAdSlotSession({
     };
   }, [consent, device, divId, placementKey, route]);
 
-  const visible = Boolean(house || showGpt);
+  const renderedFrameHeight = frame ? (frame.fixedHeight ?? frameHeight) : 0;
+  const visible = Boolean(house || showGpt || renderedFrameHeight > 0);
   return (
     <aside
-      className={visible ? styles.slot : styles.probe}
+      className={visible || frame ? styles.slot : styles.probe}
+      data-collapsed={frame && !visible ? "true" : undefined}
       ref={hostRef}
       aria-label={visible ? "Advertisement" : undefined}
       aria-hidden={!visible}
     >
       {visible ? <span className={styles.label}>Advertisement</span> : null}
+      {frame ? (
+        <iframe
+          ref={frameRef}
+          className={styles.frame}
+          src={frame.url}
+          title="Advertisement"
+          referrerPolicy="strict-origin-when-cross-origin"
+          // No allow-same-origin: the ad runs in an opaque origin, isolated from AYIN.
+          sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms"
+          scrolling="no"
+          style={{ height: `${renderedFrameHeight}px` }}
+        />
+      ) : null}
       {house ? (
         house.clickUrl ? (
           <a

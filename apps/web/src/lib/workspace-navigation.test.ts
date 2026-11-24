@@ -43,7 +43,7 @@ describe("workspace information architecture", () => {
     ]);
     expect(destinations(visibleAdminNavigation(["AD_MANAGER"]))).toEqual([
       "/admin",
-      "/admin/advertising",
+      "/admin/advertising/manager",
       "/admin/operations",
     ]);
     const moderator = destinations(visibleAdminNavigation(["CONTENT_MODERATOR"]));
@@ -52,7 +52,7 @@ describe("workspace information architecture", () => {
     expect(moderator).not.toContain("/admin/revenue");
     const operations = destinations(visibleAdminNavigation(["OPERATIONS"]));
     expect(operations).toContain("/admin/users");
-    expect(operations).not.toContain("/admin/advertising");
+    expect(operations).not.toContain("/admin/advertising/manager");
     expect(operations).not.toContain("/admin/revenue");
     expect(destinations(adminNavigation)).toHaveLength(19);
   });
@@ -77,7 +77,11 @@ describe("workspace information architecture", () => {
     expect(isNavigationCurrent("/admin/video-ads-other", "/admin/advertising")).toBe(false);
     expect(
       workspaceLocation("/ar/admin/video-ads", visibleAdminNavigation(["AD_MANAGER"]))?.item.href,
-    ).toBe("/admin/advertising");
+    ).toBe("/admin/advertising/manager");
+    expect(
+      workspaceLocation("/admin/advertising", visibleAdminNavigation(["AD_MANAGER"]))?.item.href,
+    ).toBe("/admin/advertising/manager");
+    expect(isNavigationCurrent("/admin/mobile", "/admin/advertising/manager")).toBe(false);
     expect(
       workspaceLocation("/admin/video-ads", visibleAdminNavigation(["FINANCE_MANAGER"])),
     ).toBeNull();

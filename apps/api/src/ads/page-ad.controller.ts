@@ -9,9 +9,10 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UseGuards,
 } from "@nestjs/common";
-import type { FastifyRequest } from "fastify";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 
 import {
@@ -23,7 +24,10 @@ import {
 import { AuthGuard } from "../auth/auth.guard.js";
 import { AuthService } from "../auth/auth.service.js";
 import { readSessionToken } from "../auth/session-transport.js";
+import { renderPageAdFrame } from "./page-ad-frame.js";
 import { PageAdService, pageAdEventSchema } from "./page-ad.service.js";
+
+const frameKeySchema = z.string().regex(/^[a-z0-9_]{2,120}$/u);
 
 const decisionQuerySchema = z.object({
   route: z.string().trim().min(1).max(500),
@@ -61,6 +65,32 @@ export class PageAdController {
       signedIn: await this.isSignedIn(request),
       category: parsed.data.category ?? null,
     });
+  }
+
+  /**
+   * Serves an administrator's pasted ad tag as its own document on the API origin. The web page
+   * embeds it in a sandboxed iframe without allow-same-origin, so ad scripts run in an opaque
+   * origin: they cannot read AYIN cookies, storage or the surrounding page, and the web CSP stays
+   * strict while third-party ad networks keep working inside the frame.
+   */
+  @Get("frame/:key")
+  async frame(
+    @Param("key") key: string,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<string> {
+    const code = frameKeySchema.safeParse(key).success
+      ? await this.pageAds.getFrameCode(key)
+      : null;
+    reply.removeHeader("x-frame-options");
+    reply.header("content-type", "text/html; charset=utf-8");
+    reply.header("cache-control", "no-store");
+    reply.header("cross-origin-resource-policy", "cross-origin");
+    reply.header(
+      "content-security-policy",
+      `frame-ancestors ${process.env.WEB_ORIGIN ?? "https://ayin.stream"}`,
+    );
+    if (!code) reply.status(404);
+    return renderPageAdFrame(code);
   }
 
   @Post("events")

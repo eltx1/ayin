@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { PageAdSlot } from "@/components/ads/page-ad-slot";
 import { SearchBox } from "@/components/search/search-box";
 import { SearchResults } from "@/components/search/search-results";
 import { PageHeader } from "@/components/ui/design-system";
@@ -35,6 +36,7 @@ export default async function SearchPage({
       <PageHeader title={t("search.title")} eyebrow={t("search.eyebrow")} density="compact">
         <SearchBox key={`${query}:${params.cursor ?? ""}`} initialQuery={query} />
       </PageHeader>
+      <PageAdSlot placementKey="search_between_results" />
       <SearchResults query={query} {...(params.cursor ? { cursor: params.cursor } : {})} />
     </main>
   );

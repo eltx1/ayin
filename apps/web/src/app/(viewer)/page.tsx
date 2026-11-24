@@ -49,7 +49,11 @@ export default async function Home({ searchParams }: HomeProperties) {
   return (
     <main>
       <div className={styles.homeBody}>
-        <DiscoveryHome showHero afterHero={<PageAdSlot placementKey="home_top" />} />
+        <DiscoveryHome
+          showHero
+          afterHero={<PageAdSlot placementKey="home_top" />}
+          betweenRows={<PageAdSlot placementKey="home_between_rows" />}
+        />
 
         <section aria-label={translate(locale, "shell.account")} className={styles.accountStrip}>
           <SessionPanel showWelcome={params.welcome === "1"} />

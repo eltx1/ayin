@@ -9,8 +9,10 @@ export interface PageAdPlacementConfig {
   audience: PageAdAudience;
   categories: string[];
   demand: {
-    source: "GOOGLE_GPT" | "HOUSE";
+    source: "GOOGLE_GPT" | "HOUSE" | "GAM_UNIT" | "CODE";
     adUnitPath: string | null;
+    code?: string | null | undefined;
+    height?: number | null | undefined;
   };
   fallback: "HOUSE" | "COLLAPSE";
 }

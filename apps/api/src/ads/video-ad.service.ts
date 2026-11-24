@@ -15,6 +15,55 @@ import {
 import { GamProductionService, type GamVideoSlot } from "./gam-production.service.js";
 import { resolveVideoAdPolicy } from "./video-ad-policy.js";
 
+const vastTagUrlSchema = z
+  .string()
+  .trim()
+  .max(4096)
+  .refine((value) => {
+    try {
+      return new URL(value).protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, "Expected an https VAST tag URL");
+
+/**
+ * Fills the placeholders Google Ad Manager's tag generator leaves in a copied VAST tag, so an
+ * administrator can paste the tag exactly as Ad Manager shows it.
+ */
+export function expandVastTagMacros(
+  tagUrl: string,
+  descriptionUrl: string | null,
+  now = Date.now(),
+) {
+  const encodedDescription = descriptionUrl ? encodeURIComponent(descriptionUrl) : "";
+  let expanded = tagUrl
+    .replaceAll("[timestamp]", String(now))
+    .replaceAll("[TIMESTAMP]", String(now))
+    .replaceAll("[CACHEBUSTER]", String(now))
+    .replaceAll("[cachebuster]", String(now))
+    .replaceAll("%%CACHEBUSTER%%", String(now));
+  if (encodedDescription) {
+    expanded = expanded
+      .replaceAll("[placeholder]", encodedDescription)
+      .replaceAll("[description_url]", encodedDescription)
+      .replaceAll("[DESCRIPTION_URL]", encodedDescription)
+      .replaceAll("[referrer_url]", encodedDescription)
+      .replaceAll("[page_url]", encodedDescription);
+  }
+  try {
+    const parsed = new URL(expanded);
+    if (descriptionUrl && parsed.searchParams.has("description_url")) {
+      const current = parsed.searchParams.get("description_url");
+      if (!current || current.startsWith("["))
+        parsed.searchParams.set("description_url", descriptionUrl);
+    }
+    return parsed.toString();
+  } catch {
+    return expanded;
+  }
+}
+
 export const videoAdSettingsSchema = z.object({
   masterEnabled: z.boolean(),
   provider: z.enum(["GOOGLE_IMA"]),
@@ -26,6 +75,15 @@ export const videoAdSettingsSchema = z.object({
   externalVastTagUrl: z.string().url().max(4096).nullable(),
   houseCreativeUrl: z.string().url().max(4096).nullable(),
   houseClickUrl: z.string().url().max(4096).nullable(),
+  // One VAST tag per break, pasted from Google Ad Manager (or any VAST server). When present,
+  // a slot tag wins over the single external tag for that break.
+  slotVastTags: z
+    .object({
+      PRE_ROLL: vastTagUrlSchema.nullable(),
+      MID_ROLL: vastTagUrlSchema.nullable(),
+      POST_ROLL: vastTagUrlSchema.nullable(),
+    })
+    .optional(),
 });
 
 export type VideoAdSettings = z.infer<typeof videoAdSettingsSchema>;
@@ -146,12 +204,25 @@ export class VideoAdService {
     input: unknown,
   ): Promise<VideoAdSettings | { settings: VideoAdSettings; updatedAt: Date; source: "STORED" }> {
     const { expectedUpdatedAt, ...settings } = settingsWriteSchema.parse(input);
-    const value = settings as unknown as Prisma.InputJsonValue;
     return this.database.client.$transaction(async (tx) => {
       await this.writeAuthority(tx, actor);
       const current = await this.lockConfiguration(tx, "SETTINGS");
       await this.writeAuthority(tx, actor);
       this.checkConfigurationVersion(current, expectedUpdatedAt);
+      // The advanced editor predates per-break tags; a write without them keeps the stored tags.
+      if (settings.slotVastTags === undefined) {
+        const stored = videoAdSettingsSchema.safeParse(
+          (
+            await tx.platformSetting.findUnique({
+              where: { namespace_key: { namespace: "ADVERTISING", key: "videoAdsV1" } },
+              select: { value: true },
+            })
+          )?.value,
+        );
+        if (stored.success && stored.data.slotVastTags)
+          settings.slotVastTags = stored.data.slotVastTags;
+      }
+      const value = settings as unknown as Prisma.InputJsonValue;
       const updatedAt = this.nextConfigurationVersion(current?.updatedAt);
       await tx.platformSetting.upsert({
         where: { namespace_key: { namespace: "ADVERTISING", key: "videoAdsV1" } },
@@ -373,15 +444,27 @@ export class VideoAdService {
     const resolved = resolveVideoAdPolicy(settings, channelOverride, videoOverride);
     if (!resolved.enabled) return { enabled: false, reason: "CONTENT_OVERRIDE_DISABLED" as const };
 
+    const descriptionUrl = this.watchUrl(origin, video.slug);
     const explicitTagUrl = resolved.vastTagUrl ?? settings.externalVastTagUrl;
     let source: "GOOGLE_AD_MANAGER" | "EXTERNAL_VAST" | "HOUSE" | null = null;
-    let tagUrl: string | null = explicitTagUrl;
+    let tagUrl: string | null = explicitTagUrl
+      ? expandVastTagMacros(explicitTagUrl, descriptionUrl)
+      : null;
     let tagUrls: Partial<Record<GamVideoSlot, string>> | undefined;
 
-    if (explicitTagUrl) {
+    // A content override tag stays authoritative; otherwise per-break tags apply.
+    const slotTags = resolved.vastTagUrl ? undefined : settings.slotVastTags;
+    const slotEntries = (["PRE_ROLL", "MID_ROLL", "POST_ROLL"] as const).flatMap((slot) => {
+      const value = slotTags?.[slot] ?? tagUrl;
+      return value ? [[slot, expandVastTagMacros(value, descriptionUrl)] as const] : [];
+    });
+    if (slotTags && slotEntries.length > 0) {
+      source = "EXTERNAL_VAST";
+      tagUrls = Object.fromEntries(slotEntries);
+      tagUrl = tagUrl ?? slotEntries[0]![1];
+    } else if (explicitTagUrl) {
       source = "EXTERNAL_VAST";
     } else {
-      const descriptionUrl = this.watchUrl(origin, video.slug);
       if (descriptionUrl) {
         const [preRoll, midRoll, postRoll] = await Promise.all([
           this.gam.buildVideoTagUrl({ descriptionUrl, slot: "PRE_ROLL" }),
@@ -403,6 +486,8 @@ export class VideoAdService {
     if (!tagUrl || !source) {
       return { enabled: false, reason: "NO_AD_SOURCE_CONFIGURED" as const };
     }
+    const breakTags = tagUrls;
+    const hasBreakTag = (slot: GamVideoSlot) => !breakTags || Boolean(breakTags[slot]);
 
     return {
       enabled: true as const,
@@ -410,10 +495,12 @@ export class VideoAdService {
       source,
       tagUrl,
       ...(tagUrls ? { tagUrls } : {}),
-      preRollEnabled: resolved.preRollEnabled,
+      preRollEnabled: resolved.preRollEnabled && hasBreakTag("PRE_ROLL"),
       midRollEnabled:
-        resolved.midRollEnabled && (video.durationMs ?? 0) >= resolved.midRollEverySec * 1000,
-      postRollEnabled: resolved.postRollEnabled,
+        resolved.midRollEnabled &&
+        hasBreakTag("MID_ROLL") &&
+        (video.durationMs ?? 0) >= resolved.midRollEverySec * 1000,
+      postRollEnabled: resolved.postRollEnabled && hasBreakTag("POST_ROLL"),
       midRollEverySec: resolved.midRollEverySec,
       frequencyCapPerSession: settings.frequencyCapPerSession,
       attribution: { videoId: video.id, channelId: video.channelId },
@@ -652,9 +739,11 @@ export class VideoAdService {
   }
 
   private watchUrl(origin: string | null, slug: string) {
-    if (!origin) return null;
+    // The decision request reaches the API host; the content page lives on the web origin.
+    const base = process.env.WEB_ORIGIN || origin;
+    if (!base) return null;
     try {
-      return new URL(`/watch/${encodeURIComponent(slug)}`, origin).toString();
+      return new URL(`/watch/${encodeURIComponent(slug)}`, base).toString();
     } catch {
       return null;
     }

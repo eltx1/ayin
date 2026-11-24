@@ -1,6 +1,8 @@
 import { Module } from "@nestjs/common";
 
 import { AdminModule } from "../admin/admin.module.js";
+import { AdminAdManagerController } from "./ad-manager.controller.js";
+import { AdManagerService } from "./ad-manager.service.js";
 import { AuthModule } from "../auth/auth.module.js";
 import { DatabaseModule } from "../database/database.module.js";
 import { VideoPolicyModule } from "../video-policy/video-policy.module.js";
@@ -41,8 +43,10 @@ import { VideoAdService } from "./video-ad.service.js";
     AdminGamDiagnosticsController,
     PublicAuthorizedSellerFileController,
     AdminAuthorizedSellerFileController,
+    AdminAdManagerController,
   ],
   providers: [
+    AdManagerService,
     VideoAdService,
     PageAdService,
     AdvertisingControlService,

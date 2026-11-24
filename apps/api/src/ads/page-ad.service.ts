@@ -14,6 +14,9 @@ import {
   type PageAdPlacementConfig,
 } from "./page-ad-policy.js";
 
+export const pageAdCodeMaxLength = 20_000;
+export const gamAdUnitPathPattern = /^\/\d{1,20}(?:\/[A-Za-z0-9_.-]+)+$/u;
+
 const adSizeSchema = z.tuple([
   z.number().int().positive().max(4096),
   z.number().int().positive().max(4096),
@@ -34,8 +37,13 @@ export const pageAdPlacementConfigSchema = z.object({
   audience: z.enum(["ANY", "SIGNED_IN", "SIGNED_OUT"]),
   categories: z.array(z.string().trim().min(1).max(120)).default([]),
   demand: z.object({
-    source: z.enum(["GOOGLE_GPT", "HOUSE"]),
+    // GOOGLE_GPT: legacy unit validated against the server GAM prefix.
+    // GAM_UNIT: an Ad Manager unit path pasted by an ad manager in the simple editor.
+    // CODE: an ad tag / HTML snippet rendered inside an isolated, sandboxed frame.
+    source: z.enum(["GOOGLE_GPT", "HOUSE", "GAM_UNIT", "CODE"]),
     adUnitPath: z.string().trim().min(1).max(500).nullable(),
+    code: z.string().max(pageAdCodeMaxLength).nullable().optional(),
+    height: z.number().int().min(20).max(1200).nullable().optional(),
   }),
   fallback: z.enum(["HOUSE", "COLLAPSE"]),
 });
@@ -63,7 +71,7 @@ export const pageAdEventSchema = z.object({
   eventType: z.enum(["REQUEST", "FILL", "IMPRESSION", "CLICK", "ERROR"]),
   requestId: z.string().trim().min(1).max(120).nullable().optional(),
   sessionId: z.string().trim().min(1).max(120).nullable().optional(),
-  provider: z.enum(["GOOGLE_GPT", "HOUSE"]),
+  provider: z.enum(["GOOGLE_GPT", "HOUSE", "CODE"]),
   errorCode: z.string().trim().max(120).nullable().optional(),
 });
 
@@ -141,6 +149,41 @@ export class PageAdService {
         }
       : null;
 
+    if (config.demand.source === "CODE") {
+      if (!config.demand.code?.trim()) return { enabled: false as const, reason: "NO_AD_CODE" };
+      return {
+        enabled: true as const,
+        placementId: placement.id,
+        key: placement.key,
+        sizes: config.sizes,
+        responsive: config.responsive,
+        demand: {
+          provider: "CODE" as const,
+          height: config.demand.height ?? null,
+          version: placement.updatedAt.getTime(),
+        },
+        fallback: null,
+      };
+    }
+
+    if (config.demand.source === "GAM_UNIT") {
+      // Pasted by an ad manager; it is independent of the server GAM environment so the
+      // admin panel alone can run display inventory. The emergency switch was checked above.
+      const adUnitPath = config.demand.adUnitPath;
+      if (!adUnitPath || !gamAdUnitPathPattern.test(adUnitPath)) {
+        return { enabled: false as const, reason: "GAM_UNIT_NOT_CONFIGURED" };
+      }
+      return {
+        enabled: true as const,
+        placementId: placement.id,
+        key: placement.key,
+        sizes: config.sizes,
+        responsive: config.responsive,
+        demand: { provider: "GOOGLE_GPT" as const, adUnitPath },
+        fallback: config.fallback === "HOUSE" ? house : null,
+      };
+    }
+
     if (config.demand.source === "HOUSE") {
       if (!house) return { enabled: false as const, reason: "NO_HOUSE_CREATIVE" };
       return {
@@ -198,6 +241,24 @@ export class PageAdService {
       },
       fallback: config.fallback === "HOUSE" ? house : null,
     };
+  }
+
+  /** The pasted ad code for a CODE slot, only while that slot would currently be served. */
+  async getFrameCode(key: string): Promise<string | null> {
+    const [killed, settings, placement] = await Promise.all([
+      this.database.client.platformSetting.findUnique({
+        where: { namespace_key: { namespace: "ADVERTISING", key: "emergencyKillSwitch" } },
+        select: { value: true },
+      }),
+      this.getSettings(),
+      this.database.client.adPlacement.findUnique({ where: { key } }),
+    ]);
+    if (killed?.value === true || !settings.masterEnabled) return null;
+    if (!placement || placement.inventoryFamily !== "OUTSIDE_PLAYER" || !placement.enabled)
+      return null;
+    const parsed = pageAdPlacementConfigSchema.safeParse(placement.config);
+    if (!parsed.success || parsed.data.demand.source !== "CODE") return null;
+    return parsed.data.demand.code?.trim() || null;
   }
 
   async recordEvent(input: PageAdEventInput) {

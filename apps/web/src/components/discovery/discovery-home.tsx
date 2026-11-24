@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { MediaCardSkeleton } from "@/components/viewer/media-card";
@@ -27,10 +27,13 @@ export function DiscoveryHome({
   kidsMode = false,
   showHero = false,
   afterHero,
+  betweenRows,
 }: {
   kidsMode?: boolean;
   showHero?: boolean;
   afterHero?: ReactNode;
+  /** Rendered once between the discovery rows (after the second row) outside kids mode. */
+  betweenRows?: ReactNode;
 }) {
   const { locale, href } = useI18n();
   const copy = (key: Parameters<typeof translatePublicDiscovery>[1]) =>
@@ -171,14 +174,16 @@ export function DiscoveryHome({
             ))}
           </nav>
         ) : null}
-        {visibleRows.map((row) => (
-          <DiscoveryRow
-            authenticated={Boolean(currentRead?.identity)}
-            automatic={home.mode === "AUTO"}
-            kidsMode={kidsMode}
-            key={row.key}
-            row={row}
-          />
+        {visibleRows.map((row, index) => (
+          <Fragment key={row.key}>
+            <DiscoveryRow
+              authenticated={Boolean(currentRead?.identity)}
+              automatic={home.mode === "AUTO"}
+              kidsMode={kidsMode}
+              row={row}
+            />
+            {!kidsMode && index === Math.min(1, visibleRows.length - 1) ? betweenRows : null}
+          </Fragment>
         ))}
         {showHero ? (
           <section className={styles.exploreMore}>

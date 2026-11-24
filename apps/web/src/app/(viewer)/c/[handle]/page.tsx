@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import type { CSSProperties } from "react";
 
+import { PageAdSlot } from "@/components/ads/page-ad-slot";
 import { OwnerChannelActions } from "@/components/channel/owner-channel-actions";
 import { BlockUserButton, ChannelBlockGate } from "@/components/social/user-blocks";
 import { SubscribeButton } from "@/components/social/subscribe-button";
@@ -172,6 +173,8 @@ export default async function PublicChannelPage({
             </div>
           ) : null}
         </section>
+
+        {!kidsMode ? <PageAdSlot placementKey="channel_between_rows" /> : null}
 
         <nav aria-label={t("channel.sections")} className={styles.tabs}>
           {tabs.map((tab) => (

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMemo, useRef, type ReactNode } from "react";
 
+import { PageAdSlot } from "@/components/ads/page-ad-slot";
 import { LocaleSwitcher } from "@/components/i18n/locale-switcher";
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { TvFocusScope } from "@/components/tv/tv-focus-scope";
@@ -212,7 +213,9 @@ function ViewerChrome({ children }: { children: ReactNode }) {
         </div>
       ) : null}
       <div className={styles.content} id="ayin-content" tabIndex={-1}>
+        <PageAdSlot placementKey="header_below" />
         {children}
+        <PageAdSlot placementKey="footer_above" />
       </div>
       <footer className={`${footerStyles.footer} ${styles.footer}`}>
         <div className={footerStyles.identity}>

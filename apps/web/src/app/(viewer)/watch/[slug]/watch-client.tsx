@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ActionLink } from "@/components/ui/design-system";
 import { PageAdSlot } from "@/components/ads/page-ad-slot";
+import { suppressPageAds } from "@/lib/page-ad-suppression";
 import { CommentsPanel } from "@/components/comments/comments-panel";
 import {
   AnalyticsAyinPlayer,
@@ -262,6 +263,8 @@ export function WatchContent({
 }) {
   const { locale, t } = useI18n();
   const kidsMode = explicitKids || data.viewer.isKids;
+  // Site-wide slots (under the header, above the footer) also stay off for a kids profile.
+  useEffect(() => (kidsMode ? suppressPageAds() : undefined), [kidsMode]);
   const seriesContext =
     !kidsMode && data.detail.contentType === "SERIES_EPISODE" ? data.detail.seriesContext : null;
   const catalogText = (
@@ -318,6 +321,7 @@ export function WatchContent({
               videoId={data.video.id}
             />
           </div>
+          {!kidsMode ? <PageAdSlot placementKey="watch_below_player" /> : null}
           <section className={styles.details}>
             {seriesContext ? (
               <nav
@@ -406,9 +410,9 @@ export function WatchContent({
               </details>
             ) : null}
           </section>
-          {!kidsMode ? <PageAdSlot placementKey="watch_below_player" /> : null}
         </div>
         <WatchRecommendations
+          leading={!kidsMode ? <PageAdSlot placementKey="desktop_sidebar" /> : null}
           currentId={data.video.id}
           items={data.detail.recommendations ?? data.detail.related}
           related={data.detail.related}

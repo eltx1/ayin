@@ -23,12 +23,14 @@ const contentSecurityPolicy = [
   "object-src 'none'",
   "form-action 'self'",
   "frame-ancestors 'none'",
-  "script-src 'self' 'unsafe-inline' https://securepubads.g.doubleclick.net https://imasdk.googleapis.com https://www.googletagservices.com https://www.googletagmanager.com",
+  // pagead2 serves GPT in Google's limited-ads mode; the other hosts are GPT and IMA.
+  "script-src 'self' 'unsafe-inline' https://securepubads.g.doubleclick.net https://pagead2.googlesyndication.com https://imasdk.googleapis.com https://www.googletagservices.com https://www.googletagmanager.com",
   "style-src 'self' 'unsafe-inline'",
   `img-src 'self' data: blob: https: ${explicitMediaOrigins}`.trim(),
   `media-src 'self' blob: https: ${explicitMediaOrigins}`.trim(),
   `connect-src 'self' https: wss: ${explicitConnectOrigins}`.trim(),
-  "frame-src https://securepubads.g.doubleclick.net https://*.doubleclick.net https://*.googlesyndication.com",
+  // IMA renders through its imasdk bridge frame; pasted ad code runs in a sandboxed API frame.
+  `frame-src https://securepubads.g.doubleclick.net https://*.doubleclick.net https://*.googlesyndication.com https://imasdk.googleapis.com ${apiOrigin ?? ""}`.trim(),
   "worker-src 'self' blob:",
   "manifest-src 'self'",
   ...productionOnlyDirectives,

@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { PageAdSlot } from "@/components/ads/page-ad-slot";
 import { mediaAssetUrl } from "@/lib/channel";
 import { translateCatalogDetail } from "@/lib/i18n/catalog-detail";
 import { formatNumber } from "@/lib/i18n/format";
@@ -127,6 +128,7 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
           ) : null}
         </div>
       </section>
+      <PageAdSlot placementKey="content_detail" />
 
       <section className={styles.catalog}>
         <nav className={styles.seasonSelector} aria-label={t("series.seasonSelector")}>

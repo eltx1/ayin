@@ -16,13 +16,20 @@ export interface GoogleGptPageAdDemand {
   adUnitPath: string;
 }
 
+/** Administrator-pasted ad code, served by the API as an isolated frame document. */
+export interface CodePageAdDemand {
+  provider: "CODE";
+  height: number | null;
+  version: number;
+}
+
 export interface PageAdDecision {
   enabled: true;
   placementId: string;
   key: string;
   sizes: PageAdSize[];
   responsive: Array<{ minWidth: number; sizes: PageAdSize[] }>;
-  demand: HousePageAdDemand | GoogleGptPageAdDemand;
+  demand: HousePageAdDemand | GoogleGptPageAdDemand | CodePageAdDemand;
   fallback: HousePageAdDemand | null;
 }
 
@@ -72,7 +79,7 @@ export async function recordPageAdEvent(input: {
   eventType: "REQUEST" | "FILL" | "IMPRESSION" | "CLICK" | "ERROR";
   requestId: string;
   sessionId: string;
-  provider: "GOOGLE_GPT" | "HOUSE";
+  provider: "GOOGLE_GPT" | "HOUSE" | "CODE";
   errorCode?: string;
 }) {
   try {
@@ -85,6 +92,10 @@ export async function recordPageAdEvent(input: {
   } catch {
     // Page ad telemetry must never affect the surrounding content experience.
   }
+}
+
+export function pageAdFrameUrl(key: string, version: number) {
+  return `${apiBaseUrl}/ads/page/frame/${encodeURIComponent(key)}?v=${version}`;
 }
 
 export function getPageAdSessionId() {

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useI18n } from "@/components/i18n/i18n-provider";
 import type { WatchRecommendation } from "@/lib/ayin-player";
 import { mediaAssetUrl } from "@/lib/channel";
@@ -15,7 +15,9 @@ export function WatchRecommendations({
   related,
   channelName,
   currentId,
+  leading,
 }: {
+  leading?: ReactNode;
   items: WatchRecommendation[];
   related: WatchRecommendation[];
   channelName: string;
@@ -40,6 +42,7 @@ export function WatchRecommendations({
         </div>
         <span aria-hidden="true">↗</span>
       </header>
+      {leading}
       {related.length > 0 &&
       items.some((item) => !related.some((other) => other.id === item.id)) ? (
         <div className={styles.filters}>

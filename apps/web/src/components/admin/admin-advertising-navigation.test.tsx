@@ -7,13 +7,14 @@ import { AdminAdvertisingNavigation } from "./admin-advertising-navigation";
 describe("Advertising route navigation", () => {
   it("preserves all canonical destinations, the locale and exactly one current route", () => {
     for (const locale of ["en", "ar"] as const) {
-      for (const current of ["page", "video", "mobile"] as const) {
+      for (const current of ["manager", "page", "video", "mobile"] as const) {
         const html = renderToStaticMarkup(
           <I18nProvider locale={locale}>
             <AdminAdvertisingNavigation current={current} />
           </I18nProvider>,
         );
         const prefix = locale === "ar" ? "/ar" : "";
+        expect(html).toContain(`href="${prefix}/admin/advertising/manager"`);
         expect(html).toContain(`href="${prefix}/admin/advertising"`);
         expect(html).toContain(`href="${prefix}/admin/video-ads"`);
         expect(html).toContain(`href="${prefix}/admin/mobile"`);

@@ -7,11 +7,22 @@ import styles from "./admin-advertising-navigation.module.css";
 
 // These are route links, not stateful tabs: the existing editors keep their own
 // authorization, request binding and departure guards, including modified clicks.
-export function AdminAdvertisingNavigation({ current }: { current: "page" | "video" | "mobile" }) {
+export function AdminAdvertisingNavigation({
+  current,
+}: {
+  current: "manager" | "page" | "video" | "mobile";
+}) {
   const { locale, href } = useI18n();
   const copy = locale === "ar" ? adminAdvertisingAr : adminAdvertisingEn;
   return (
     <nav className={styles.navigation} aria-label={copy.navigation}>
+      <ActionLink
+        href={href("/admin/advertising/manager")}
+        aria-current={current === "manager" ? "page" : undefined}
+        tone={current === "manager" ? "secondary" : "primary"}
+      >
+        {copy.managerArea}
+      </ActionLink>
       <ActionLink
         href={href("/admin/advertising")}
         aria-current={current === "page" ? "page" : undefined}
