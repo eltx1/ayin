@@ -609,3 +609,71 @@
   padding: 0;
   text-decoration: underline;
 }
+
+.reportHead {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.reportTotals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.2rem;
+}
+
+.reportTotals span {
+  color: var(--text-muted);
+}
+
+.reportTotals strong {
+  color: var(--text-primary);
+}
+
+.reportTitle {
+  font-size: var(--text-lg, 1.05rem);
+  margin: 0.4rem 0 0;
+}
+
+.tableWrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 12px);
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.reportTable {
+  border-collapse: collapse;
+  font-size: var(--text-sm, 0.9rem);
+  min-width: 640px;
+  width: 100%;
+}
+
+.reportTable th,
+.reportTable td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.6rem 0.75rem;
+  text-align: start;
+  white-space: nowrap;
+}
+
+.reportTable thead th {
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-weight: 650;
+}
+
+.reportTable tbody th {
+  font-weight: 650;
+}
+
+.reportTable tbody tr:last-child th,
+.reportTable tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.reportTable td {
+  font-variant-numeric: tabular-nums;
+}

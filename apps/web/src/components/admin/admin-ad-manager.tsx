@@ -11,6 +11,10 @@ import {
   StatusNotice,
 } from "@/components/ui/design-system";
 import {
+  percent,
+  slotHealth,
+  type AdManagerReport,
+  type SlotHealth,
   checkVastTag,
   extractAdUnitPath,
   extractVastTagUrl,
@@ -32,7 +36,7 @@ import { AdminAdvertisingNavigation } from "./admin-advertising-navigation";
 import styles from "./admin-ad-manager.module.css";
 
 type Copy = (en: string, ar: string) => string;
-type Tab = "web" | "video" | "app";
+type Tab = "web" | "video" | "app" | "report";
 type Notice = {
   operation?: string;
   tone: "success" | "danger" | "warning" | "info";
@@ -277,6 +281,7 @@ export function AdminAdManager() {
                 ["web", copy("Website & WebView", "إعلانات الموقع والـ WebView")],
                 ["video", copy("Video (player)", "إعلانات الفيديو (البلاير)")],
                 ["app", copy("App", "إعلانات التطبيق")],
+                ["report", copy("Performance", "الأداء")],
               ] as const
             ).map(([id, label]) => (
               <button
@@ -367,6 +372,10 @@ export function AdminAdManager() {
             />
           ) : null}
 
+          {tab === "report" ? (
+            <Performance copy={copy} ar={ar} overview={overview} request={request} />
+          ) : null}
+
           {tab === "app" ? (
             appAllowed && appConfig ? (
               <AppAds
@@ -410,6 +419,201 @@ export function AdminAdManager() {
         </>
       )}
     </div>
+  );
+}
+
+const healthCopy: Record<
+  SlotHealth,
+  [string, string, "success" | "warning" | "danger" | "neutral" | "info"]
+> = {
+  OK: ["Filling well", "بيتملى كويس", "success"],
+  OFF: ["Off", "مقفول", "neutral"],
+  NO_REQUESTS: [
+    "On but never requested: check its devices and that viewers reach that page",
+    "شغال بس مفيش ولا طلب: راجع الأجهزة، وإن الزوار بيوصلوا للصفحة دي",
+    "warning",
+  ],
+  TOO_FEW: ["Too little traffic to judge yet", "الزيارات لسه قليلة على الحكم", "info"],
+  LOW_FILL: [
+    "Low fill: check the unit, sizes and line items in Ad Manager",
+    "امتلاء ضعيف: راجع الوحدة والمقاسات والحملات في Ad Manager",
+    "warning",
+  ],
+  ERRORS: [
+    "Mostly empty or failing: check the unit path or the pasted code",
+    "أغلبه فاضي أو بيفشل: راجع مسار الوحدة أو الكود الملصوق",
+    "danger",
+  ],
+};
+
+/** AYIN-side delivery counts per slot; revenue stays in Ad Manager's own reports. */
+function Performance({
+  copy,
+  ar,
+  overview,
+  request,
+}: {
+  copy: Copy;
+  ar: boolean;
+  overview: AdManagerOverview;
+  request: Request;
+}) {
+  const [days, setDays] = useState(7);
+  const [report, setReport] = useState<AdManagerReport | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let current = true;
+    request<AdManagerReport>(`/admin/ad-manager/report?days=${days}`)
+      .then((value) => {
+        if (!current) return;
+        setFailed(false);
+        setReport(value);
+      })
+      .catch(() => {
+        if (current) setFailed(true);
+      });
+    return () => {
+      current = false;
+    };
+  }, [days, request]);
+  const number = (value: number) => value.toLocaleString(ar ? "ar-EG" : "en-US");
+  const share = (value: number | null) =>
+    value === null ? "—" : `${value.toLocaleString(ar ? "ar-EG" : "en-US")}%`;
+  const slots = new Map(overview.web.slots.map((slot) => [slot.key, slot]));
+  const videoNames: Record<AdManagerReport["video"][number]["key"], [string, string]> = {
+    player_pre_roll: ["Pre-roll", "قبل الفيديو"],
+    player_mid_roll: ["Mid-roll", "في نص الفيديو"],
+    player_post_roll: ["Post-roll", "بعد الفيديو"],
+  };
+  const totals = report?.web.reduce(
+    (sum, row) => ({
+      requests: sum.requests + row.requests,
+      impressions: sum.impressions + row.impressions,
+      clicks: sum.clicks + row.clicks,
+    }),
+    { requests: 0, impressions: 0, clicks: 0 },
+  );
+
+  return (
+    <section className={styles.panel}>
+      <div className={styles.reportHead}>
+        <label className={styles.inline}>
+          <span>{copy("Period", "الفترة")}</span>
+          <select
+            value={days}
+            onChange={(event) => {
+              setReport(null);
+              setFailed(false);
+              setDays(Number(event.target.value));
+            }}
+          >
+            <option value={1}>{copy("Last 24 hours", "آخر 24 ساعة")}</option>
+            <option value={7}>{copy("Last 7 days", "آخر 7 أيام")}</option>
+            <option value={30}>{copy("Last 30 days", "آخر 30 يوم")}</option>
+          </select>
+        </label>
+        {totals ? (
+          <div className={styles.reportTotals}>
+            <span>
+              {copy("Requests", "طلبات")}: <strong>{number(totals.requests)}</strong>
+            </span>
+            <span>
+              {copy("Shown", "ظهر")}: <strong>{number(totals.impressions)}</strong>
+            </span>
+            <span>
+              {copy("Fill", "الامتلاء")}:{" "}
+              <strong>{share(percent(totals.impressions, totals.requests))}</strong>
+            </span>
+            <span>
+              {copy("Clicks", "ضغطات")}: <strong>{number(totals.clicks)}</strong>
+            </span>
+          </div>
+        ) : null}
+      </div>
+      <StatusNotice tone="info">
+        {copy(
+          "Counted by AYIN's pages and player: a request is a slot asking for an ad, shown is an ad actually displayed, fill is shown ÷ requests. Earnings and Google's own impression counts are in Ad Manager reports.",
+          "الأرقام دي بيحسبها موقع عين والبلاير: الطلب يعني المكان طلب إعلان، وظهر يعني إعلان اتعرض فعلًا، ونسبة الامتلاء = اللي ظهر ÷ الطلبات. الأرباح وأرقام جوجل الرسمية موجودة في تقارير Ad Manager.",
+        )}
+      </StatusNotice>
+      {failed ? (
+        <StatusNotice tone="danger">
+          {copy("The report could not be loaded. Try again.", "التقرير ما اتحمّلش. جرّب تاني.")}
+        </StatusNotice>
+      ) : !report ? (
+        <StatusNotice tone="info">{copy("Loading…", "جاري التحميل…")}</StatusNotice>
+      ) : (
+        <>
+          <h3 className={styles.reportTitle}>
+            {copy("Website & WebView slots", "أماكن الموقع والـ WebView")}
+          </h3>
+          <div className={styles.tableWrap}>
+            <table className={styles.reportTable}>
+              <thead>
+                <tr>
+                  <th scope="col">{copy("Slot", "المكان")}</th>
+                  <th scope="col">{copy("Requests", "طلبات")}</th>
+                  <th scope="col">{copy("Shown", "ظهر")}</th>
+                  <th scope="col">{copy("Fill", "الامتلاء")}</th>
+                  <th scope="col">{copy("Clicks", "ضغطات")}</th>
+                  <th scope="col">CTR</th>
+                  <th scope="col">{copy("Status", "الحالة")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.web.map((row) => {
+                  const slot = slots.get(row.key);
+                  const health = slotHealth({ ...row, enabled: Boolean(slot?.enabled) });
+                  const [en, arabic, tone] = healthCopy[health];
+                  return (
+                    <tr key={row.key} data-health={health}>
+                      <th scope="row">{slot ? copy(slot.name.en, slot.name.ar) : row.key}</th>
+                      <td>{number(row.requests)}</td>
+                      <td>{number(row.impressions)}</td>
+                      <td>{share(percent(row.impressions, row.requests))}</td>
+                      <td>{number(row.clicks)}</td>
+                      <td>{share(percent(row.clicks, row.impressions))}</td>
+                      <td>
+                        <DataBadge tone={tone}>{copy(en, arabic)}</DataBadge>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <h3 className={styles.reportTitle}>{copy("Video breaks", "فواصل الفيديو")}</h3>
+          <div className={styles.tableWrap}>
+            <table className={styles.reportTable}>
+              <thead>
+                <tr>
+                  <th scope="col">{copy("Break", "الفاصل")}</th>
+                  <th scope="col">{copy("Requests", "طلبات")}</th>
+                  <th scope="col">{copy("Started", "بدأ")}</th>
+                  <th scope="col">{copy("Fill", "الامتلاء")}</th>
+                  <th scope="col">{copy("Completed", "اكتمل")}</th>
+                  <th scope="col">{copy("Completion", "نسبة الإكمال")}</th>
+                  <th scope="col">{copy("Clicks", "ضغطات")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.video.map((row) => (
+                  <tr key={row.key}>
+                    <th scope="row">{copy(...videoNames[row.key])}</th>
+                    <td>{number(row.requests)}</td>
+                    <td>{number(row.starts)}</td>
+                    <td>{share(percent(row.starts, row.requests))}</td>
+                    <td>{number(row.completes)}</td>
+                    <td>{share(percent(row.completes, row.starts))}</td>
+                    <td>{number(row.clicks)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 

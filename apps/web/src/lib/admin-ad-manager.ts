@@ -173,3 +173,51 @@ export async function checkVastTag(
   const ads = xml.match(/<Ad[\s>]/gu)?.length ?? 0;
   return { status: ads > 0 ? "FILLED" : "NO_FILL", ads };
 }
+
+export interface AdManagerReport {
+  days: number;
+  since: string;
+  web: Array<{
+    key: string;
+    requests: number;
+    impressions: number;
+    clicks: number;
+    errors: number;
+  }>;
+  video: Array<{
+    key: "player_pre_roll" | "player_mid_roll" | "player_post_roll";
+    requests: number;
+    impressions: number;
+    starts: number;
+    completes: number;
+    clicks: number;
+    errors: number;
+  }>;
+}
+
+/** A share in percent with one decimal, or null when there is nothing to divide by. */
+export function percent(part: number, whole: number): number | null {
+  if (whole <= 0) return null;
+  return Math.round((part / whole) * 1000) / 10;
+}
+
+export type SlotHealth = "OK" | "OFF" | "NO_REQUESTS" | "LOW_FILL" | "ERRORS" | "TOO_FEW";
+
+/**
+ * A plain-language verdict for one web slot. Thresholds stay conservative so a quiet slot on a
+ * low-traffic day is not flagged: at least 20 requests are needed before judging fill.
+ */
+export function slotHealth(row: {
+  enabled: boolean;
+  requests: number;
+  impressions: number;
+  errors: number;
+}): SlotHealth {
+  if (!row.enabled) return "OFF";
+  if (row.requests === 0) return "NO_REQUESTS";
+  if (row.requests < 20) return "TOO_FEW";
+  const fill = row.impressions / row.requests;
+  if (row.errors / row.requests >= 0.5 && fill < 0.3) return "ERRORS";
+  if (fill < 0.3) return "LOW_FILL";
+  return "OK";
+}

@@ -138,3 +138,39 @@
 .anchorSpacer[data-visible="true"] {
   height: 64px;
 }
+
+/* Space held from the server-rendered HTML for a serving slot (see ReservedAdSpace). */
+.reserve {
+  display: flow-root;
+}
+
+/* The site uses border-box sizing, so the reserved height also covers the vertical padding. */
+.reserve {
+  --ad-gap: clamp(1rem, 2vw, 1.5rem);
+}
+
+.reserve[data-m="on"] {
+  min-height: calc(var(--ad-m) + 2 * var(--ad-gap));
+  padding-block: var(--ad-gap);
+}
+
+@media (min-width: 768px) {
+  .reserve[data-m="on"] {
+    min-height: 0;
+    padding-block: 0;
+  }
+
+  .reserve[data-d="on"] {
+    min-height: calc(var(--ad-d) + 2 * var(--ad-gap));
+    padding-block: var(--ad-gap);
+  }
+}
+
+.reserve .slot {
+  margin-block: 0;
+}
+
+.reserve[data-collapsed="true"] {
+  min-height: 0 !important;
+  padding-block: 0 !important;
+}

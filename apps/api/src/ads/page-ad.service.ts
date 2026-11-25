@@ -8,6 +8,7 @@ import {
 } from "../admin/admin-account-write-authority.js";
 import { DatabaseService } from "../database/database.service.js";
 import { GamProductionService } from "./gam-production.service.js";
+import { pageAdLayoutSlot, type PageAdLayoutSlot } from "./page-ad-layout.js";
 import {
   isPageAdEligible,
   type PageAdContext,
@@ -241,6 +242,39 @@ export class PageAdService {
       },
       fallback: config.fallback === "HOUSE" ? house : null,
     };
+  }
+
+  /**
+   * Slots that can currently serve, with the space each one reserves, so the web can hold that
+   * space in its server-rendered HTML and the page does not jump when the ad arrives.
+   */
+  async getLayout(): Promise<{ slots: PageAdLayoutSlot[] }> {
+    const [killed, settings, placements] = await Promise.all([
+      this.database.client.platformSetting.findUnique({
+        where: { namespace_key: { namespace: "ADVERTISING", key: "emergencyKillSwitch" } },
+        select: { value: true },
+      }),
+      this.getSettings(),
+      this.database.client.adPlacement.findMany({
+        where: { inventoryFamily: "OUTSIDE_PLAYER", enabled: true },
+        select: { key: true, config: true },
+      }),
+    ]);
+    if (killed?.value === true || !settings.masterEnabled) return { slots: [] };
+    const slots: PageAdLayoutSlot[] = [];
+    for (const placement of placements) {
+      const parsed = pageAdPlacementConfigSchema.safeParse(placement.config);
+      if (!parsed.success) continue;
+      const demand = parsed.data.demand;
+      const servable =
+        (demand.source === "CODE" && Boolean(demand.code?.trim())) ||
+        (demand.source === "GAM_UNIT" &&
+          Boolean(demand.adUnitPath && gamAdUnitPathPattern.test(demand.adUnitPath))) ||
+        (demand.source === "GOOGLE_GPT" && settings.googleGptEnabled && Boolean(demand.adUnitPath));
+      if (servable)
+        slots.push(pageAdLayoutSlot(placement.key, parsed.data as PageAdPlacementConfig));
+    }
+    return { slots };
   }
 
   /** The pasted ad code for a CODE slot, only while that slot would currently be served. */

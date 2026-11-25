@@ -7,6 +7,7 @@ import {
   Inject,
   Param,
   Put,
+  Query,
   Req,
   UseGuards,
 } from "@nestjs/common";
@@ -31,6 +32,12 @@ export class AdminAdManagerController {
   @Header("Cache-Control", "private, no-store")
   overview() {
     return this.manager.overview();
+  }
+
+  @Get("report")
+  @Header("Cache-Control", "private, no-store")
+  report(@Query() query: Record<string, unknown>) {
+    return this.validated(() => this.manager.report(query));
   }
 
   @Put("web")

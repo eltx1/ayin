@@ -196,3 +196,94 @@ test("the Arabic quick editor saves a nested GAM unit and an off-slot draft acro
   await expect(slot.getByRole("radio", { name: /وحدة Google Ad Manager/ })).toBeChecked();
   await expect(unit).toHaveValue("");
 });
+
+test("a serving slot holds its space from the server HTML, nothing moves, and the report counts it", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await signInAsAdManager(page);
+  const headers = { origin: WEB };
+  expect(
+    (
+      await page.request.put(API + "/admin/ad-manager/web", {
+        headers,
+        data: { masterEnabled: true },
+      })
+    ).ok(),
+  ).toBe(true);
+  expect(
+    (
+      await page.request.put(API + "/admin/ad-manager/web/slots/header_below", {
+        headers,
+        data: {
+          enabled: true,
+          source: "CODE",
+          code: '<div style="width:320px;height:90px;background:#00c2ff">RESERVED AD</div>',
+          adUnitPath: null,
+          height: 90,
+          devices: ["MOBILE", "DESKTOP"],
+        },
+      })
+    ).ok(),
+  ).toBe(true);
+
+  const layout = (await (await page.request.get(API + "/ads/page/layout")).json()) as {
+    slots: Array<{ key: string; mobile: number; desktop: number }>;
+  };
+  expect(layout.slots.find((slot) => slot.key === "header_below")).toMatchObject({
+    mobile: 90,
+    desktop: 90,
+  });
+
+  // The web caches the layout for up to a minute; the reserved space then ships in the HTML.
+  await expect
+    .poll(
+      async () =>
+        (await (await page.request.get(WEB + "/")).text()).includes(
+          'data-ad-reserve="header_below"',
+        ),
+      {
+        timeout: 90_000,
+        intervals: [2_000],
+      },
+    )
+    .toBe(true);
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const reserve = page.locator('[data-ad-reserve="header_below"]');
+  const before = await reserve.evaluate((node) => {
+    const next = node.nextElementSibling as HTMLElement;
+    return {
+      height: node.getBoundingClientRect().height,
+      nextTop: next.getBoundingClientRect().top,
+    };
+  });
+  await expect(
+    page.frameLocator('[data-ad-reserve="header_below"] iframe').getByText("RESERVED AD"),
+  ).toBeVisible();
+  const after = await reserve.evaluate((node) => {
+    const next = node.nextElementSibling as HTMLElement;
+    return {
+      height: node.getBoundingClientRect().height,
+      nextTop: next.getBoundingClientRect().top,
+    };
+  });
+  expect(before.height).toBeGreaterThan(90);
+  expect(Math.abs(after.height - before.height)).toBeLessThanOrEqual(4);
+  expect(Math.abs(after.nextTop - before.nextTop)).toBeLessThanOrEqual(4);
+
+  await expect
+    .poll(async () => {
+      const report = (await (
+        await page.request.get(API + "/admin/ad-manager/report?days=1")
+      ).json()) as { web: Array<{ key: string; requests: number; impressions: number }> };
+      const row = report.web.find((entry) => entry.key === "header_below");
+      return row ? Math.min(row.requests, row.impressions) : 0;
+    })
+    .toBeGreaterThanOrEqual(1);
+  await page.goto("/admin/advertising/manager");
+  await page.getByRole("tab", { name: "Performance" }).click();
+  const row = page.getByRole("row", { name: /Below the header/ });
+  await expect(row).toBeVisible();
+  await expect(row.getByRole("cell").first()).not.toHaveText("0");
+});

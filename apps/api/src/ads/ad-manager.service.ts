@@ -103,6 +103,11 @@ export const videoUpdateSchema = z
   });
 
 export const webUpdateSchema = z.object({ masterEnabled: z.boolean() }).strict();
+export const reportQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(90).default(7),
+});
+/** Placements the video ad service records breaks under (see VideoAdService.recordEvent). */
+const videoReportKeys = ["player_pre_roll", "player_mid_roll", "player_post_roll"] as const;
 export const emergencyUpdateSchema = z
   .object({ enabled: z.boolean(), reason: z.string().trim().min(1).max(1000).optional() })
   .strict();
@@ -283,6 +288,61 @@ export class AdManagerService {
     const data = emergencyUpdateSchema.parse(input);
     await this.advertising.setEmergencyKillSwitch(actor, data.enabled, data.reason);
     return this.overview();
+  }
+
+  /**
+   * Per-slot delivery counts recorded by AYIN's own players and slots over the last `days` days.
+   * These are AYIN-side measurements (requests the page made, ads it rendered); revenue stays in
+   * Ad Manager's own reports.
+   */
+  async report(input: unknown) {
+    const { days } = reportQuerySchema.parse(input);
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const keys = [...pageAdSlotCatalog.map((slot) => slot.key), ...videoReportKeys];
+    const placements = await this.database.client.adPlacement.findMany({
+      where: { key: { in: keys } },
+      select: { id: true, key: true },
+    });
+    const grouped = placements.length
+      ? await this.database.client.adEvent.groupBy({
+          by: ["placementId", "eventType"],
+          where: {
+            placementId: { in: placements.map((placement) => placement.id) },
+            occurredAt: { gte: since },
+          },
+          _count: { _all: true },
+        })
+      : [];
+    const keyById = new Map(placements.map((placement) => [placement.id, placement.key]));
+    const counts = new Map<string, Record<string, number>>();
+    for (const row of grouped) {
+      const key = keyById.get(row.placementId);
+      if (!key) continue;
+      const entry = counts.get(key) ?? {};
+      entry[row.eventType] = (entry[row.eventType] ?? 0) + row._count._all;
+      counts.set(key, entry);
+    }
+    const metric = (key: string, type: string) => counts.get(key)?.[type] ?? 0;
+    return {
+      days,
+      since: since.toISOString(),
+      web: pageAdSlotCatalog.map((slot) => ({
+        key: slot.key,
+        requests: metric(slot.key, "REQUEST"),
+        impressions: metric(slot.key, "IMPRESSION"),
+        clicks: metric(slot.key, "CLICK"),
+        errors: metric(slot.key, "ERROR"),
+      })),
+      video: videoReportKeys.map((key) => ({
+        key,
+        requests: metric(key, "REQUEST"),
+        impressions: metric(key, "IMPRESSION"),
+        starts: metric(key, "START"),
+        completes: metric(key, "COMPLETE"),
+        clicks: metric(key, "CLICK"),
+        errors: metric(key, "ERROR"),
+      })),
+    };
   }
 
   /** Placements that the web renders but older databases never seeded start disabled. */

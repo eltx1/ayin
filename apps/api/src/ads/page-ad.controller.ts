@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   HttpException,
   Inject,
   Param,
@@ -65,6 +66,13 @@ export class PageAdController {
       signedIn: await this.isSignedIn(request),
       category: parsed.data.category ?? null,
     });
+  }
+
+  /** Public: which slots serve right now and the space each reserves (no targeting data). */
+  @Get("layout")
+  @Header("Cache-Control", "public, max-age=60, s-maxage=60")
+  layout() {
+    return this.pageAds.getLayout();
   }
 
   /**

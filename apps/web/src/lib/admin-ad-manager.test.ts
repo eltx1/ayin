@@ -114,3 +114,23 @@ describe("mid-roll schedule editing", () => {
     expect(sent.searchParams.get("ad_rule")).toBe("0");
   });
 });
+
+describe("ad performance report", () => {
+  it("computes shares only when there is something to divide by", async () => {
+    const { percent } = await import("./admin-ad-manager");
+    expect(percent(25, 100)).toBe(25);
+    expect(percent(1, 3)).toBe(33.3);
+    expect(percent(5, 0)).toBeNull();
+  });
+
+  it("judges a slot only once it has enough traffic", async () => {
+    const { slotHealth } = await import("./admin-ad-manager");
+    const base = { enabled: true, requests: 100, impressions: 80, errors: 0 };
+    expect(slotHealth({ ...base, enabled: false })).toBe("OFF");
+    expect(slotHealth({ ...base, requests: 0, impressions: 0 })).toBe("NO_REQUESTS");
+    expect(slotHealth({ ...base, requests: 10, impressions: 0 })).toBe("TOO_FEW");
+    expect(slotHealth(base)).toBe("OK");
+    expect(slotHealth({ ...base, impressions: 10 })).toBe("LOW_FILL");
+    expect(slotHealth({ ...base, impressions: 10, errors: 70 })).toBe("ERRORS");
+  });
+});

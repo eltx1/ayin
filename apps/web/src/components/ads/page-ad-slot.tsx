@@ -4,7 +4,16 @@ import { isMobileHost } from "@/lib/mobile-bridge";
 import { webAdvertisingAllowed } from "@/lib/mobile-web-ads";
 import { nativeBannerEnabled, subscribeMobile } from "@/lib/mobile-runtime";
 import { usePathname } from "next/navigation";
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 import {
   createAdvertisingConsentScope,
@@ -14,7 +23,13 @@ import {
 import { useAdvertisingConsent } from "@/lib/use-advertising-consent";
 import { GptRuntimeError, mountGooglePublisherTagSlot } from "@/lib/google-gpt-page-ad-service";
 import { stripLocalePrefix } from "@/lib/i18n/routing";
-import { pageAdsSuppressed, subscribePageAdSuppression } from "@/lib/page-ad-suppression";
+import {
+  pageAdsSuppressed,
+  pageAdsSuppressedForLocation,
+  subscribePageAdSuppression,
+} from "@/lib/page-ad-suppression";
+import { PAGE_AD_CHROME_PX, pageAdRouteMatches, type PageAdLayoutSlot } from "@/lib/page-ad-layout";
+import { usePageAdLayout } from "./page-ad-layout-context";
 import {
   detectPageAdDevice,
   fetchPageAdDecision,
@@ -61,18 +76,42 @@ export function PageAdSlot({
     () => webAdvertisingAllowed("page"),
     () => true,
   );
-  const suppressed = useSyncExternalStore(
-    subscribePageAdSuppression,
-    pageAdsSuppressed,
-    () => true,
+  const layout = usePageAdLayout();
+  const suppressed = useSyncExternalStore(subscribePageAdSuppression, pageAdsSuppressed, () =>
+    pathname ? pageAdsSuppressedForLocation(pathname, "") : true,
   );
-  if (!webAdsAllowed || suppressed) return null;
-  if (!device || !pathname) return <div className={styles.probe} aria-hidden="true" />;
+  if (!webAdsAllowed || suppressed || !pathname) return null;
   // Placements match unlocalized routes ("/", "/watch/*"); "/ar/..." must match them too.
   const route = stripLocalePrefix(pathname);
+  const sessionKey = JSON.stringify([placementKey, route, device, consent]);
+  const reservation = variant === "inline" ? layout.get(placementKey) : undefined;
+  if (
+    reservation &&
+    (reservation.mobile > 0 || reservation.desktop > 0) &&
+    reservation.routePatterns.some((pattern) => pageAdRouteMatches(pattern, route))
+  ) {
+    return (
+      <ReservedAdSpace key={sessionKey} reservation={reservation}>
+        {(onOutcome) =>
+          device ? (
+            <PageAdSlotSession
+              placementKey={placementKey}
+              route={route}
+              device={device}
+              consent={consent}
+              onOutcome={onOutcome}
+            />
+          ) : (
+            <div className={styles.probe} aria-hidden="true" />
+          )
+        }
+      </ReservedAdSpace>
+    );
+  }
+  if (!device) return <div className={styles.probe} aria-hidden="true" />;
   const session = (
     <PageAdSlotSession
-      key={JSON.stringify([placementKey, route, device, consent])}
+      key={sessionKey}
       placementKey={placementKey}
       route={route}
       device={device}
@@ -111,19 +150,79 @@ export function PageAdSlot({
   );
 }
 
+/**
+ * Holds a serving slot's space from the first server-rendered paint so the page never jumps when
+ * the ad arrives. When nothing fills it, the space is released only while it is off screen, so the
+ * viewer never sees content move (browser scroll anchoring absorbs changes above the viewport).
+ */
+function ReservedAdSpace({
+  reservation,
+  children,
+}: {
+  reservation: PageAdLayoutSlot;
+  children: (onOutcome: (outcome: "filled" | "empty") => void) => ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [empty, setEmpty] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const onOutcome = useCallback((outcome: "filled" | "empty") => setEmpty(outcome === "empty"), []);
+  useEffect(() => {
+    const element = ref.current;
+    if (!empty || collapsed || !element) return;
+    if (!("IntersectionObserver" in window)) {
+      // Without visibility information release the space on the next task.
+      const timer = globalThis.setTimeout(() => setCollapsed(true), 0);
+      return () => globalThis.clearTimeout(timer);
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.every((entry) => !entry.isIntersecting)) {
+        observer.disconnect();
+        setCollapsed(true);
+      }
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [collapsed, empty]);
+  return (
+    <div
+      ref={ref}
+      className={styles.reserve}
+      data-ad-reserve={reservation.key}
+      data-collapsed={collapsed ? "true" : undefined}
+      data-m={reservation.mobile > 0 ? "on" : "off"}
+      data-d={reservation.desktop > 0 ? "on" : "off"}
+      style={
+        {
+          "--ad-m": `${reservation.mobile + PAGE_AD_CHROME_PX}px`,
+          "--ad-d": `${reservation.desktop + PAGE_AD_CHROME_PX}px`,
+        } as CSSProperties
+      }
+    >
+      {children(onOutcome)}
+    </div>
+  );
+}
+
 function PageAdSlotSession({
   placementKey,
   route,
   device,
   consent,
   onVisibleChange,
+  onOutcome,
 }: {
   placementKey: string;
   route: string;
   device: PageAdDevice;
   consent: AdvertisingConsentSnapshot;
   onVisibleChange?: (visible: boolean) => void;
+  /** Reports whether this request ended with an ad on screen or with nothing to show. */
+  onOutcome?: (outcome: "filled" | "empty") => void;
 }) {
+  const outcomeRef = useRef(onOutcome);
+  useEffect(() => {
+    outcomeRef.current = onOutcome;
+  }, [onOutcome]);
   const reactId = useId();
   const divId = `ayin-ad-${reactId.replaceAll(":", "")}`;
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -133,6 +232,19 @@ function PageAdSlotSession({
   const [frame, setFrame] = useState<{ url: string; fixedHeight: number | null } | null>(null);
   const [frameHeight, setFrameHeight] = useState(0);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
+
+  const frameHeightRef = useRef(0);
+  useEffect(() => {
+    frameHeightRef.current = frameHeight;
+  }, [frameHeight]);
+  useEffect(() => {
+    if (!frame || frame.fixedHeight) return;
+    // Pasted code that never draws anything releases its reserved space.
+    const timer = window.setTimeout(() => {
+      if (frameHeightRef.current === 0) outcomeRef.current?.("empty");
+    }, 6000);
+    return () => window.clearTimeout(timer);
+  }, [frame]);
 
   useEffect(() => {
     if (!frame) return;
@@ -171,7 +283,12 @@ function PageAdSlotSession({
     const sessionId = getPageAdSessionId();
 
     const showHouseFallback = async (fallback: HousePageAdDemand | null) => {
-      if (!fallback || !isActive()) return;
+      if (!isActive()) return;
+      if (!fallback) {
+        outcomeRef.current?.("empty");
+        return;
+      }
+      outcomeRef.current?.("filled");
       setHouse(fallback);
       await recordPageAdEvent({
         key: placementKey,
@@ -186,7 +303,11 @@ function PageAdSlotSession({
       if (started || !isActive()) return;
       started = true;
       const decision = await fetchPageAdDecision(placementKey, route, device, controller.signal);
-      if (!isActive() || !decision.enabled) return;
+      if (!isActive()) return;
+      if (!decision.enabled) {
+        outcomeRef.current?.("empty");
+        return;
+      }
 
       await recordPageAdEvent({
         key: placementKey,
@@ -198,6 +319,7 @@ function PageAdSlotSession({
       if (!isActive()) return;
 
       if (decision.demand.provider === "CODE") {
+        outcomeRef.current?.("filled");
         setFrame({
           url: pageAdFrameUrl(placementKey, decision.demand.version, isMobileHost()),
           fixedHeight: decision.demand.height,
@@ -213,6 +335,7 @@ function PageAdSlotSession({
       }
 
       if (decision.demand.provider === "HOUSE") {
+        outcomeRef.current?.("filled");
         setHouse(decision.demand);
         await recordPageAdEvent({
           key: placementKey,
@@ -236,6 +359,7 @@ function PageAdSlotSession({
           onRender: (filled) => {
             if (!isActive()) return;
             if (filled) {
+              outcomeRef.current?.("filled");
               void recordPageAdEvent({
                 key: placementKey,
                 eventType: "FILL",
