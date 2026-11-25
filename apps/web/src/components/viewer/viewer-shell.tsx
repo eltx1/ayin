@@ -216,6 +216,7 @@ function ViewerChrome({ children }: { children: ReactNode }) {
         <PageAdSlot placementKey="header_below" />
         {children}
         <PageAdSlot placementKey="footer_above" />
+        <PageAdSlot placementKey="mobile_anchor" variant="anchor" />
       </div>
       <footer className={`${footerStyles.footer} ${styles.footer}`}>
         <div className={footerStyles.identity}>

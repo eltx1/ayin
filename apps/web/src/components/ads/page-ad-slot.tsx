@@ -1,5 +1,6 @@
 "use client";
 
+import { isMobileHost } from "@/lib/mobile-bridge";
 import { webAdvertisingAllowed } from "@/lib/mobile-web-ads";
 import { subscribeMobile } from "@/lib/mobile-runtime";
 import { usePathname } from "next/navigation";
@@ -27,7 +28,30 @@ import {
 
 import styles from "./page-ad-slot.module.css";
 
-export function PageAdSlot({ placementKey }: { placementKey: string }) {
+const anchorDismissedKey = "ayin.pageAds.anchorDismissed";
+
+function anchorDismissed() {
+  try {
+    return sessionStorage.getItem(anchorDismissedKey) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * "anchor" pins the slot to the bottom of a phone screen above the navigation bar, with a close
+ * button that hides it for the rest of the visit. It is never shown inside the native apps,
+ * whose own banner already uses that space.
+ */
+export function PageAdSlot({
+  placementKey,
+  variant = "inline",
+}: {
+  placementKey: string;
+  variant?: "inline" | "anchor";
+}) {
+  const [dismissed, setDismissed] = useState(false);
+  const [anchorVisible, setAnchorVisible] = useState(false);
   const pathname = usePathname();
   const consent = useAdvertisingConsent();
   const device = useSyncExternalStore(subscribePageAdDevice, detectPageAdDevice, () => null);
@@ -45,14 +69,43 @@ export function PageAdSlot({ placementKey }: { placementKey: string }) {
   if (!device || !pathname) return <div className={styles.probe} aria-hidden="true" />;
   // Placements match unlocalized routes ("/", "/watch/*"); "/ar/..." must match them too.
   const route = stripLocalePrefix(pathname);
-  return (
+  const session = (
     <PageAdSlotSession
       key={JSON.stringify([placementKey, route, device, consent])}
       placementKey={placementKey}
       route={route}
       device={device}
       consent={consent}
+      {...(variant === "anchor" ? { onVisibleChange: setAnchorVisible } : {})}
     />
+  );
+  if (variant === "inline") return session;
+  if (dismissed || device !== "MOBILE" || isMobileHost() || anchorDismissed()) return null;
+  return (
+    <>
+      {/* Keeps the end of the page reachable above the pinned banner. */}
+      <div aria-hidden="true" className={styles.anchorSpacer} data-visible={anchorVisible} />
+      <div className={styles.anchor} data-visible={anchorVisible}>
+        {session}
+        {anchorVisible ? (
+          <button
+            type="button"
+            className={styles.anchorClose}
+            aria-label="Close advertisement"
+            onClick={() => {
+              try {
+                sessionStorage.setItem(anchorDismissedKey, "1");
+              } catch {
+                // The banner still closes for this page view without storage.
+              }
+              setDismissed(true);
+            }}
+          >
+            ×
+          </button>
+        ) : null}
+      </div>
+    </>
   );
 }
 
@@ -61,11 +114,13 @@ function PageAdSlotSession({
   route,
   device,
   consent,
+  onVisibleChange,
 }: {
   placementKey: string;
   route: string;
   device: PageAdDevice;
   consent: AdvertisingConsentSnapshot;
+  onVisibleChange?: (visible: boolean) => void;
 }) {
   const reactId = useId();
   const divId = `ayin-ad-${reactId.replaceAll(":", "")}`;
@@ -257,6 +312,10 @@ function PageAdSlotSession({
 
   const renderedFrameHeight = frame ? (frame.fixedHeight ?? frameHeight) : 0;
   const visible = Boolean(house || showGpt || renderedFrameHeight > 0);
+  useEffect(() => {
+    onVisibleChange?.(visible);
+  }, [onVisibleChange, visible]);
+  useEffect(() => () => onVisibleChange?.(false), [onVisibleChange]);
   return (
     <aside
       className={visible || frame ? styles.slot : styles.probe}

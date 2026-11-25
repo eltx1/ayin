@@ -4,7 +4,11 @@ import { pageAdSlotCatalog } from "./ad-slot-catalog.js";
 import { slotUpdateSchema, videoUpdateSchema } from "./ad-manager.service.js";
 import { renderPageAdFrame } from "./page-ad-frame.js";
 import { pageAdPlacementConfigSchema } from "./page-ad.service.js";
-import { expandVastTagMacros } from "./video-ad.service.js";
+import {
+  expandVastTagMacros,
+  videoMidRollCuePoints,
+  withGamBreakPosition,
+} from "./video-ad.service.js";
 
 describe("simple ad manager", () => {
   it("only offers unique slots with valid placement configuration", () => {
@@ -62,7 +66,7 @@ describe("simple ad manager", () => {
     const valid = {
       masterEnabled: true,
       preRoll: { enabled: true, vastTagUrl: "https://pubads.g.doubleclick.net/gampad/ads?iu=/1/v" },
-      midRoll: { ...off, everySec: 600 },
+      midRoll: { ...off, mode: "INTERVAL", everySec: 600, cuePointsSec: [], maxBreaks: 6 },
       postRoll: off,
       frequencyCapPerSession: 3,
     };
@@ -82,9 +86,10 @@ describe("simple ad manager", () => {
   it("fills the placeholders Ad Manager leaves in copied VAST tags", () => {
     const tag =
       "https://pubads.g.doubleclick.net/gampad/ads?iu=/1/AYIN/video&description_url=[placeholder]&correlator=[timestamp]&env=vp";
-    const expanded = new URL(expandVastTagMacros(tag, "https://ayin.stream/watch/a b", 42));
+    const expanded = new URL(expandVastTagMacros(tag, "https://ayin.stream/watch/a b"));
     expect(expanded.searchParams.get("description_url")).toBe("https://ayin.stream/watch/a b");
-    expect(expanded.searchParams.get("correlator")).toBe("42");
+    // The cache buster is filled by the player for each request, never once per page.
+    expect(expanded.searchParams.get("correlator")).toBe("[timestamp]");
     const empty = new URL(
       expandVastTagMacros(
         "https://pubads.g.doubleclick.net/gampad/ads?iu=/1/v&description_url=",
@@ -100,5 +105,61 @@ describe("simple ad manager", () => {
     expect(html).toContain('<base target="_blank">');
     expect(html).toContain("ayin-ad-frame-size");
     expect(renderPageAdFrame(null)).toContain('<div id="ayin-ad-root"></div>');
+  });
+
+  it("repeats interval mid-rolls through the video and stops before its end", () => {
+    const base = { cuePointsSec: [], maxBreaks: 6 } as const;
+    expect(
+      videoMidRollCuePoints({ ...base, mode: "INTERVAL", everySec: 600, durationSec: 5400 }),
+    ).toEqual([600, 1200, 1800, 2400, 3000, 3600]);
+    expect(
+      videoMidRollCuePoints({
+        ...base,
+        mode: "INTERVAL",
+        everySec: 600,
+        maxBreaks: 50,
+        durationSec: 1810,
+      }),
+    ).toEqual([600, 1200]);
+    expect(
+      videoMidRollCuePoints({ ...base, mode: "INTERVAL", everySec: 600, durationSec: null }),
+    ).toEqual([]);
+    expect(
+      videoMidRollCuePoints({ ...base, mode: "INTERVAL", everySec: 600, durationSec: 300 }),
+    ).toEqual([]);
+  });
+
+  it("uses fixed cue points in order, inside the video, capped", () => {
+    expect(
+      videoMidRollCuePoints({
+        mode: "CUE_POINTS",
+        everySec: 600,
+        cuePointsSec: [2700, 300, 300, 1200, 7000],
+        maxBreaks: 6,
+        durationSec: 3000,
+      }),
+    ).toEqual([300, 1200, 2700]);
+    expect(
+      videoMidRollCuePoints({
+        mode: "CUE_POINTS",
+        everySec: 600,
+        cuePointsSec: [300, 600, 900],
+        maxBreaks: 2,
+        durationSec: 3000,
+      }),
+    ).toEqual([300, 600]);
+  });
+
+  it("asks Ad Manager for a single VAST break at the right position", () => {
+    const tag = new URL(
+      withGamBreakPosition(
+        "https://pubads.g.doubleclick.net/gampad/ads?iu=/1/v&ad_rule=1&env=vp",
+        "MID_ROLL",
+      ),
+    );
+    expect(tag.searchParams.get("ad_rule")).toBe("0");
+    expect(tag.searchParams.get("vpos")).toBe("midroll");
+    const other = "https://ads.example.com/vast.xml?x=1";
+    expect(withGamBreakPosition(other, "PRE_ROLL")).toBe(other);
   });
 });

@@ -14,6 +14,13 @@ import {
 } from "@/lib/advertising-consent";
 import { useAdvertisingConsent } from "@/lib/use-advertising-consent";
 import {
+  cuesBefore,
+  decisionMidRollCues,
+  dueMidRollCue,
+  midRollBreakKey,
+  type AdBreakKey,
+} from "@/lib/video-ad-schedule";
+import {
   canServeSessionAd,
   fetchVideoAdDecision,
   getVideoAdSessionId,
@@ -72,7 +79,8 @@ function AdEnabledPlayerSession(props: AyinPlayerProps) {
   const decisionScopeRef = useRef<ReturnType<typeof createAdvertisingConsentScope> | null>(null);
   const adContainerRef = useRef<HTMLDivElement | null>(null);
   const contentVideoRef = useRef<HTMLVideoElement | null>(null);
-  const midRollPlayedRef = useRef(false);
+  // Mid-roll cues (content seconds) that already played, failed or were skipped by resuming.
+  const consumedMidRollsRef = useRef(new Set<number>());
   const postRollPlayedRef = useRef(false);
   const requestIdRef = useRef(crypto.randomUUID());
   const lifecycleRef = useRef<{ active: boolean; busy: boolean }>({ active: false, busy: false });
@@ -232,13 +240,17 @@ function AdEnabledPlayerSession(props: AyinPlayerProps) {
   }, []);
 
   const playAd = useCallback(
-    async (slot: VideoAdSlot, playbackIntent?: VideoAdPlaybackIntent) => {
+    async (
+      slot: VideoAdSlot,
+      playbackIntent?: VideoAdPlaybackIntent,
+      breakKey: AdBreakKey = slot,
+    ) => {
       const lifecycle = lifecycleRef.current;
       const adContainer = adContainerRef.current;
       const contentVideo = contentVideoRef.current;
       if (!lifecycle.active || lifecycle.busy || !decision || !adContainer || !contentVideo)
         return false;
-      if (props.completedAdBreaks?.has(slot)) return false;
+      if (props.completedAdBreaks?.has(breakKey)) return false;
       // Per-break tags (pre/mid/post) win; a decision without them uses its single tag.
       const breakTagUrl = decision.tagUrls ? decision.tagUrls[slot] : decision.tagUrl;
       if (!breakTagUrl) return false;
@@ -321,7 +333,7 @@ function AdEnabledPlayerSession(props: AyinPlayerProps) {
         // IMA COMPLETE describes one ad in a possible pod. Retain history only
         // after this live request resumes content without an error/cancellation.
         if (lifecycle.active && scope.isCurrent() && contentResumed && sawComplete && !sawError)
-          props.completedAdBreaks?.add(slot);
+          props.completedAdBreaks?.add(breakKey);
         return true;
       } catch {
         if (!lifecycle.active || !scope.isCurrent()) return false;
@@ -354,6 +366,12 @@ function AdEnabledPlayerSession(props: AyinPlayerProps) {
       setActivated(true);
       playbackStarted.current = true;
       setAutoplayBlocked(false);
+      if (decision) {
+        // Resumed playback does not owe the viewer the breaks it already passed.
+        const startSec = Math.max(contentVideo.currentTime, (props.initialPositionMs ?? 0) / 1000);
+        for (const cue of cuesBefore(decisionMidRollCues(decision), startSec))
+          consumedMidRollsRef.current.add(cue);
+      }
 
       if (decision?.preRollEnabled && !props.completedAdBreaks?.has("PRE_ROLL")) {
         if (autoPlayAttempt) contentVideo.muted = props.initialPreferences?.muted ?? true;
@@ -372,6 +390,7 @@ function AdEnabledPlayerSession(props: AyinPlayerProps) {
       playAd,
       playbackReady,
       props.initialPreferences?.muted,
+      props.initialPositionMs,
       props.completedAdBreaks,
     ],
   );
@@ -406,18 +425,18 @@ function AdEnabledPlayerSession(props: AyinPlayerProps) {
   useEffect(() => {
     const contentVideo = contentVideoRef.current;
     if (!decision || !contentVideo || !activated) return;
+    const cues = decisionMidRollCues(decision);
+    const played = (cue: number) =>
+      consumedMidRollsRef.current.has(cue) ||
+      Boolean(props.completedAdBreaks?.has(midRollBreakKey(cue)));
     const onTimeUpdate = () => {
-      if (
-        !decision.midRollEnabled ||
-        lifecycleRef.current.busy ||
-        midRollPlayedRef.current ||
-        props.completedAdBreaks?.has("MID_ROLL") ||
-        contentVideo.currentTime < decision.midRollEverySec
-      ) {
-        return;
-      }
-      midRollPlayedRef.current = true;
-      void playAd("MID_ROLL", { autoPlay: false, muted: contentVideo.muted });
+      if (!cues.length || lifecycleRef.current.busy || contentVideo.ended) return;
+      const now = contentVideo.currentTime;
+      const cue = dueMidRollCue(cues, now, played);
+      if (cue === null) return;
+      // A forward seek across several cues owes one break; every passed cue is now consumed.
+      for (const passed of cuesBefore(cues, now)) consumedMidRollsRef.current.add(passed);
+      void playAd("MID_ROLL", { autoPlay: false, muted: contentVideo.muted }, midRollBreakKey(cue));
     };
     const onEnded = () => {
       serviceRef.current?.contentComplete();
@@ -441,7 +460,9 @@ function AdEnabledPlayerSession(props: AyinPlayerProps) {
   const adEligible = Boolean(
     decision &&
     ((decision.preRollEnabled && !props.completedAdBreaks?.has("PRE_ROLL")) ||
-      (decision.midRollEnabled && !props.completedAdBreaks?.has("MID_ROLL")) ||
+      decisionMidRollCues(decision).some(
+        (cue) => !props.completedAdBreaks?.has(midRollBreakKey(cue)),
+      ) ||
       (decision.postRollEnabled && !props.completedAdBreaks?.has("POST_ROLL"))),
   );
   const gestureGate = Boolean(

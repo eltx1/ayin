@@ -17,7 +17,22 @@ describe("native mobile runtime boundary", () => {
         ),
       ),
       webViewAds: defaultMobileRuntimeConfig.webViewAds,
+      // AYIN's registered Ad Manager inventory is prefilled; every platform still starts disabled.
+      ads: {
+        ...JSON.parse(
+          readFileSync(
+            new URL("../../../../docs/MOBILE_RUNTIME_CONTRACT.json", import.meta.url),
+            "utf8",
+          ),
+        ).ads,
+        platforms: defaultMobileRuntimeConfig.ads.platforms,
+      },
     });
+    for (const platform of Object.values(defaultMobileRuntimeConfig.ads.platforms)) {
+      expect(platform.enabled).toBe(false);
+      expect(platform.bannerUnitId).toMatch(/^\/\d+\/AYIN\//);
+      expect(platform.interstitialUnitId).toMatch(/^\/\d+\/AYIN\//);
+    }
     expect(defaultMobileRuntimeConfig.ads.enabled).toBe(false);
     expect(defaultMobileRuntimeConfig.analytics.enabled).toBe(false);
     expect(defaultMobileRuntimeConfig.notifications.enabled).toBe(false);
@@ -127,7 +142,12 @@ describe("native mobile runtime boundary", () => {
           banner: { enabled: true },
           platforms: {
             ...defaultMobileRuntimeConfig.ads.platforms,
-            android: { ...defaultMobileRuntimeConfig.ads.platforms.android, enabled: true },
+            // A live platform without a unit for an enabled format must be rejected.
+            android: {
+              ...defaultMobileRuntimeConfig.ads.platforms.android,
+              enabled: true,
+              bannerUnitId: "",
+            },
           },
         },
       }).success,

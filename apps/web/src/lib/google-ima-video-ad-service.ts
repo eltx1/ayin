@@ -10,6 +10,7 @@ import type {
   VideoAdService,
   VideoAdSlot,
 } from "./video-ads";
+import { fillVastRequestMacros } from "./vast-request-macros";
 
 const IMA_SDK_URL = "https://imasdk.googleapis.com/js/sdkloader/ima3.js";
 const IMA_SDK_TIMEOUT_MS = 10_000;
@@ -340,7 +341,7 @@ export class GoogleImaVideoAdService implements VideoAdService {
       try {
         const request = new ima.AdsRequest();
         request.adTagUrl = applyGoogleImaConsent(
-          tagUrl,
+          fillVastRequestMacros(tagUrl),
           consent ?? getAdvertisingConsentSnapshot(),
         );
         request.linearAdSlotWidth = Math.max(container.clientWidth, 640);

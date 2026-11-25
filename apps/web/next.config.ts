@@ -23,8 +23,9 @@ const contentSecurityPolicy = [
   "object-src 'none'",
   "form-action 'self'",
   "frame-ancestors 'none'",
-  // pagead2 serves GPT in Google's limited-ads mode; the other hosts are GPT and IMA.
-  "script-src 'self' 'unsafe-inline' https://securepubads.g.doubleclick.net https://pagead2.googlesyndication.com https://imasdk.googleapis.com https://www.googletagservices.com https://www.googletagmanager.com",
+  // pagead2 serves GPT in Google's limited-ads mode; IMA loads its in-stream client from s0.2mdn.net
+  // (verified with the real IMA SDK); the other hosts are GPT and IMA.
+  "script-src 'self' 'unsafe-inline' https://securepubads.g.doubleclick.net https://pagead2.googlesyndication.com https://imasdk.googleapis.com https://s0.2mdn.net https://www.googletagservices.com https://www.googletagmanager.com",
   "style-src 'self' 'unsafe-inline'",
   `img-src 'self' data: blob: https: ${explicitMediaOrigins}`.trim(),
   `media-src 'self' blob: https: ${explicitMediaOrigins}`.trim(),

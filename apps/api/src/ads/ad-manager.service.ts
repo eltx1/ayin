@@ -16,7 +16,7 @@ import {
   pageAdPlacementConfigSchema,
   PageAdService,
 } from "./page-ad.service.js";
-import { VideoAdService } from "./video-ad.service.js";
+import { defaultMaxMidRollsPerVideo, VideoAdService } from "./video-ad.service.js";
 
 export type SimpleSlotSource = "CODE" | "GAM_UNIT" | "HOUSE" | "NONE";
 
@@ -75,7 +75,10 @@ export const videoUpdateSchema = z
       .object({
         enabled: z.boolean(),
         vastTagUrl: vastField,
+        mode: z.enum(["INTERVAL", "CUE_POINTS"]),
         everySec: z.number().int().min(60).max(7200),
+        cuePointsSec: z.array(z.number().int().min(10).max(86_400)).max(50),
+        maxBreaks: z.number().int().min(1).max(50),
       })
       .strict(),
     postRoll: z.object({ enabled: z.boolean(), vastTagUrl: vastField }).strict(),
@@ -87,6 +90,16 @@ export const videoUpdateSchema = z
       if (value.masterEnabled && value[key].enabled && !value[key].vastTagUrl)
         ctx.addIssue({ code: "custom", path: [key, "vastTagUrl"], message: "VAST_TAG_REQUIRED" });
     }
+    if (
+      value.midRoll.enabled &&
+      value.midRoll.mode === "CUE_POINTS" &&
+      value.midRoll.cuePointsSec.length === 0
+    )
+      ctx.addIssue({
+        code: "custom",
+        path: ["midRoll", "cuePointsSec"],
+        message: "CUE_POINTS_REQUIRED",
+      });
   });
 
 export const webUpdateSchema = z.object({ masterEnabled: z.boolean() }).strict();
@@ -168,7 +181,10 @@ export class AdManagerService {
         midRoll: {
           enabled: video.midRollEnabled,
           vastTagUrl: video.slotVastTags?.MID_ROLL ?? external,
+          mode: video.midRollMode ?? "INTERVAL",
           everySec: video.midRollEverySec,
+          cuePointsSec: video.midRollCuePointsSec ?? [],
+          maxBreaks: video.maxMidRollsPerVideo ?? defaultMaxMidRollsPerVideo,
         },
         postRoll: {
           enabled: video.postRollEnabled,
@@ -250,6 +266,9 @@ export class AdManagerService {
       midRollEnabled: data.midRoll.enabled,
       postRollEnabled: data.postRoll.enabled,
       midRollEverySec: data.midRoll.everySec,
+      midRollMode: data.midRoll.mode,
+      midRollCuePointsSec: [...new Set(data.midRoll.cuePointsSec)].sort((a, b) => a - b),
+      maxMidRollsPerVideo: data.midRoll.maxBreaks,
       frequencyCapPerSession: data.frequencyCapPerSession,
       slotVastTags: {
         PRE_ROLL: data.preRoll.vastTagUrl,

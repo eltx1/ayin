@@ -48,7 +48,7 @@ test("the simple ad manager fills a slot with pasted code that renders on the si
   // Every slot that the site renders is listed with a plain explanation of where it appears.
   const slot = page.locator("#ad-slot-header_below");
   await expect(slot.getByRole("heading", { name: "Below the header" })).toBeVisible();
-  await expect(page.locator('[id^="ad-slot-"]')).toHaveCount(10);
+  await expect(page.locator('[id^="ad-slot-"]')).toHaveCount(13);
 
   // Server-backed switch: it flips once the saved state is read back.
   const master = page.getByRole("switch", { name: /Website ads master switch/ });

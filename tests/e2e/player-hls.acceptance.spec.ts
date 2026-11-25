@@ -871,6 +871,9 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     const events: string[] = [];
     await page.route("**/ads/page/decision/**", async (route) => {
       const url = new URL(route.request().url());
+      // The watch page also renders site-wide and sidebar slots; this test follows one slot.
+      if (!url.pathname.endsWith("/watch_below_player"))
+        return route.fulfill({ json: { enabled: false } });
       decisions.push({
         route: url.searchParams.get("route"),
         device: url.searchParams.get("device"),
@@ -920,7 +923,8 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     await page.route("**/ads/page/decision/**", (route) =>
       route.fulfill({
         json:
-          new URL(route.request().url()).searchParams.get("route") === `/watch/${fixture.slug}`
+          new URL(route.request().url()).searchParams.get("route") === `/watch/${fixture.slug}` &&
+          new URL(route.request().url()).pathname.endsWith("/watch_below_player")
             ? {
                 enabled: true,
                 demand: {
@@ -1011,7 +1015,8 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     await page.route("**/ads/page/decision/**", (route) =>
       route.fulfill({
         json:
-          new URL(route.request().url()).searchParams.get("route") === `/watch/${fixture.slug}`
+          new URL(route.request().url()).searchParams.get("route") === `/watch/${fixture.slug}` &&
+          new URL(route.request().url()).pathname.endsWith("/watch_below_player")
             ? {
                 enabled: true,
                 demand: { provider: "GOOGLE_GPT", adUnitPath: "/123/synthetic" },

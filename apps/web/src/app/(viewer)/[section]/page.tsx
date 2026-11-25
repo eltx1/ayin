@@ -42,7 +42,7 @@ export default async function SectionPage({ params, searchParams }: Props) {
   if (!isDirectorySection(section)) notFound();
   return (
     <>
-      {section === "tv" ? <PageAdSlot placementKey="tv_directory" /> : null}
+      <PageAdSlot placementKey={section === "tv" ? "tv_directory" : "browse_directory"} />
       <PublicDirectory section={section} locale={locale} cursor={query.cursor} query={query.q} />
     </>
   );

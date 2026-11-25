@@ -27,6 +27,8 @@ export interface VideoAdDecision {
   midRollEnabled: boolean;
   postRollEnabled: boolean;
   midRollEverySec: number;
+  /** Content times (seconds) of every mid-roll break; absent on older API responses. */
+  midRollCuePoints?: number[];
   frequencyCapPerSession: number;
   attribution: { videoId: string; channelId: string };
 }

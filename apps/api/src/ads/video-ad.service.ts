@@ -31,18 +31,11 @@ const vastTagUrlSchema = z
  * Fills the placeholders Google Ad Manager's tag generator leaves in a copied VAST tag, so an
  * administrator can paste the tag exactly as Ad Manager shows it.
  */
-export function expandVastTagMacros(
-  tagUrl: string,
-  descriptionUrl: string | null,
-  now = Date.now(),
-) {
+export function expandVastTagMacros(tagUrl: string, descriptionUrl: string | null) {
+  // [timestamp]/[CACHEBUSTER] stay in the tag: the player fills them for every single request,
+  // so repeated mid-rolls never reuse one cached VAST response.
   const encodedDescription = descriptionUrl ? encodeURIComponent(descriptionUrl) : "";
-  let expanded = tagUrl
-    .replaceAll("[timestamp]", String(now))
-    .replaceAll("[TIMESTAMP]", String(now))
-    .replaceAll("[CACHEBUSTER]", String(now))
-    .replaceAll("[cachebuster]", String(now))
-    .replaceAll("%%CACHEBUSTER%%", String(now));
+  let expanded = tagUrl;
   if (encodedDescription) {
     expanded = expanded
       .replaceAll("[placeholder]", encodedDescription)
@@ -55,10 +48,12 @@ export function expandVastTagMacros(
     const parsed = new URL(expanded);
     if (descriptionUrl && parsed.searchParams.has("description_url")) {
       const current = parsed.searchParams.get("description_url");
-      if (!current || current.startsWith("["))
+      if (!current || current.startsWith("[")) {
         parsed.searchParams.set("description_url", descriptionUrl);
+        return parsed.toString();
+      }
     }
-    return parsed.toString();
+    return expanded;
   } catch {
     return expanded;
   }
@@ -84,7 +79,76 @@ export const videoAdSettingsSchema = z.object({
       POST_ROLL: vastTagUrlSchema.nullable(),
     })
     .optional(),
+  // INTERVAL repeats a mid-roll every midRollEverySec; CUE_POINTS uses fixed content times.
+  midRollMode: z.enum(["INTERVAL", "CUE_POINTS"]).optional(),
+  midRollCuePointsSec: z.array(z.number().int().min(10).max(86_400)).max(50).optional(),
+  maxMidRollsPerVideo: z.number().int().min(1).max(50).optional(),
 });
+
+/** Settings the advanced editor does not know; a write without them keeps the stored values. */
+const preservedVideoSettingKeys = [
+  "slotVastTags",
+  "midRollMode",
+  "midRollCuePointsSec",
+  "maxMidRollsPerVideo",
+] as const;
+
+export const defaultMaxMidRollsPerVideo = 6;
+/** No mid-roll starts this close to the end; the post-roll covers the end of the video. */
+export const midRollEndGuardSec = 30;
+
+/**
+ * Content times (seconds) at which mid-roll breaks start for a video of the given length.
+ * A video with an unknown length gets none, so no break can interrupt the final scene.
+ */
+export function videoMidRollCuePoints(input: {
+  mode: "INTERVAL" | "CUE_POINTS";
+  everySec: number;
+  cuePointsSec: readonly number[];
+  maxBreaks: number;
+  durationSec: number | null;
+}): number[] {
+  const duration = input.durationSec ?? 0;
+  const last = duration - midRollEndGuardSec;
+  if (last <= 0) return [];
+  if (input.mode === "CUE_POINTS") {
+    return [...new Set(input.cuePointsSec)]
+      .filter((cue) => cue > 0 && cue <= last)
+      .sort((a, b) => a - b)
+      .slice(0, input.maxBreaks);
+  }
+  const cues: number[] = [];
+  for (
+    let cue = input.everySec;
+    cue <= last && cues.length < input.maxBreaks;
+    cue += input.everySec
+  )
+    cues.push(cue);
+  return cues;
+}
+
+const gamBreakPosition = {
+  PRE_ROLL: "preroll",
+  MID_ROLL: "midroll",
+  POST_ROLL: "postroll",
+} as const;
+
+/**
+ * Per-break Ad Manager tags must return one VAST break: ad_rule=0 stops Ad Manager from answering
+ * with an ad-rules (VMAP) playlist, and vpos tells it which break position is being filled.
+ */
+export function withGamBreakPosition(tagUrl: string, slot: keyof typeof gamBreakPosition) {
+  try {
+    const url = new URL(tagUrl);
+    if (!/(^|\.)doubleclick\.net$/u.test(url.hostname) || !url.pathname.includes("/gampad/"))
+      return tagUrl;
+    url.searchParams.set("ad_rule", "0");
+    url.searchParams.set("vpos", gamBreakPosition[slot]);
+    return url.toString();
+  } catch {
+    return tagUrl;
+  }
+}
 
 export type VideoAdSettings = z.infer<typeof videoAdSettingsSchema>;
 
@@ -209,8 +273,8 @@ export class VideoAdService {
       const current = await this.lockConfiguration(tx, "SETTINGS");
       await this.writeAuthority(tx, actor);
       this.checkConfigurationVersion(current, expectedUpdatedAt);
-      // The advanced editor predates per-break tags; a write without them keeps the stored tags.
-      if (settings.slotVastTags === undefined) {
+      // The advanced editor predates per-break tags and schedules; keep what it does not send.
+      if (preservedVideoSettingKeys.some((key) => settings[key] === undefined)) {
         const stored = videoAdSettingsSchema.safeParse(
           (
             await tx.platformSetting.findUnique({
@@ -219,8 +283,10 @@ export class VideoAdService {
             })
           )?.value,
         );
-        if (stored.success && stored.data.slotVastTags)
-          settings.slotVastTags = stored.data.slotVastTags;
+        if (stored.success)
+          for (const key of preservedVideoSettingKeys)
+            if (settings[key] === undefined && stored.data[key] !== undefined)
+              Object.assign(settings, { [key]: stored.data[key] });
       }
       const value = settings as unknown as Prisma.InputJsonValue;
       const updatedAt = this.nextConfigurationVersion(current?.updatedAt);
@@ -456,7 +522,9 @@ export class VideoAdService {
     const slotTags = resolved.vastTagUrl ? undefined : settings.slotVastTags;
     const slotEntries = (["PRE_ROLL", "MID_ROLL", "POST_ROLL"] as const).flatMap((slot) => {
       const value = slotTags?.[slot] ?? tagUrl;
-      return value ? [[slot, expandVastTagMacros(value, descriptionUrl)] as const] : [];
+      return value
+        ? [[slot, withGamBreakPosition(expandVastTagMacros(value, descriptionUrl), slot)] as const]
+        : [];
     });
     if (slotTags && slotEntries.length > 0) {
       source = "EXTERNAL_VAST";
@@ -488,6 +556,18 @@ export class VideoAdService {
     }
     const breakTags = tagUrls;
     const hasBreakTag = (slot: GamVideoSlot) => !breakTags || Boolean(breakTags[slot]);
+    // A channel/video override with its own interval keeps interval scheduling for that content.
+    const overrideInterval = videoOverride?.midRollEverySec ?? channelOverride?.midRollEverySec;
+    const midRollCuePoints =
+      resolved.midRollEnabled && hasBreakTag("MID_ROLL")
+        ? videoMidRollCuePoints({
+            mode: overrideInterval != null ? "INTERVAL" : (settings.midRollMode ?? "INTERVAL"),
+            everySec: resolved.midRollEverySec,
+            cuePointsSec: settings.midRollCuePointsSec ?? [],
+            maxBreaks: settings.maxMidRollsPerVideo ?? defaultMaxMidRollsPerVideo,
+            durationSec: video.durationMs ? Math.floor(video.durationMs / 1000) : null,
+          })
+        : [];
 
     return {
       enabled: true as const,
@@ -496,10 +576,8 @@ export class VideoAdService {
       tagUrl,
       ...(tagUrls ? { tagUrls } : {}),
       preRollEnabled: resolved.preRollEnabled && hasBreakTag("PRE_ROLL"),
-      midRollEnabled:
-        resolved.midRollEnabled &&
-        hasBreakTag("MID_ROLL") &&
-        (video.durationMs ?? 0) >= resolved.midRollEverySec * 1000,
+      midRollEnabled: midRollCuePoints.length > 0,
+      midRollCuePoints,
       postRollEnabled: resolved.postRollEnabled && hasBreakTag("POST_ROLL"),
       midRollEverySec: resolved.midRollEverySec,
       frequencyCapPerSession: settings.frequencyCapPerSession,

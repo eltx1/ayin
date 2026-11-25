@@ -145,6 +145,17 @@ export const pageAdSlotCatalog: readonly PageAdSlotDefinition[] = [
     responsive: [],
   },
   {
+    key: "watch_above_comments",
+    name: { en: "Watch – above comments", ar: "المشاهدة – فوق التعليقات" },
+    where: {
+      en: "Watch page, between the video details and the comments (phones and computers).",
+      ar: "صفحة المشاهدة، بين تفاصيل الفيديو والتعليقات (موبايل وكمبيوتر).",
+    },
+    routePatterns: ["/watch/*"],
+    devices: ["MOBILE", "DESKTOP"],
+    ...rectangle,
+  },
+  {
     key: "content_detail",
     name: { en: "Movie / series page", ar: "صفحة الفيلم / المسلسل" },
     where: {
@@ -178,6 +189,17 @@ export const pageAdSlotCatalog: readonly PageAdSlotDefinition[] = [
     ...rectangle,
   },
   {
+    key: "browse_directory",
+    name: { en: "Movies / series / creators lists", ar: "قوائم الأفلام والمسلسلات والقنوات" },
+    where: {
+      en: "Top of the Movies, Series and Creators directory pages.",
+      ar: "أعلى صفحات دليل الأفلام والمسلسلات وصناع المحتوى.",
+    },
+    routePatterns: ["/movies", "/series", "/creators"],
+    devices: ["MOBILE", "DESKTOP"],
+    ...leaderboard,
+  },
+  {
     key: "tv_directory",
     name: { en: "TV channels page", ar: "صفحة قنوات التلفزيون" },
     where: {
@@ -187,6 +209,21 @@ export const pageAdSlotCatalog: readonly PageAdSlotDefinition[] = [
     routePatterns: ["/tv"],
     devices: ["MOBILE", "DESKTOP", "TV"],
     ...leaderboard,
+  },
+  {
+    key: "mobile_anchor",
+    name: { en: "Mobile sticky bottom banner", ar: "بانر لاصق أسفل شاشة الموبايل" },
+    where: {
+      en: "A small 320×50 banner fixed above the bottom bar on phones, with a close button. Not shown inside the apps.",
+      ar: "بانر صغير 320×50 ثابت فوق شريط التنقل السفلي على الموبايل، وفيه زر إغلاق. مش بيظهر جوه التطبيقات.",
+    },
+    routePatterns: contentRoutes,
+    devices: ["MOBILE"],
+    sizes: [
+      [320, 50],
+      [320, 100],
+    ],
+    responsive: [],
   },
   {
     key: "footer_above",

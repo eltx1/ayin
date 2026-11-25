@@ -5,7 +5,7 @@ import { useEffect, useMemo } from "react";
 import { useViewerProduct } from "@/components/viewer/viewer-product-context";
 import { createPlayerAnalytics, trackAnalyticsEvent } from "@/lib/analytics";
 import type { AyinPlayerAnalytics } from "@/lib/ayin-player";
-import type { VideoAdSlot } from "@/lib/video-ads";
+import type { AdBreakKey } from "@/lib/video-ad-schedule";
 
 import { AyinPlayer } from "./ayin-player";
 import { AdEnabledAyinPlayer } from "./ad-enabled-ayin-player";
@@ -14,7 +14,7 @@ import type { AyinPlayerProps } from "./ayin-player";
 export interface PlayerAnalyticsSession {
   analytics: AyinPlayerAnalytics;
   recordImpression: () => void;
-  completedAdBreaks: Set<VideoAdSlot>;
+  completedAdBreaks: Set<AdBreakKey>;
 }
 
 // Accounting only: this never retains a playable source or an audience lease.
@@ -22,7 +22,7 @@ export function createPlayerAnalyticsSession(videoId: string): PlayerAnalyticsSe
   let impressed = false;
   return {
     analytics: createPlayerAnalytics(),
-    completedAdBreaks: new Set<VideoAdSlot>(),
+    completedAdBreaks: new Set<AdBreakKey>(),
     recordImpression: () => {
       if (impressed) return;
       impressed = true;

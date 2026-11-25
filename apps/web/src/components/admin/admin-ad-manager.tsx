@@ -11,8 +11,11 @@ import {
   StatusNotice,
 } from "@/components/ui/design-system";
 import {
+  checkVastTag,
   extractAdUnitPath,
   extractVastTagUrl,
+  parseCueTimes,
+  previewCuePoints,
   gamAdUnitPathPattern,
   isHttpsUrl,
   type AdManagerOverview,
@@ -557,6 +560,10 @@ function SlotMap({
         <div className={styles.wfRow} />
         {marker("footer_above")}
         <div className={styles.wfBar}>{copy("Footer", "الفوتر")}</div>
+        <div className={styles.wfPhone}>
+          <span>{copy("Phones: pinned at the bottom", "الموبايل: لاصق تحت")}</span>
+          {marker("mobile_anchor")}
+        </div>
       </figure>
       <figure className={styles.wireframe}>
         <figcaption>{copy("Watch page", "صفحة المشاهدة")}</figcaption>
@@ -567,6 +574,8 @@ function SlotMap({
             <div className={styles.wfPlayer}>{copy("Player", "البلاير")}</div>
             {marker("watch_below_player")}
             <div className={styles.wfText} />
+            {marker("watch_above_comments")}
+            <div className={styles.wfText}>{copy("Comments", "التعليقات")}</div>
           </div>
           <div>
             {marker("desktop_sidebar")}
@@ -578,16 +587,20 @@ function SlotMap({
         <div className={styles.wfBar}>{copy("Footer", "الفوتر")}</div>
       </figure>
       <ul className={styles.otherPages}>
-        {["content_detail", "search_between_results", "channel_between_rows", "tv_directory"].map(
-          (key) => {
-            const slot = slots.find((item) => item.key === key);
-            return slot ? (
-              <li key={key}>
-                {marker(key)} <span>{copy(slot.name.en, slot.name.ar)}</span>
-              </li>
-            ) : null;
-          },
-        )}
+        {[
+          "content_detail",
+          "browse_directory",
+          "search_between_results",
+          "channel_between_rows",
+          "tv_directory",
+        ].map((key) => {
+          const slot = slots.find((item) => item.key === key);
+          return slot ? (
+            <li key={key}>
+              {marker(key)} <span>{copy(slot.name.en, slot.name.ar)}</span>
+            </li>
+          ) : null;
+        })}
       </ul>
     </div>
   );
@@ -859,6 +872,16 @@ function SlotCard({
   );
 }
 
+type VastCheck = { tone: "success" | "warning" | "danger" | "info"; text: string } | null;
+
+function formatClock(totalSec: number) {
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const mm = h ? String(m).padStart(2, "0") : String(m);
+  return `${h ? `${h}:` : ""}${mm}:${String(s).padStart(2, "0")}`;
+}
+
 function VideoAds({
   copy,
   video,
@@ -871,32 +894,93 @@ function VideoAds({
   onSave: (input: AdManagerVideoInput) => void;
 }) {
   const [draft, setDraft] = useState(video);
+  const [cueText, setCueText] = useState(video.midRoll.cuePointsSec.map(formatClock).join(", "));
+  const [previewMinutes, setPreviewMinutes] = useState(90);
+  const [checks, setChecks] = useState<Record<string, VastCheck>>({});
   const breaks = [
     [
       "preRoll",
       copy("Pre-roll", "قبل الفيديو (Pre-roll)"),
-      copy("Plays before the video starts.", "بيظهر قبل ما الفيديو يبدأ."),
+      copy("Plays once before the video starts.", "بيظهر مرة واحدة قبل ما الفيديو يبدأ."),
     ],
     [
       "midRoll",
       copy("Mid-roll", "في نص الفيديو (Mid-roll)"),
       copy(
-        "Plays during long videos, every N minutes.",
-        "بيظهر أثناء الفيديوهات الطويلة كل عدد دقايق تحدده.",
+        "Breaks during the video, on the schedule below.",
+        "فواصل أثناء الفيديو حسب المواعيد اللي هتحددها تحت.",
       ),
     ],
     [
       "postRoll",
       copy("Post-roll", "بعد الفيديو (Post-roll)"),
-      copy("Plays after the video ends.", "بيظهر بعد ما الفيديو يخلص."),
+      copy("Plays once when the video ends.", "بيظهر مرة واحدة لما الفيديو يخلص."),
     ],
   ] as const;
+  const parsedCues = parseCueTimes(cueText);
+  const cueError =
+    draft.midRoll.enabled && draft.midRoll.mode === "CUE_POINTS"
+      ? parsedCues === null
+        ? copy(
+            "Write times like 5:00, 20:00, 1:05:00 (or minutes: 5, 20, 65).",
+            "اكتب التوقيتات بالشكل 5:00، 20:00، 1:05:00 (أو بالدقايق: 5، 20، 65).",
+          )
+        : parsedCues.length === 0
+          ? copy("Add at least one time.", "اكتب توقيت واحد على الأقل.")
+          : null
+      : null;
   const errors = breaks.flatMap(([key]) => {
     const value = draft[key].vastTagUrl ?? "";
     if (value && !isHttpsUrl(value)) return [key];
     if (draft.masterEnabled && draft[key].enabled && !value) return [key];
     return [];
   });
+  const preview = previewCuePoints(
+    { ...draft.midRoll, cuePointsSec: parsedCues ?? [] },
+    previewMinutes * 60,
+  );
+
+  const testTag = async (key: string, tag: string | null) => {
+    if (!tag || !isHttpsUrl(tag)) return;
+    setChecks((current) => ({
+      ...current,
+      [key]: { tone: "info", text: copy("Testing…", "جاري الاختبار…") },
+    }));
+    const result = await checkVastTag(
+      tag,
+      key === "midRoll" ? "MID_ROLL" : key === "postRoll" ? "POST_ROLL" : "PRE_ROLL",
+    );
+    const text = {
+      FILLED: copy(
+        `Works: the tag returned ${result.ads} ad(s).`,
+        `شغال: التاج رجّع ${result.ads} إعلان.`,
+      ),
+      NO_FILL: copy(
+        "The tag answers correctly but has no ad right now (no fill). Normal while campaigns are not live yet.",
+        "التاج بيرد صح بس مفيش إعلان متاح دلوقتي (No fill). ده طبيعي لو الحملات لسه مش شغالة.",
+      ),
+      AD_RULES: copy(
+        "This is an ad-rules (VMAP) tag. Use a normal VAST tag here; the break times are set on this page.",
+        "ده تاج Ad rules (VMAP). استخدم تاج VAST عادي هنا، لأن مواعيد الفواصل بتتحدد من الصفحة دي.",
+      ),
+      NOT_VAST: copy(
+        "The address answered, but not with VAST. Check that you copied the video tag.",
+        "الرابط رد بس مش بملف VAST. اتأكد إنك نسخت تاج الفيديو الصح.",
+      ),
+      UNREADABLE: copy(
+        "The browser could not read the answer (the ad server does not allow it). This does not mean the tag is wrong — the player may still work. Check it in Ad Manager’s VAST inspector.",
+        "المتصفح مقدرش يقرا الرد (سيرفر الإعلانات مش سامح بكده). ده مش معناه إن التاج غلط، والبلاير ممكن يشغّله عادي. تقدر تتأكد منه في VAST Inspector في Ad Manager.",
+      ),
+    }[result.status];
+    const tone =
+      result.status === "FILLED"
+        ? "success"
+        : result.status === "NO_FILL" || result.status === "UNREADABLE"
+          ? "warning"
+          : "danger";
+    setChecks((current) => ({ ...current, [key]: { tone, text } }));
+  };
+
   return (
     <section className={styles.panel}>
       <div className={styles.panelHead}>
@@ -905,15 +989,15 @@ function VideoAds({
           onChange={(masterEnabled) => setDraft({ ...draft, masterEnabled })}
           label={copy("Video ads master switch", "المفتاح الرئيسي لإعلانات الفيديو")}
           hint={copy(
-            "Ads play inside the AYIN player on the website. Kids content never shows ads.",
-            "الإعلانات بتشتغل جوه بلاير عين على الموقع. محتوى الأطفال عمره ما بيظهر فيه إعلانات.",
+            "Ads play inside the AYIN player on the website (and in the apps if enabled in the App tab). Kids content never shows ads.",
+            "الإعلانات بتشتغل جوه بلاير عين على الموقع (وجوه التطبيقات لو فعّلتها من تبويب التطبيق). محتوى الأطفال عمره ما بيظهر فيه إعلانات.",
           )}
         />
       </div>
       <StatusNotice tone="info" title={copy("Where to get the VAST tag", "منين تجيب تاج الـ VAST")}>
         {copy(
-          "In Google Ad Manager: Inventory → Ad units → choose the video unit → Tags → Google IMA SDK (or VAST) → copy the tag URL and paste it below. Placeholders like [placeholder], [timestamp] and description_url are filled automatically for each video.",
-          "في Google Ad Manager: ‏Inventory ← Ad units ← اختار وحدة الفيديو ← Tags ← Google IMA SDK (أو VAST) ← انسخ رابط التاج والصقه تحت. الحاجات زي [placeholder] و[timestamp] و description_url بتتملي تلقائي لكل فيديو.",
+          "In Google Ad Manager: Inventory → Ad units → choose the video unit → Tags → Google IMA SDK → copy the tag URL. Use a normal VAST tag, not an ad-rules (VMAP) tag: the break times are set here. Placeholders like [placeholder] and [timestamp] are filled automatically for every video and every request.",
+          "في Google Ad Manager: ‏Inventory ← Ad units ← اختار وحدة الفيديو ← Tags ← Google IMA SDK ← انسخ رابط التاج. استخدم تاج VAST عادي مش تاج Ad rules (VMAP)، لأن مواعيد الفواصل بتتحدد من هنا. الحاجات زي [placeholder] و[timestamp] بتتملي تلقائي لكل فيديو ولكل طلب.",
         )}
       </StatusNotice>
       <div className={styles.breaks}>
@@ -933,40 +1017,171 @@ function VideoAds({
               spellCheck={false}
               value={draft[key].vastTagUrl ?? ""}
               placeholder="https://pubads.g.doubleclick.net/gampad/ads?iu=/23374456398/AYIN/video&..."
-              onChange={(event) =>
+              onChange={(event) => {
+                setChecks((current) => ({ ...current, [key]: null }));
                 setDraft({
                   ...draft,
                   [key]: {
                     ...draft[key],
                     vastTagUrl: extractVastTagUrl(event.target.value) || null,
                   },
-                })
-              }
+                });
+              }}
             />
-            {key === "midRoll" ? (
-              <>
-                <label htmlFor="vast-mid-every">{copy("Every (minutes)", "كل كام دقيقة")}</label>
-                <input
-                  id="vast-mid-every"
-                  type="number"
-                  min={1}
-                  max={120}
-                  dir="ltr"
-                  value={Math.round(draft.midRoll.everySec / 60)}
-                  onChange={(event) =>
+            <div className={styles.inlineActions}>
+              <ActionButton
+                tone="secondary"
+                type="button"
+                disabled={!draft[key].vastTagUrl || !isHttpsUrl(draft[key].vastTagUrl ?? "")}
+                onClick={() => void testTag(key, draft[key].vastTagUrl)}
+              >
+                {copy("Test tag", "اختبر التاج")}
+              </ActionButton>
+              {key === "preRoll" && draft.preRoll.vastTagUrl ? (
+                <ActionButton
+                  tone="quiet"
+                  type="button"
+                  onClick={() =>
                     setDraft({
                       ...draft,
                       midRoll: {
                         ...draft.midRoll,
-                        everySec: Math.max(
-                          60,
-                          Math.min(7200, Number(event.target.value || 1) * 60),
-                        ),
+                        vastTagUrl: draft.midRoll.vastTagUrl ?? draft.preRoll.vastTagUrl,
+                      },
+                      postRoll: {
+                        ...draft.postRoll,
+                        vastTagUrl: draft.postRoll.vastTagUrl ?? draft.preRoll.vastTagUrl,
                       },
                     })
                   }
-                />
-              </>
+                >
+                  {copy("Use this tag for empty breaks", "استخدم التاج ده للفواصل الفاضية")}
+                </ActionButton>
+              ) : null}
+            </div>
+            {checks[key] ? (
+              <span className={styles.check} data-tone={checks[key]!.tone} role="status">
+                {checks[key]!.text}
+              </span>
+            ) : null}
+            {key === "midRoll" ? (
+              <div className={styles.schedule}>
+                <fieldset className={styles.choices}>
+                  <legend>{copy("When do mid-rolls play?", "إمتى فواصل النص تشتغل؟")}</legend>
+                  {(
+                    [
+                      ["INTERVAL", copy("Every few minutes", "كل كام دقيقة")],
+                      ["CUE_POINTS", copy("At times I choose", "في توقيتات أحددها بنفسي")],
+                    ] as const
+                  ).map(([mode, modeLabel]) => (
+                    <label
+                      key={mode}
+                      className={styles.choice}
+                      data-selected={draft.midRoll.mode === mode ? "true" : undefined}
+                    >
+                      <input
+                        type="radio"
+                        name="mid-roll-mode"
+                        checked={draft.midRoll.mode === mode}
+                        onChange={() => setDraft({ ...draft, midRoll: { ...draft.midRoll, mode } })}
+                      />
+                      <span>
+                        <strong>{modeLabel}</strong>
+                      </span>
+                    </label>
+                  ))}
+                </fieldset>
+                {draft.midRoll.mode === "INTERVAL" ? (
+                  <label className={styles.inline}>
+                    <span>{copy("Every (minutes)", "كل كام دقيقة")}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={120}
+                      dir="ltr"
+                      value={Math.round(draft.midRoll.everySec / 60)}
+                      onChange={(event) =>
+                        setDraft({
+                          ...draft,
+                          midRoll: {
+                            ...draft.midRoll,
+                            everySec: Math.max(
+                              60,
+                              Math.min(7200, Number(event.target.value || 1) * 60),
+                            ),
+                          },
+                        })
+                      }
+                    />
+                  </label>
+                ) : (
+                  <label className={styles.inline}>
+                    <span>
+                      {copy(
+                        "Break times (from the start of the video)",
+                        "توقيتات الفواصل (من بداية الفيديو)",
+                      )}
+                    </span>
+                    <input
+                      dir="ltr"
+                      value={cueText}
+                      placeholder="5:00, 20:00, 45:00"
+                      onChange={(event) => setCueText(event.target.value)}
+                    />
+                  </label>
+                )}
+                {cueError ? <span className={styles.error}>{cueError}</span> : null}
+                <label className={styles.inline}>
+                  <span>
+                    {copy("Maximum breaks in one video", "أقصى عدد فواصل في الفيديو الواحد")}
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    dir="ltr"
+                    value={draft.midRoll.maxBreaks}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        midRoll: {
+                          ...draft.midRoll,
+                          maxBreaks: Math.max(1, Math.min(50, Number(event.target.value || 1))),
+                        },
+                      })
+                    }
+                  />
+                </label>
+                <div className={styles.preview}>
+                  <label>
+                    {copy("Preview for a video of", "معاينة لفيديو مدته")}{" "}
+                    <input
+                      type="number"
+                      min={1}
+                      max={600}
+                      dir="ltr"
+                      value={previewMinutes}
+                      onChange={(event) =>
+                        setPreviewMinutes(
+                          Math.max(1, Math.min(600, Number(event.target.value || 1))),
+                        )
+                      }
+                    />{" "}
+                    {copy("minutes:", "دقيقة:")}
+                  </label>
+                  <p dir="ltr">
+                    {preview.length
+                      ? preview.map(formatClock).join("  ·  ")
+                      : copy("no mid-roll in a video this short", "مفيش فواصل في فيديو بالطول ده")}
+                  </p>
+                  <small>
+                    {copy(
+                      "No break starts in the last 30 seconds. If a viewer skips over several breaks, only one plays. Resumed videos do not replay breaks they already passed.",
+                      "مفيش فاصل بيبدأ في آخر 30 ثانية. لو المشاهد قفز فوق كذا فاصل، بيشوف إعلان واحد بس. ولو رجع يكمل فيديو، مش هيتعادله الفواصل اللي فاتت.",
+                    )}
+                  </small>
+                </div>
+              </div>
             ) : null}
             {errors.includes(key) ? (
               <span className={styles.error}>
@@ -994,13 +1209,23 @@ function VideoAds({
             })
           }
         />
-        <small>{copy("0 means no limit.", "0 يعني من غير حد.")}</small>
+        <small>
+          {copy(
+            "Counts every ad a viewer sees across videos in one visit. 0 means no limit.",
+            "بيعد كل إعلان المشاهد شافه في كل الفيديوهات خلال الزيارة الواحدة. 0 يعني من غير حد.",
+          )}
+        </small>
       </div>
       <div className={styles.formActions}>
         <ActionButton
           pending={busy === "video"}
-          disabled={errors.length > 0}
-          onClick={() => onSave(draft)}
+          disabled={errors.length > 0 || Boolean(cueError)}
+          onClick={() =>
+            onSave({
+              ...draft,
+              midRoll: { ...draft.midRoll, cuePointsSec: parsedCues ?? [] },
+            })
+          }
         >
           {copy("Save video ads", "احفظ إعلانات الفيديو")}
         </ActionButton>

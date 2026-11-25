@@ -419,6 +419,7 @@ export function WatchContent({
           channelName={data.video.channel.name}
         />
         <div className={styles.discussion}>
+          {!kidsMode ? <PageAdSlot placementKey="watch_above_comments" /> : null}
           {!kidsMode ? (
             <CommentsPanel enabled={data.detail.commentsSlot.enabled} videoId={data.video.id} />
           ) : null}

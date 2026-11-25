@@ -34,7 +34,7 @@ import {
   noopPlayerAnalytics,
 } from "@/lib/ayin-player";
 import { type PlayerProgressPolicy } from "@/lib/player-progress";
-import type { VideoAdSlot } from "@/lib/video-ads";
+import type { AdBreakKey } from "@/lib/video-ad-schedule";
 import { useWatchProgress, type PlayerProgressIdentity } from "./use-watch-progress";
 
 import styles from "./ayin-player.module.css";
@@ -50,7 +50,7 @@ export interface AyinPlayerProps {
   chapters?: AyinPlayerChapter[] | undefined;
   initialPositionMs?: number | undefined;
   initialPreferences?: AyinPlayerInitialPreferences | undefined;
-  completedAdBreaks?: Set<VideoAdSlot> | undefined;
+  completedAdBreaks?: Set<AdBreakKey> | undefined;
   progressEnabled?: boolean | undefined;
   profileId?: string | undefined;
   progressIdentity?: PlayerProgressIdentity | null | undefined;
