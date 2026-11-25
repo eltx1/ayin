@@ -17,7 +17,8 @@ const contextSchema = z.object({
   channelId: z.string().uuid().nullable().optional(),
   videoId: z.string().uuid().nullable().optional(),
   deviceClass: z.enum(["MOBILE", "TABLET", "DESKTOP", "TV", "UNKNOWN"]),
-  consentMode: z.enum(["PERSONALIZED", "NON_PERSONALIZED", "LIMITED_ADS"]).default("LIMITED_ADS"),
+  // No AYIN-side restriction unless a caller asks for one: Ad Manager's CMP governs consent.
+  consentMode: z.enum(["PERSONALIZED", "NON_PERSONALIZED", "LIMITED_ADS"]).default("PERSONALIZED"),
   childDirected: z.enum(["0", "1"]).optional(),
   underAgeOfConsent: z.enum(["0", "1"]).optional(),
   ageTreatment: z.enum(["UNSPECIFIED", "CHILD", "TEEN"]).optional(),

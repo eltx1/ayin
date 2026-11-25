@@ -8,8 +8,14 @@ import {
 } from "./google-gpt-page-ad-service";
 import { applyGoogleImaConsent, classifyImaErrorCode } from "./google-ima-video-ad-service";
 
+// Limited ads now only happen when a consent provider explicitly asks for them.
 const limited: AdvertisingConsentSnapshot = {
   mode: "LIMITED_ADS",
+  source: "CMP",
+  providerManaged: true,
+};
+const byDefault: AdvertisingConsentSnapshot = {
+  mode: "PERSONALIZED",
   source: "SAFE_DEFAULT",
   providerManaged: false,
 };
@@ -49,7 +55,17 @@ describe("Google advertising runtime hardening", () => {
     }
   });
 
-  it("uses Google's limited-ads GPT loader for the safe default", () => {
+  it("adds no AYIN restriction by default: standard GPT, no privacy flags, untouched IMA tags", () => {
+    expect(gptScriptUrlForConsent(byDefault)).toBe(
+      "https://securepubads.g.doubleclick.net/tag/js/gpt.js",
+    );
+    expect(gptPrivacySettingsForConsent(byDefault)).toEqual({});
+    const tag = "https://pubads.g.doubleclick.net/gampad/ads?iu=%2F123%2Fvideo&env=vp";
+    const url = new URL(applyGoogleImaConsent(tag, byDefault));
+    for (const key of ["ltd", "npa", "tfat"]) expect(url.searchParams.has(key)).toBe(false);
+  });
+
+  it("uses Google's limited-ads GPT loader when a provider asks for limited ads", () => {
     expect(gptScriptUrlForConsent(limited)).toBe(
       "https://pagead2.googlesyndication.com/tag/js/gpt.js",
     );

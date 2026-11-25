@@ -13,13 +13,13 @@ import {
 afterEach(() => resetAdvertisingConsentProviderForTests());
 
 describe("advertising consent boundary", () => {
-  it("fails closed if a provider throws or returns an invalid runtime snapshot", () => {
+  it("falls back to the default (Google's CMP governs) if a provider throws or is invalid", () => {
     registerAdvertisingConsentProvider({
       getSnapshot: () => {
         throw new Error("CMP failed");
       },
     });
-    expect(getAdvertisingConsentSnapshot().mode).toBe("LIMITED_ADS");
+    expect(getAdvertisingConsentSnapshot().mode).toBe("PERSONALIZED");
     for (const snapshot of [
       null,
       {},
@@ -29,13 +29,13 @@ describe("advertising consent boundary", () => {
       registerAdvertisingConsentProvider({
         getSnapshot: () => snapshot as unknown as ReturnType<typeof getAdvertisingConsentSnapshot>,
       });
-      expect(getAdvertisingConsentSnapshot().mode).toBe("LIMITED_ADS");
+      expect(getAdvertisingConsentSnapshot().mode).toBe("PERSONALIZED");
     }
   });
 
-  it("defaults to limited ads without pretending a CMP exists", () => {
+  it("adds no restriction of its own by default and leaves consent to Google's CMP", () => {
     expect(getAdvertisingConsentSnapshot()).toEqual({
-      mode: "LIMITED_ADS",
+      mode: "PERSONALIZED",
       source: "SAFE_DEFAULT",
       providerManaged: false,
     });
@@ -47,10 +47,10 @@ describe("advertising consent boundary", () => {
     });
     expect(getAdvertisingConsentSnapshot().mode).toBe("PERSONALIZED");
     unregister();
-    expect(getAdvertisingConsentSnapshot().mode).toBe("LIMITED_ADS");
+    expect(getAdvertisingConsentSnapshot().mode).toBe("PERSONALIZED");
   });
 
-  it("does not allow the safe default source to claim personalized consent", () => {
+  it("does not let a provider impersonate the default source", () => {
     registerAdvertisingConsentProvider({
       getSnapshot: () => ({
         mode: "PERSONALIZED",
@@ -58,7 +58,11 @@ describe("advertising consent boundary", () => {
         providerManaged: false,
       }),
     });
-    expect(getAdvertisingConsentSnapshot().mode).toBe("LIMITED_ADS");
+    expect(getAdvertisingConsentSnapshot()).toEqual({
+      mode: "PERSONALIZED",
+      source: "SAFE_DEFAULT",
+      providerManaged: false,
+    });
   });
 });
 
@@ -180,7 +184,7 @@ describe("trusted advertising consent notifications", () => {
       source.change({ ...personalized, providerRevision } as unknown as AdvertisingConsentSnapshot);
       expect(scope.signal.aborted).toBe(true);
       expect(getAdvertisingConsentSnapshot()).toEqual({
-        mode: "LIMITED_ADS",
+        mode: "NON_PERSONALIZED",
         source: "SAFE_DEFAULT",
         providerManaged: false,
         ageTreatment: "CHILD",
@@ -224,7 +228,7 @@ describe("trusted advertising consent notifications", () => {
     first.callbacks[0]!();
     second.callbacks[0]!();
     expect(getAdvertisingConsentSnapshot()).toMatchObject({
-      mode: "LIMITED_ADS",
+      mode: "PERSONALIZED",
       source: "SAFE_DEFAULT",
     });
   });
@@ -240,13 +244,13 @@ describe("trusted advertising consent notifications", () => {
     } as unknown as AdvertisingConsentSnapshot);
     expect(scope.signal.aborted).toBe(true);
     expect(getAdvertisingConsentSnapshot()).toMatchObject({
-      mode: "LIMITED_ADS",
+      mode: "NON_PERSONALIZED",
       ageTreatment: "TEEN",
     });
     unregister();
     const notifications: string[] = [];
     const unsubscribe = subscribeAdvertisingConsent(() =>
-      notifications.push(getAdvertisingConsentSnapshot().mode),
+      notifications.push(getAdvertisingConsentSnapshot().source),
     );
     const unregisterBroken = registerAdvertisingConsentProvider({
       getSnapshot: () => personalized,
@@ -255,8 +259,9 @@ describe("trusted advertising consent notifications", () => {
         throw new Error("CMP subscription failed");
       },
     });
-    expect(getAdvertisingConsentSnapshot().mode).toBe("LIMITED_ADS");
-    expect(notifications).not.toContain("PERSONALIZED");
+    // A broken provider is not trusted: the default applies, never its provisional value.
+    expect(getAdvertisingConsentSnapshot().source).toBe("SAFE_DEFAULT");
+    expect(notifications).not.toContain("CMP");
     unsubscribe();
     unregisterBroken();
     scope.release();
@@ -271,12 +276,12 @@ describe("trusted advertising consent notifications", () => {
       ageTreatment: "TEEN",
     } as unknown as AdvertisingConsentSnapshot);
     expect(getAdvertisingConsentSnapshot()).toMatchObject({
-      mode: "LIMITED_ADS",
+      mode: "NON_PERSONALIZED",
       ageTreatment: "CHILD",
     });
     unregister();
     expect(getAdvertisingConsentSnapshot()).toMatchObject({
-      mode: "LIMITED_ADS",
+      mode: "NON_PERSONALIZED",
       ageTreatment: "CHILD",
     });
   });
@@ -293,7 +298,7 @@ it("retains explicit age restrictions even when other consent fields fail, witho
       }),
     ).toMatchObject({ mode: "NON_PERSONALIZED", ageTreatment });
     expect(normalizeAdvertisingConsent({ mode: "UNKNOWN", ageTreatment })).toMatchObject({
-      mode: "LIMITED_ADS",
+      mode: "NON_PERSONALIZED",
       ageTreatment,
       providerManaged: false,
     });
@@ -312,6 +317,6 @@ it("retains explicit age restrictions even when other consent fields fail, witho
     providerManaged: true,
     ageTreatment: "ADULT",
   });
-  expect(malformed.mode).toBe("LIMITED_ADS");
+  expect(malformed).toMatchObject({ mode: "PERSONALIZED", source: "SAFE_DEFAULT" });
   expect(malformed.ageTreatment).toBeUndefined();
 });

@@ -689,7 +689,7 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
   });
 
-  test("IMA receives the restrictive tag intact and resumes content under the safe consent default", async ({
+  test("IMA receives the restrictive tag intact and resumes content under the default consent", async ({
     page,
   }) => {
     await installMediaHarness(page, { ima: true });
@@ -703,8 +703,9 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     const state = await harnessState(page);
     expect(state.imaTags).toHaveLength(1);
     const tag = new URL(state.imaTags[0]!);
-    for (const key of ["ltd", "npa", "tfua", "tfcd", "rdp"])
-      expect(tag.searchParams.get(key)).toBe("1");
+    // Restrictions already on the tag are kept; AYIN adds no limited-ads flag of its own.
+    for (const key of ["npa", "tfua", "tfcd", "rdp"]) expect(tag.searchParams.get(key)).toBe("1");
+    expect(tag.searchParams.get("ltd")).toBeNull();
     expect(tag.searchParams.get("tfat")).toBe("1");
     expect(tag.searchParams.get("iu")).toBe("/123/video");
     await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
@@ -712,7 +713,7 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
   });
 
   for (const tfat of ["1", "2"] as const) {
-    test(`IMA preserves current TFAT=${tfat} and content playback under the limited default`, async ({
+    test(`IMA preserves current TFAT=${tfat} and content playback under the default consent`, async ({
       page,
     }) => {
       await installMediaHarness(page, { ima: true });
@@ -727,8 +728,9 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
       expect(state.imaTags).toHaveLength(1);
       const tag = new URL(state.imaTags[0]!);
       expect(tag.searchParams.get("tfat")).toBe(tfat);
+      // An age-restricted tag stays non-personalized; AYIN adds no limited-ads flag of its own.
       expect(tag.searchParams.get("npa")).toBe("1");
-      expect(tag.searchParams.get("ltd")).toBe("1");
+      expect(tag.searchParams.get("ltd")).toBeNull();
       await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
       await expect(page.locator("video:visible")).toHaveCount(1);
     });
@@ -969,7 +971,7 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
         () => {
           const marker = document.createElement("script");
           marker.type = "application/json";
-          marker.src = "https://pagead2.googlesyndication.com/tag/js/gpt.js";
+          marker.src = "https://securepubads.g.doubleclick.net/tag/js/gpt.js";
           document.head.append(marker);
           const pubads = {
             setPrivacySettings() {},
@@ -1011,6 +1013,7 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
       );
     });
     await page.route("https://pagead2.googlesyndication.com/**", (route) => route.abort());
+    await page.route("https://securepubads.g.doubleclick.net/**", (route) => route.abort());
     await page.route("**/ads/page/events", (route) => route.fulfill({ json: {} }));
     await page.route("**/ads/page/decision/**", (route) =>
       route.fulfill({

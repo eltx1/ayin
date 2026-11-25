@@ -18,11 +18,22 @@ export interface AdvertisingConsentProvider {
   subscribe?(listener: () => void): () => void;
 }
 
+/**
+ * Without an application-level consent integration AYIN adds no restriction of its own: it does
+ * not request limited ads and does not wait for a consent signal. Consent is Google Ad Manager's
+ * job — its Privacy & messaging CMP collects it, and GPT and IMA read the user's choice (TCF) from
+ * that CMP for every request. Trusted age restrictions still apply on top (see ageRestricted).
+ */
 const safeDefault: AdvertisingConsentSnapshot = Object.freeze({
-  mode: "LIMITED_ADS",
+  mode: "PERSONALIZED",
   source: "SAFE_DEFAULT",
   providerManaged: false,
 });
+
+/** A known child/teen restriction never falls back to personalized delivery. */
+function ageRestricted(ageTreatment: AdvertisingAgeTreatment): AdvertisingConsentSnapshot {
+  return { ...safeDefault, mode: "NON_PERSONALIZED", ageTreatment };
+}
 
 interface ProviderRegistration {
   provider: AdvertisingConsentProvider;
@@ -61,13 +72,13 @@ export function getAdvertisingConsentSnapshot(): AdvertisingConsentSnapshot {
       next = normalizeAdvertisingConsent(currentRegistration()?.provider.getSnapshot());
     }
   } catch {
-    // A failing provider never supplies permission for personalized delivery.
+    // A failing provider falls back to the default: Google's CMP still governs consent.
   }
   if (next.source === "SAFE_DEFAULT" && snapshot.ageTreatment) {
     // An invalid/missing update is not authority to erase a known restriction.
     const ageTreatment =
       snapshot.ageTreatment === "CHILD" || next.ageTreatment === "CHILD" ? "CHILD" : "TEEN";
-    next = { ...next, ageTreatment };
+    next = ageRestricted(ageTreatment);
   }
   if (!equivalent(snapshot, next)) snapshot = Object.freeze(next);
   return snapshot;
@@ -161,7 +172,7 @@ export function normalizeAdvertisingConsent(value: unknown): AdvertisingConsentS
       ? snapshot.providerRevision
       : undefined;
   const fallback: AdvertisingConsentSnapshot = ageTreatment
-    ? { ...safeDefault, ageTreatment }
+    ? ageRestricted(ageTreatment)
     : safeDefault;
   if (
     typeof snapshot.mode !== "string" ||

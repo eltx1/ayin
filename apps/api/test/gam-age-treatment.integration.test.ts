@@ -47,7 +47,7 @@ databaseDescribe("GAM explicit age-treatment request configuration", () => {
     await app.close();
     await prisma.$disconnect();
   });
-  it("defaults to private limited configuration without inventing age or identity targeting", async () => {
+  it("adds no AYIN restriction by default and invents no age or identity targeting", async () => {
     const response = await app.inject({
       method: "GET",
       url: "/ads/gam/config?deviceClass=DESKTOP",
@@ -57,8 +57,8 @@ databaseDescribe("GAM explicit age-treatment request configuration", () => {
     expect(response.json()).toMatchObject({
       enabled: true,
       testMode: true,
-      privacy: { mode: "LIMITED_ADS", ageTreatment: "UNSPECIFIED", nonPersonalizedAds: true },
-      imaParameters: { ltd: "1" },
+      privacy: { mode: "PERSONALIZED", ageTreatment: "UNSPECIFIED", nonPersonalizedAds: false },
+      imaParameters: {},
       targeting: {},
     });
     expect(response.json().imaParameters.tfat).toBeUndefined();
