@@ -1038,10 +1038,7 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
       );
     await page.setViewportSize({ width: 1100, height: 900 });
     await page.goto(`/watch/${fixture.slug}`);
-    await page
-      .locator("aside")
-      .filter({ has: page.locator('[id^="ayin-ad-"]') })
-      .scrollIntoViewIfNeeded();
+    await page.locator('aside[data-ad-slot="watch_below_player"]').scrollIntoViewIfNeeded();
     await expect.poll(async () => (await state()).displayed).toBe(1);
     expect((await state()).missingHost).toBe(false);
     await page.setViewportSize({ width: 390, height: 844 });

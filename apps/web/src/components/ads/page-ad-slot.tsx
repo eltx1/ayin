@@ -319,6 +319,7 @@ function PageAdSlotSession({
   return (
     <aside
       className={visible || frame ? styles.slot : styles.probe}
+      data-ad-slot={placementKey}
       data-collapsed={frame && !visible ? "true" : undefined}
       ref={hostRef}
       aria-label={visible ? "Advertisement" : undefined}
