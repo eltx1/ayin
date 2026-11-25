@@ -43,9 +43,12 @@ describe("Task 68 GAM production hardening", () => {
     expect(apiGam).toContain("google.com, ${config.publisherId}, ${config.adsTxtRelationship}");
   });
 
-  it("defaults to a provider-neutral limited-ads boundary instead of faking a CMP", () => {
-    expect(consent).toContain('mode: "LIMITED_ADS"');
+  it("adds no AYIN restriction by default and leaves consent to Ad Manager's CMP", () => {
+    // GPT and IMA read the user's choice from Google's Privacy & messaging CMP themselves.
+    expect(consent).toMatch(/const safeDefault[^}]*mode: "PERSONALIZED"/u);
     expect(consent).toContain('source: "SAFE_DEFAULT"');
+    // Known child/teen classifications never fall back to personalized delivery.
+    expect(consent).toContain('mode: "NON_PERSONALIZED", ageTreatment');
     expect(consent).toContain("registerAdvertisingConsentProvider");
   });
 
