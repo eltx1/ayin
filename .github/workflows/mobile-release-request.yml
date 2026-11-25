@@ -34,6 +34,12 @@ jobs:
       matrix:
         platform: [android, ios]
     uses: ./.github/workflows/mobile-release.yml
+    secrets:
+      AYIN_FIREBASE_API_KEY: ${{ secrets.AYIN_FIREBASE_API_KEY }}
+      AYIN_ANDROID_KEYSTORE_BASE64: ${{ secrets.AYIN_ANDROID_KEYSTORE_BASE64 }}
+      AYIN_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.AYIN_ANDROID_KEYSTORE_PASSWORD }}
+      AYIN_ANDROID_KEY_ALIAS: ${{ secrets.AYIN_ANDROID_KEY_ALIAS }}
+      AYIN_ANDROID_KEY_PASSWORD: ${{ secrets.AYIN_ANDROID_KEY_PASSWORD }}
     with:
       platform: ${{ matrix.platform }}
       version_name: ${{ needs.version.outputs.name }}
