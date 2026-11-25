@@ -16,6 +16,18 @@ try {
       result = { ok: true };
       break;
     }
+    case "reset-ad-manager": {
+      // Advertising settings live outside the account tables that "reset" truncates.
+      await prisma.adPlacement.updateMany({
+        where: { inventoryFamily: "OUTSIDE_PLAYER" },
+        data: { enabled: false },
+      });
+      await prisma.platformSetting.deleteMany({
+        where: { namespace: "ADVERTISING", key: { in: ["pageAdsV1", "videoAdsV1"] } },
+      });
+      result = { ok: true };
+      break;
+    }
     case "bootstrap": {
       const account = await prisma.account.findUniqueOrThrow({
         where: { email: payload.email },

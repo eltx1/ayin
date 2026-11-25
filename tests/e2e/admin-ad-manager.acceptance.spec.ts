@@ -15,6 +15,17 @@ test.beforeEach(() => {
   });
 });
 
+// Leave no live slot or video setting behind for the specs that run after this one.
+test.afterEach(() => {
+  execFileSync(
+    process.execPath,
+    [path.resolve("tests/e2e/db-helper.mjs"), "reset-ad-manager", "{}"],
+    {
+      env: process.env,
+    },
+  );
+});
+
 async function signInAsAdManager(page: Page) {
   const response = await page.request.post(API + "/auth/register", {
     headers: { origin: WEB },
