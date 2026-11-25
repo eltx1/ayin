@@ -154,7 +154,7 @@ export class AdManagerService {
               ? "CODE"
               : demand?.source === "HOUSE"
                 ? "HOUSE"
-                : demand?.adUnitPath
+                : demand?.source === "GAM_UNIT" || demand?.adUnitPath
                   ? "GAM_UNIT"
                   : "NONE";
           return {

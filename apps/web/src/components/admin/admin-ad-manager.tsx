@@ -33,7 +33,11 @@ import styles from "./admin-ad-manager.module.css";
 
 type Copy = (en: string, ar: string) => string;
 type Tab = "web" | "video" | "app";
-type Notice = { tone: "success" | "danger" | "warning" | "info"; text: string } | null;
+type Notice = {
+  operation?: string;
+  tone: "success" | "danger" | "warning" | "info";
+  text: string;
+} | null;
 type Request = <T>(path: string, method?: string, payload?: unknown) => Promise<T>;
 
 class AdManagerRequestError extends Error {
@@ -63,12 +67,15 @@ export function AdminAdManager() {
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const active = useRef<AbortController | null>(null);
+  const write = useRef<symbol | null>(null);
+  const read = useRef<symbol | null>(null);
 
   useEffect(
     () =>
       subscribeScopeInvalidation(() => {
-        active.current?.abort();
+        read.current = null;
+        write.current = null;
+        setLoading(false);
         setOverview(null);
         setAppConfig(null);
         setNotice(null);
@@ -76,7 +83,6 @@ export function AdminAdManager() {
       }),
     [subscribeScopeInvalidation],
   );
-  useEffect(() => () => active.current?.abort(), []);
 
   const request: Request = useCallback(
     async <T,>(path: string, method = "GET", payload?: unknown) => {
@@ -93,20 +99,23 @@ export function AdminAdManager() {
         },
         ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
       });
+      if (lease !== getScopeLease()) throw new AdManagerRequestError("ADMIN_CHANGED", false);
       if (!response.ok) {
         const stepUp = await adminVerificationRequired(response);
         throw new AdManagerRequestError(await readAdminApiError(response), stepUp);
       }
+      const value = (await response.json()) as T;
       if (lease !== getScopeLease()) throw new AdManagerRequestError("ADMIN_CHANGED", false);
-      return (await response.json()) as T;
+      return value;
     },
     [getScopeLease],
   );
 
   const failure = useCallback(
-    (error: unknown) => {
+    (error: unknown, operation?: string) => {
       if (error instanceof AdManagerRequestError && error.stepUp) {
         setNotice({
+          ...(operation ? { operation } : {}),
           tone: "warning",
           text: copy(
             "For security, confirm your password first: press “Verify session” at the top, then press Save again.",
@@ -117,6 +126,7 @@ export function AdminAdManager() {
       }
       const detail = error instanceof Error ? error.message : "";
       setNotice({
+        ...(operation ? { operation } : {}),
         tone: "danger",
         text: copy("Not saved. ", "لم يتم الحفظ. ") + detail,
       });
@@ -126,7 +136,9 @@ export function AdminAdManager() {
 
   const load = useCallback(async () => {
     const lease = getScopeLease();
-    if (!lease) return;
+    if (!lease || write.current || read.current) return;
+    const token = Symbol();
+    read.current = token;
     setLoading(true);
     try {
       setOverview(await request<AdManagerOverview>("/admin/ad-manager"));
@@ -134,15 +146,17 @@ export function AdminAdManager() {
       setAppAllowed(superadmin);
       if (superadmin) setAppConfig(parseMobileConfig(await request("/admin/mobile/config")));
     } catch (error) {
-      failure(error);
+      if (read.current === token) failure(error);
     } finally {
-      setLoading(false);
+      if (read.current === token) {
+        read.current = null;
+        setLoading(false);
+      }
     }
   }, [failure, getScopeLease, request]);
 
-  const accountId = session?.accountId ?? null;
   useEffect(() => {
-    if (!accountId) return;
+    if (!session) return;
     let cancelled = false;
     void Promise.resolve().then(() => {
       if (!cancelled) void load();
@@ -150,24 +164,40 @@ export function AdminAdManager() {
     return () => {
       cancelled = true;
     };
-  }, [accountId, load]);
+  }, [session, load]);
 
   const save = useCallback(
     async (label: string, operation: () => Promise<void>, success: string) => {
-      if (busy) return;
+      if (write.current || read.current) return;
+      const token = Symbol(label);
+      write.current = token;
       setBusy(label);
       setNotice(null);
       try {
         await operation();
-        setNotice({ tone: "success", text: success });
+        if (write.current === token)
+          setNotice({ operation: label, tone: "success", text: success });
       } catch (error) {
-        failure(error);
+        if (write.current === token) failure(error, label);
       } finally {
-        setBusy(null);
+        if (write.current === token) {
+          write.current = null;
+          setBusy(null);
+        }
       }
     },
-    [busy, failure],
+    [failure],
   );
+
+  useEffect(() => {
+    if (!busy) return;
+    const warnWhileSaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnWhileSaving);
+    return () => window.removeEventListener("beforeunload", warnWhileSaving);
+  }, [busy]);
 
   const saved = copy(
     "Saved. Changes reach viewers within a minute.",
@@ -184,14 +214,19 @@ export function AdminAdManager() {
           "كل الإعلانات في مكان واحد: أماكن إعلانات الموقع، إعلانات الفيديو (البلاير)، وإعلانات التطبيق. الصق الكود أو التاج من Google Ad Manager واحفظ.",
         )}
         actions={
-          <ActionButton tone="secondary" onClick={() => void load()} pending={loading}>
+          <ActionButton
+            tone="secondary"
+            onClick={() => void load()}
+            pending={loading}
+            disabled={busy !== null}
+          >
             {copy("Refresh", "تحديث")}
           </ActionButton>
         }
       />
       <AdminAdvertisingNavigation current="manager" />
 
-      {notice ? (
+      {notice && !(tab === "web" && notice.operation?.startsWith("slot:")) ? (
         <StatusNotice tone={notice.tone} announce="polite">
           {notice.text}
         </StatusNotice>
@@ -212,7 +247,7 @@ export function AdminAdManager() {
             copy={copy}
             overview={overview}
             appConfig={appConfig}
-            busy={busy}
+            busy={loading ? "refresh" : busy}
             onEmergency={(enabled) =>
               void save(
                 "emergency",
@@ -264,7 +299,8 @@ export function AdminAdManager() {
               overview={overview}
               appConfig={appConfig}
               onOpenApp={() => setTab("app")}
-              busy={busy}
+              notice={notice}
+              busy={loading ? "refresh" : busy}
               onMaster={(masterEnabled) =>
                 void save(
                   "web-master",
@@ -280,14 +316,32 @@ export function AdminAdManager() {
               onSlot={(key, input) =>
                 void save(
                   `slot:${key}`,
-                  async () =>
-                    setOverview(
-                      await request<AdManagerOverview>(
-                        `/admin/ad-manager/web/slots/${encodeURIComponent(key)}`,
-                        "PUT",
-                        input,
-                      ),
-                    ),
+                  async () => {
+                    const result = await request<AdManagerOverview>(
+                      `/admin/ad-manager/web/slots/${encodeURIComponent(key)}`,
+                      "PUT",
+                      input,
+                    );
+                    const stored = result.web.slots.find((slot) => slot.key === key);
+                    if (
+                      !stored ||
+                      stored.enabled !== input.enabled ||
+                      stored.source !== input.source ||
+                      stored.code !== input.code ||
+                      stored.adUnitPath !== input.adUnitPath ||
+                      stored.height !== input.height ||
+                      stored.devices.length !== input.devices.length ||
+                      !input.devices.every((device) => stored.devices.includes(device))
+                    ) {
+                      throw new Error(
+                        copy(
+                          "The server returned different slot settings. Your edits are still here. Refresh to check the stored values.",
+                          "الإعدادات اللي رجعت من الخادم مختلفة. تعديلاتك لسه موجودة هنا. اضغط تحديث لمراجعة القيم المحفوظة.",
+                        ),
+                      );
+                    }
+                    setOverview(result);
+                  },
                   saved,
                 )
               }
@@ -299,7 +353,7 @@ export function AdminAdManager() {
               key={JSON.stringify(overview.video)}
               copy={copy}
               video={overview.video}
-              busy={busy}
+              busy={loading ? "refresh" : busy}
               onSave={(input) =>
                 void save(
                   "video",
@@ -319,7 +373,7 @@ export function AdminAdManager() {
                 key={JSON.stringify(appConfig)}
                 copy={copy}
                 config={appConfig}
-                busy={busy}
+                busy={loading ? "refresh" : busy}
                 onSave={(config) =>
                   void save(
                     "app",
@@ -423,6 +477,7 @@ function Summary({
         <ActionButton
           tone={overview.emergencyStop ? "primary" : "danger"}
           pending={busy === "emergency"}
+          disabled={busy !== null}
           onClick={() => onEmergency(!overview.emergencyStop)}
         >
           {overview.emergencyStop
@@ -471,6 +526,7 @@ function WebAds({
   overview,
   appConfig,
   onOpenApp,
+  notice,
   busy,
   onMaster,
   onSlot,
@@ -480,6 +536,7 @@ function WebAds({
   overview: AdManagerOverview;
   appConfig: MobileConfig | null;
   onOpenApp: () => void;
+  notice: Notice;
   busy: string | null;
   onMaster: (enabled: boolean) => void;
   onSlot: (key: string, input: AdManagerSlotInput) => void;
@@ -490,7 +547,7 @@ function WebAds({
       <div className={styles.panelHead}>
         <Switch
           checked={overview.web.masterEnabled}
-          disabled={busy === "web-master"}
+          disabled={busy !== null}
           onChange={onMaster}
           label={copy("Website ads master switch", "المفتاح الرئيسي لإعلانات الموقع")}
           hint={copy(
@@ -521,6 +578,8 @@ function WebAds({
             slot={slot}
             masterEnabled={overview.web.masterEnabled}
             saving={busy === `slot:${slot.key}`}
+            locked={busy !== null}
+            notice={notice?.operation === `slot:${slot.key}` ? notice : null}
             onSave={(input) => onSlot(slot.key, input)}
           />
         ))}
@@ -673,6 +732,8 @@ function SlotCard({
   slot,
   masterEnabled,
   saving,
+  locked,
+  notice,
   onSave,
 }: {
   copy: Copy;
@@ -681,6 +742,8 @@ function SlotCard({
   slot: AdManagerSlot;
   masterEnabled: boolean;
   saving: boolean;
+  locked: boolean;
+  notice: Notice;
   onSave: (input: AdManagerSlotInput) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -762,10 +825,11 @@ function SlotCard({
       {open ? (
         <form
           id={`${id}-form`}
+          inert={saving}
           className={styles.slotForm}
           onSubmit={(event) => {
             event.preventDefault();
-            if (invalid) return;
+            if (invalid || locked) return;
             onSave({
               enabled: enabled && source !== "NONE",
               source,
@@ -922,11 +986,19 @@ function SlotCard({
           ) : null}
 
           <div className={styles.formActions}>
-            <ActionButton type="submit" pending={saving} disabled={invalid}>
+            <ActionButton type="submit" pending={saving} disabled={invalid || locked}>
               {copy("Save slot", "احفظ المكان")}
             </ActionButton>
           </div>
         </form>
+      ) : null}
+      {notice ? (
+        <StatusNotice
+          tone={notice.tone}
+          announce={notice.tone === "danger" ? "assertive" : "polite"}
+        >
+          {notice.text}
+        </StatusNotice>
       ) : null}
     </article>
   );
@@ -1279,7 +1351,7 @@ function VideoAds({
       <div className={styles.formActions}>
         <ActionButton
           pending={busy === "video"}
-          disabled={errors.length > 0 || Boolean(cueError)}
+          disabled={busy !== null || errors.length > 0 || Boolean(cueError)}
           onClick={() =>
             onSave({
               ...draft,
@@ -1521,7 +1593,7 @@ function AppAds({
       <div className={styles.formActions}>
         <ActionButton
           pending={busy === "app"}
-          disabled={invalidUnits || audienceMissing}
+          disabled={busy !== null || invalidUnits || audienceMissing}
           onClick={() => onSave(draft)}
         >
           {copy("Save app ads", "احفظ إعلانات التطبيق")}

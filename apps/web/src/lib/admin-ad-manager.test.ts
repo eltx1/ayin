@@ -13,6 +13,14 @@ describe("ad manager paste helpers", () => {
     ).toBe("/23374456398/AYIN/home_top");
   });
 
+  it("preserves a manually typed nested unit path, including an unfinished segment", () => {
+    let value = "";
+    for (const character of "/23374456398/AYIN/home_top") {
+      value = extractAdUnitPath(value + character);
+    }
+    expect(value).toBe("/23374456398/AYIN/home_top");
+  });
+
   it("extracts a VAST URL from a bare URL or a snippet", () => {
     const url = "https://pubads.g.doubleclick.net/gampad/ads?iu=/1/v&env=vp";
     expect(extractVastTagUrl(url)).toBe(url);

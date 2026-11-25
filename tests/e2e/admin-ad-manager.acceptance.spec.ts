@@ -81,6 +81,11 @@ test("the simple ad manager fills a slot with pasted code that renders on the si
   await expect(page.getByText("Saved. Changes reach viewers within a minute.")).toBeVisible();
   await expect(slot.getByText("Running")).toBeVisible();
 
+  await page.reload();
+  await slot.getByRole("button", { name: "Edit" }).click();
+  await expect(slot.getByLabel("Ad code", { exact: true })).toHaveValue(/ayin-e2e-ad/);
+  await expect(slot.getByRole("switch", { name: "Show ads in this slot" })).toBeChecked();
+
   for (const home of ["/", "/ar"]) {
     await page.goto(home);
     const frame = page.locator('iframe[title="Advertisement"]').first();
@@ -128,4 +133,66 @@ test("video breaks keep one VAST tag each and app ads stay superadmin-only", asy
   await expect(
     page.getByText("App ad settings are managed by a superadministrator."),
   ).toBeVisible();
+});
+
+test("the Arabic quick editor saves a nested GAM unit and an off-slot draft across reloads", async ({
+  page,
+}) => {
+  await signInAsAdManager(page);
+  await page.goto("/ar/admin/advertising/manager");
+  const slot = page.locator("#ad-slot-home_top");
+  const next = page.locator("#ad-slot-header_below");
+  const edit = { name: "تعديل", exact: true };
+  const save = { name: "احفظ المكان", exact: true };
+  await slot.getByRole("button", edit).click();
+  await next.getByRole("button", edit).click();
+  await slot.getByRole("radio", { name: /وحدة Google Ad Manager/ }).check();
+  const unit = slot.getByLabel("مسار الوحدة (Ad unit path)");
+  const path = "/23374456398/AYIN/home_top";
+  await unit.pressSequentially(path);
+  await expect(unit).toHaveValue(path);
+  await page.route(
+    "**/admin/ad-manager/web/slots/home_top",
+    (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: { message: "Temporarily unavailable" } }),
+      }),
+    { times: 1 },
+  );
+  await slot.getByRole("button", save).click();
+  await expect(slot.getByRole("alert")).toContainText("لم يتم الحفظ");
+  await expect(unit).toHaveValue(path);
+  // Hold only this browser's request, then pass it through to the real API and DB.
+  let release!: () => void;
+  const wait = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    "**/admin/ad-manager/web/slots/home_top",
+    async (route) => {
+      await wait;
+      await route.continue();
+    },
+    { times: 1 },
+  );
+  await slot.getByRole("button", save).click();
+  try {
+    await expect(next.getByRole("button", save)).toBeDisabled();
+  } finally {
+    release();
+  }
+  await expect(slot.getByRole("status")).toContainText("تم الحفظ");
+  await page.reload();
+  await slot.getByRole("button", edit).click();
+  await expect(unit).toHaveValue(path);
+  await expect(slot.getByRole("switch")).not.toBeChecked();
+  await unit.fill("");
+  await slot.getByRole("button", save).click();
+  await expect(slot.getByRole("status")).toContainText("تم الحفظ");
+  await page.reload();
+  await slot.getByRole("button", edit).click();
+  await expect(slot.getByRole("radio", { name: /وحدة Google Ad Manager/ })).toBeChecked();
+  await expect(unit).toHaveValue("");
 });

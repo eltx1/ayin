@@ -70,7 +70,7 @@ export function extractVastTagUrl(value: string): string {
 /** Accepts "/1234/AYIN/home_top" or a pasted GPT snippet that contains the defineSlot path. */
 export function extractAdUnitPath(value: string): string {
   const trimmed = value.trim();
-  if (gamAdUnitPathPattern.test(trimmed)) return trimmed;
+  if (trimmed.startsWith("/")) return trimmed;
   const match = trimmed.match(/\/\d{1,20}(?:\/[A-Za-z0-9_.-]+)+/u);
   return match ? match[0] : trimmed;
 }
