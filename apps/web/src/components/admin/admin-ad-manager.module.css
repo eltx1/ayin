@@ -98,6 +98,7 @@
   opacity: 0;
   position: absolute;
   width: 48px;
+  z-index: 1;
 }
 
 .switchTrack {
