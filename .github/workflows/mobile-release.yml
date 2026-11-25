@@ -95,7 +95,7 @@ jobs:
           set -euo pipefail
           flags=()
           if [ "$SIGNED" = true ]; then flags+=(--signed); fi
-          firebase_config="$RUNNER_TEMP/ayin-google-services.json"
+          firebase_config="$GITHUB_WORKSPACE/platforms/android/app/src/mobile/google-services.json"
           python3 scripts/mobile-release-config.py android "${flags[@]}" --firebase-json "$firebase_config"
           echo "AYIN_FIREBASE_CONFIG_FILE=$firebase_config" >> "$GITHUB_ENV"
           test -f platforms/android/app/gradle.lockfile
@@ -172,7 +172,7 @@ jobs:
             --release-name "${{ inputs.version_name }} (${{ inputs.version_code }})"
       - name: Remove temporary upload key
         if: always()
-        run: rm -f "$RUNNER_TEMP/upload.keystore" "$RUNNER_TEMP/ayin-google-services.json"
+        run: rm -f "$RUNNER_TEMP/upload.keystore" "$GITHUB_WORKSPACE/platforms/android/app/src/mobile/google-services.json"
 
   ios:
     if: github.ref == 'refs/heads/main' && inputs.platform == 'ios'
