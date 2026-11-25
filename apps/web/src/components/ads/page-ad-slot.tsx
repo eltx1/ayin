@@ -2,7 +2,7 @@
 
 import { isMobileHost } from "@/lib/mobile-bridge";
 import { webAdvertisingAllowed } from "@/lib/mobile-web-ads";
-import { subscribeMobile } from "@/lib/mobile-runtime";
+import { nativeBannerEnabled, subscribeMobile } from "@/lib/mobile-runtime";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 
@@ -20,6 +20,7 @@ import {
   fetchPageAdDecision,
   getPageAdSessionId,
   type HousePageAdDemand,
+  openPageAdLink,
   pageAdFrameUrl,
   recordPageAdEvent,
   subscribePageAdDevice,
@@ -40,8 +41,8 @@ function anchorDismissed() {
 
 /**
  * "anchor" pins the slot to the bottom of a phone screen above the navigation bar, with a close
- * button that hides it for the rest of the visit. It is never shown inside the native apps,
- * whose own banner already uses that space.
+ * button that hides it for the rest of the visit. Inside the apps it is shown only while the
+ * native bottom banner is off, so the two never overlap.
  */
 export function PageAdSlot({
   placementKey,
@@ -80,7 +81,8 @@ export function PageAdSlot({
     />
   );
   if (variant === "inline") return session;
-  if (dismissed || device !== "MOBILE" || isMobileHost() || anchorDismissed()) return null;
+  // In the apps the web banner is extra inventory, but never on top of the native bottom banner.
+  if (dismissed || device !== "MOBILE" || nativeBannerEnabled() || anchorDismissed()) return null;
   return (
     <>
       {/* Keeps the end of the page reachable above the pinned banner. */}
@@ -137,7 +139,11 @@ function PageAdSlotSession({
     const onMessage = (event: MessageEvent) => {
       const source = frameRef.current?.contentWindow;
       if (!source || event.source !== source) return;
-      const data = event.data as { type?: unknown; height?: unknown } | null;
+      const data = event.data as { type?: unknown; height?: unknown; url?: unknown } | null;
+      if (data?.type === "ayin-ad-frame-open") {
+        openPageAdLink(data.url);
+        return;
+      }
       if (data?.type !== "ayin-ad-frame-size" || typeof data.height !== "number") return;
       if (!Number.isFinite(data.height)) return;
       setFrameHeight(Math.max(0, Math.min(1200, Math.ceil(data.height))));
@@ -193,7 +199,7 @@ function PageAdSlotSession({
 
       if (decision.demand.provider === "CODE") {
         setFrame({
-          url: pageAdFrameUrl(placementKey, decision.demand.version),
+          url: pageAdFrameUrl(placementKey, decision.demand.version, isMobileHost()),
           fixedHeight: decision.demand.height,
         });
         await recordPageAdEvent({

@@ -94,8 +94,28 @@ export async function recordPageAdEvent(input: {
   }
 }
 
-export function pageAdFrameUrl(key: string, version: number) {
-  return `${apiBaseUrl}/ads/page/frame/${encodeURIComponent(key)}?v=${version}`;
+export function pageAdFrameUrl(key: string, version: number, inApp = false) {
+  return `${apiBaseUrl}/ads/page/frame/${encodeURIComponent(key)}?v=${version}${inApp ? "&app=1" : ""}`;
+}
+
+/**
+ * Opens an advertiser link that a sandboxed ad frame handed to the page. Inside the AYIN apps it
+ * leaves the WebView through the native bridge (system browser); elsewhere it opens a new tab.
+ */
+export function openPageAdLink(raw: unknown) {
+  if (typeof raw !== "string" || raw.length > 4096) return;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return;
+  if (window.AyinNative?.openExternal) {
+    window.AyinNative.openExternal(url.toString());
+    return;
+  }
+  window.open(url.toString(), "_blank", "noopener,noreferrer");
 }
 
 export function getPageAdSessionId() {

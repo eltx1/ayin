@@ -290,6 +290,30 @@ describe("mobile identity, consent and notification orchestration (bridge mocks,
       expect(webAdvertisingAllowed("page")).toBe(false);
     },
   );
+  it("runs website and video ads inside the app in addition to native app ads", async () => {
+    optIn(a);
+    const ads = config.ads as {
+      enabled: boolean;
+      testMode: boolean;
+      banner: { enabled: boolean };
+      platforms: { android: { enabled: boolean; bannerUnitId: string } };
+    };
+    ads.enabled = true;
+    ads.banner.enabled = true;
+    ads.platforms.android.enabled = true;
+    ads.platforms.android.bannerUnitId = "/23374456398/AYIN/android_banner";
+    (nativeInfo.configured as { ads: boolean }).ads = true;
+    nativeInfo.platform = "android";
+    config.webViewAds = {
+      android: { pageAdsEnabled: true, videoAdsEnabled: true },
+      ios: { pageAdsEnabled: true, videoAdsEnabled: true },
+    };
+    const runtime = await boot();
+    const { webAdvertisingAllowed } = await import("./mobile-web-ads");
+    expect(runtime.nativeBannerEnabled()).toBe(true);
+    expect(webAdvertisingAllowed("page")).toBe(true);
+    expect(webAdvertisingAllowed("video")).toBe(true);
+  });
   it("keeps WebView ads closed by default and after adult/profile eligibility is revoked", async () => {
     optIn(a);
     const runtime = await boot();

@@ -105,6 +105,10 @@ describe("simple ad manager", () => {
     expect(html).toContain('<base target="_blank">');
     expect(html).toContain("ayin-ad-frame-size");
     expect(renderPageAdFrame(null)).toContain('<div id="ayin-ad-root"></div>');
+    expect(html).not.toContain("ayin-ad-frame-open");
+    expect(renderPageAdFrame("<a href='https://x.example'>x</a>", { app: true })).toContain(
+      "ayin-ad-frame-open",
+    );
   });
 
   it("repeats interval mid-rolls through the video and stops before its end", () => {

@@ -598,3 +598,14 @@
   font-size: 0.65rem;
   text-align: center;
 }
+
+.linkButton {
+  background: none;
+  border: 0;
+  color: var(--text-accent, var(--brand-magenta));
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 0;
+  text-decoration: underline;
+}

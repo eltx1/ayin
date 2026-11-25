@@ -76,6 +76,7 @@ export class PageAdController {
   @Get("frame/:key")
   async frame(
     @Param("key") key: string,
+    @Query("app") app: unknown,
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<string> {
     const code = frameKeySchema.safeParse(key).success
@@ -90,7 +91,7 @@ export class PageAdController {
       `frame-ancestors ${process.env.WEB_ORIGIN ?? "https://ayin.stream"}`,
     );
     if (!code) reply.status(404);
-    return renderPageAdFrame(code);
+    return renderPageAdFrame(code, { app: app === "1" });
   }
 
   @Post("events")

@@ -262,6 +262,8 @@ export function AdminAdManager() {
               copy={copy}
               ar={ar}
               overview={overview}
+              appConfig={appConfig}
+              onOpenApp={() => setTab("app")}
               busy={busy}
               onMaster={(masterEnabled) =>
                 void save(
@@ -467,6 +469,8 @@ function WebAds({
   copy,
   ar,
   overview,
+  appConfig,
+  onOpenApp,
   busy,
   onMaster,
   onSlot,
@@ -474,6 +478,8 @@ function WebAds({
   copy: Copy;
   ar: boolean;
   overview: AdManagerOverview;
+  appConfig: MobileConfig | null;
+  onOpenApp: () => void;
   busy: string | null;
   onMaster: (enabled: boolean) => void;
   onSlot: (key: string, input: AdManagerSlotInput) => void;
@@ -493,6 +499,8 @@ function WebAds({
           )}
         />
       </div>
+
+      {appConfig ? <InAppWebStatus copy={copy} config={appConfig} onOpenApp={onOpenApp} /> : null}
 
       <SlotMap copy={copy} number={number} slots={overview.web.slots} />
 
@@ -518,6 +526,58 @@ function WebAds({
         ))}
       </div>
     </section>
+  );
+}
+
+/** Website ads also run inside the apps' WebView, in addition to the native app ads. */
+function InAppWebStatus({
+  copy,
+  config,
+  onOpenApp,
+}: {
+  copy: Copy;
+  config: MobileConfig;
+  onOpenApp: () => void;
+}) {
+  const webView = config.webViewAds;
+  const platforms = [
+    ["android", "Android"],
+    ["ios", "iPhone"],
+  ] as const;
+  const audienceReady = config.ads.audience === "general";
+  const on = (platform: "android" | "ios", kind: "pageAdsEnabled" | "videoAdsEnabled") =>
+    audienceReady && webView?.[platform][kind] === true;
+  const allOn = platforms.every(
+    ([platform]) => on(platform, "pageAdsEnabled") && on(platform, "videoAdsEnabled"),
+  );
+  return (
+    <StatusNotice
+      tone={allOn ? "success" : "warning"}
+      title={copy("Inside the AYIN apps", "جوه تطبيقات عين")}
+    >
+      <span>
+        {platforms
+          .map(
+            ([platform, name]) =>
+              `${name}: ${copy("page", "الأماكن")} ${on(platform, "pageAdsEnabled") ? "✅" : "❌"} · ${copy("video", "الفيديو")} ${on(platform, "videoAdsEnabled") ? "✅" : "❌"}`,
+          )
+          .join("   |   ")}
+      </span>{" "}
+      {allOn
+        ? copy(
+            "Website and video ads also show inside the apps, in addition to the native app ads.",
+            "إعلانات الموقع والفيديو بتظهر كمان جوه التطبيقات، زيادة على إعلانات التطبيق الأصلية.",
+          )
+        : copy(
+            "Turn on “Website ads inside the app” and “Video ads inside the app” for each platform, with the app audience set to General.",
+            "فعّل “إعلانات الموقع جوه التطبيق” و“إعلانات الفيديو جوه التطبيق” لكل منصة، مع اختيار جمهور التطبيق “جمهور عام”.",
+          )}{" "}
+      {!allOn ? (
+        <button type="button" className={styles.linkButton} onClick={onOpenApp}>
+          {copy("Open the App tab", "افتح تبويب التطبيق")}
+        </button>
+      ) : null}
+    </StatusNotice>
   );
 }
 
@@ -1260,7 +1320,11 @@ function AppAds({
       unitInvalid(ads.platforms[platform].bannerUnitId) ||
       unitInvalid(ads.platforms[platform].interstitialUnitId),
   );
-  const audienceMissing = ads.enabled && ads.audience !== "general";
+  const webViewOn = (["android", "ios"] as const).some(
+    (platform) => webView[platform].pageAdsEnabled || webView[platform].videoAdsEnabled,
+  );
+  // The app runtime allows any advertising (native or web) only for a General audience.
+  const audienceMissing = (ads.enabled || webViewOn) && ads.audience !== "general";
 
   return (
     <section className={styles.panel}>
@@ -1299,8 +1363,8 @@ function AppAds({
         {audienceMissing ? (
           <span className={styles.error}>
             {copy(
-              "Choose “General audience” to run app ads (child-directed app ads are not supported).",
-              "اختار “جمهور عام” عشان تشغّل إعلانات التطبيق (إعلانات تطبيقات الأطفال مش مدعومة).",
+              "Choose “General audience” to run any ads in the app — native ads and website ads inside it (child-directed app ads are not supported).",
+              "اختار “جمهور عام” عشان أي إعلانات تشتغل في التطبيق، سواء إعلانات التطبيق الأصلية أو إعلانات الموقع جوّاه (إعلانات تطبيقات الأطفال مش مدعومة).",
             )}
           </span>
         ) : null}
@@ -1436,8 +1500,8 @@ function AppAds({
                 onChange={(pageAdsEnabled) => setWebView({ pageAdsEnabled })}
                 label={copy("Website ads inside the app", "إعلانات الموقع جوه التطبيق")}
                 hint={copy(
-                  "Shows the website slots (Website tab) inside this app's WebView.",
-                  "بيعرض أماكن إعلانات الموقع (تبويب الموقع) جوه الـ WebView في التطبيق ده.",
+                  "Shows the website slots (Website tab) inside this app, in addition to its native ads. Ad links open in the phone's browser.",
+                  "بيعرض أماكن إعلانات الموقع (تبويب الموقع) جوه التطبيق ده، زيادة على إعلاناته الأصلية. والضغط على الإعلان بيفتح في متصفح الموبايل.",
                 )}
               />
               <Switch
