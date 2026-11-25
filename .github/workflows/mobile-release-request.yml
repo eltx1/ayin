@@ -40,6 +40,7 @@ jobs:
       AYIN_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.AYIN_ANDROID_KEYSTORE_PASSWORD }}
       AYIN_ANDROID_KEY_ALIAS: ${{ secrets.AYIN_ANDROID_KEY_ALIAS }}
       AYIN_ANDROID_KEY_PASSWORD: ${{ secrets.AYIN_ANDROID_KEY_PASSWORD }}
+      GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
     with:
       platform: ${{ matrix.platform }}
       version_name: ${{ needs.version.outputs.name }}

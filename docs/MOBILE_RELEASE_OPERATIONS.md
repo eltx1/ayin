@@ -43,6 +43,17 @@ In the repository's `mobile-production` environment, store the keystore bytes en
 
 For the next release, update `platforms/mobile-release.json` on main with an unused increasing build number. The workflow signs the AAB and verifies the signature. From the Actions artifact, check the signer with `keytool -printcert -jarfile AYIN-release.aab` and compare it to the upload certificate. Upload that same AAB to the intended Play draft and verify the version code there before submitting.
 
+## Uploading an Android release to Google Play (draft)
+
+The Android job can upload the signed AAB and its R8 mapping straight to a Play track as a **draft** release. It never sends anything for review or rolls it out: the owner opens the draft in Play Console, checks the version code and release notes, and submits it.
+
+1. Google Cloud Console (the project linked to Play): create a service account and a JSON key.
+2. Play Console → Users and permissions → Invite new user → the service account email → grant access to `net.ayin.app.mobile` with release permissions for the intended tracks.
+3. Store the whole JSON key as the `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` secret in the `mobile-production` environment.
+4. Run the workflow on `main` with platform `android`, an unused increasing build number, signing enabled and `play_track` set (`internal` for a first check, `production` for the store draft).
+
+The job prints the upload certificate SHA-256 so it can be compared with Play Console → App integrity → App signing → Upload key certificate before submitting.
+
 ## Secure configuration
 
 Set values through GitHub repository/environment settings and the deployment secret store, never in a chat message, tracked file, PR, or build log. Client Firebase identifiers are embedded app configuration; backend sender keys and signing keys are secrets. Use the `mobile-production` GitHub environment. A distinct staging host/session setup is not currently configured; debug validation is a separate test build, not a claim that staging exists.
@@ -96,7 +107,7 @@ Official references: [Android app signing](https://developer.android.com/studio/
 
 1. Run PR validation. It creates a debug APK, minified unsigned AAB, simulator app, unsigned iOS archive, test results, dependency locks and metadata where jobs succeed. Debug builds use official Google test inventory. Missing Firebase project config must leave core content available.
 2. Review and commit the actual generated Gradle lock and SPM Package.resolved. Repeat exact-head validation after a lock changes. A workflow refusing a missing lock is a release safeguard, not a successful release.
-3. After review/merge, run **Mobile release artifacts (no store publication)** on `main`, choose Android or iOS, supply a new monotonically increasing build number and marketing version. Set signing only after the secure environment is configured. The workflow does not purchase accounts or submit to stores.
+3. After review/merge, run **Mobile release artifacts (optional Google Play draft upload)** on `main`, choose Android or iOS, supply a new monotonically increasing build number and marketing version. Set signing only after the secure environment is configured. The workflow does not purchase accounts or submit to stores.
 4. Verify signing identity, minified startup, mapping/dSYMs, Android 16 KB ELF/ZIP checks, package/bundle IDs and SHA metadata. Successful static alignment is not a substitute for a real 16 KB device/emulator run.
 5. Upload signed AAB to Google Play internal testing and IPA/archive through App Store Connect/TestFlight using authorized account access. Developer membership, certificates and store account readiness must be checked in the actual consoles.
 6. Install the distributed builds on dedicated Android/iPhone test devices. Use only test ads and specific test-device registrations. Capture evidence below. Never send a test campaign to all users.

@@ -1,4 +1,4 @@
-name: Mobile release artifacts (no store publication)
+name: Mobile release artifacts (optional Google Play draft upload)
 
 on:
   workflow_call:
@@ -13,6 +13,8 @@ on:
         required: false
       AYIN_ANDROID_KEY_PASSWORD:
         required: false
+      GOOGLE_PLAY_SERVICE_ACCOUNT_JSON:
+        required: false
     inputs:
       platform:
         type: string
@@ -26,6 +28,9 @@ on:
       signed:
         type: boolean
         default: false
+      play_track:
+        type: string
+        default: ""
   workflow_dispatch:
     inputs:
       platform:
@@ -44,6 +49,11 @@ on:
         description: "Sign using the mobile-production environment's credentials"
         type: boolean
         default: false
+      play_track:
+        description: "Also upload the signed Android bundle to this Google Play track as a DRAFT (empty = do not upload)"
+        type: choice
+        options: ["", internal, alpha, beta, production]
+        default: ""
 
 permissions:
   contents: read
@@ -144,6 +154,22 @@ jobs:
           path: ${{ runner.temp }}/ayin-release/
           if-no-files-found: error
           retention-days: 14
+      - name: Show the upload certificate to compare with Play Console
+        if: inputs.signed
+        run: |
+          # Play Console -> App integrity -> App signing -> "Upload key certificate" must match.
+          keytool -printcert -jarfile "$RUNNER_TEMP/ayin-release/AYIN-release.aab" | grep -E "Owner:|SHA256:" | head -2
+      - name: Upload the signed bundle to Google Play as a draft
+        if: inputs.signed && inputs.platform == 'android' && inputs.play_track != ''
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --disable-pip-version-check google-auth==2.38.0 requests==2.32.3
+          python3 scripts/play-upload.py --package net.ayin.app.mobile --track "${{ inputs.play_track }}" \
+            --aab "$RUNNER_TEMP/ayin-release/AYIN-release.aab" \
+            --mapping "$RUNNER_TEMP/ayin-release/mapping.txt" \
+            --release-name "${{ inputs.version_name }} (${{ inputs.version_code }})"
       - name: Remove temporary upload key
         if: always()
         run: rm -f "$RUNNER_TEMP/upload.keystore" "$RUNNER_TEMP/ayin-google-services.json"
