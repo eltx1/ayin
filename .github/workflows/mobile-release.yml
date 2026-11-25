@@ -2,6 +2,17 @@ name: Mobile release artifacts (no store publication)
 
 on:
   workflow_call:
+    secrets:
+      AYIN_FIREBASE_API_KEY:
+        required: false
+      AYIN_ANDROID_KEYSTORE_BASE64:
+        required: false
+      AYIN_ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      AYIN_ANDROID_KEY_ALIAS:
+        required: false
+      AYIN_ANDROID_KEY_PASSWORD:
+        required: false
     inputs:
       platform:
         type: string
