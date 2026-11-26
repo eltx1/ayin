@@ -4,12 +4,12 @@ AYIN TV serves the production site at `https://ayin.stream`. Each installed app 
 
 ## Store order and deliverables
 
-| Order | Platform | Package and distribution | Release checks |
-| --- | --- | --- | --- |
-| 1 | LG webOS TV | Hosted Web app `com.ayin.stream.tv` as an IPK in LG Seller Lounge | Run on LG Cloud Test Lab or supported webOS TV 25 and 26 devices. Verify remote focus, Back and exit, video, and a test ad break. |
-| 2 | Amazon Fire TV | Existing `net.ayin.app.firetv` Android WebView shell as a signed release APK for the Fire OS track | Verify on representative Fire OS devices or Amazon Live Device Interaction and select the proven device families. Vega OS has its own build and release track. |
-| Parallel | Samsung TV | Hosted Tizen app `AYINtv2026.AYIN` as a signed WGT in TV Seller Office | Get hosted architecture and origin-policy approval, request Partner Seller for distribution outside the US, secure the author certificate, and validate the WGT on supported Tizen TVs. |
-| When Play access returns | Google TV and Android TV | Existing `net.ayin.app.tv` Android WebView shell as a signed AAB in Play Console | Confirm package availability and Play signing, upload to the Android TV test track, and verify TV launcher, remote, and Android App Links. |
+| Order                    | Platform                 | Package and distribution                                                                           | Release checks                                                                                                                                                                          |
+| ------------------------ | ------------------------ | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1                        | LG webOS TV              | Hosted Web app `com.ayin.stream.tv` as an IPK in LG Seller Lounge                                  | Run on LG Cloud Test Lab or supported webOS TV 25 and 26 devices. Verify remote focus, Back and exit, video, and a test ad break.                                                       |
+| 2                        | Amazon Fire TV           | Existing `net.ayin.app.firetv` Android WebView shell as a signed release APK for the Fire OS track | Verify on representative Fire OS devices or Amazon Live Device Interaction and select the proven device families. Vega OS has its own build and release track.                          |
+| Parallel                 | Samsung TV               | Hosted Tizen app `AYINtv2026.AYIN` as a signed WGT in TV Seller Office                             | Get hosted architecture and origin-policy approval, request Partner Seller for distribution outside the US, secure the author certificate, and validate the WGT on supported Tizen TVs. |
+| When Play access returns | Google TV and Android TV | Existing `net.ayin.app.tv` Android WebView shell as a signed AAB in Play Console                   | Confirm package availability and Play signing, upload to the Android TV test track, and verify TV launcher, remote, and Android App Links.                                              |
 
 Fire OS still accepts Android APKs that use WebView. Amazon discontinued the separate web-app submission flow. Samsung Galaxy Store seller status applies to the phone app. Samsung TV uses TV Seller Office and its own hosted-app review. The existing Apple TV app uses SwiftUI and AVPlayer. Roku uses SceneGraph. Both are outside this web-wrapper release.
 
