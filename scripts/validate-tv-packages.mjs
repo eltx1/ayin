@@ -146,6 +146,9 @@ if (!/^[a-z0-9][a-z0-9.-]+$/.test(webos.id)) {
 }
 if (webos.type !== "web") throw new Error("webOS type must be web");
 if (webos.main !== "index.html") throw new Error("webOS main must be index.html");
+if (!Array.isArray(webos.requiredACG) || webos.requiredACG.length !== 0) {
+  throw new Error("The hosted webOS package must declare an empty requiredACG array");
+}
 if (!/^\d+\.\d+\.\d+$/.test(webos.version)) {
   throw new Error("webOS version must be x.y.z");
 }
